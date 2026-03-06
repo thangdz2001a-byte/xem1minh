@@ -452,10 +452,12 @@ const BottomNav = ({ setView, categories, currentView }) => {
   );
 };
 
-// --- 7. BANNER TRANG CHỦ ĐỘNG (RESPONSIVE CHUẨN MOBILE & THẲNG HÀNG & FIX LỖI LOADING) ---
+// --- 7. BANNER TRANG CHỦ ĐỘNG (THẲNG HÀNG TRÁI & GÓC DƯỚI & KHÔNG MÔ TẢ) ---
 const HeroSlide = memo(({ movie, isActive, setView }) => {
   const tmdbData = movie.tmdbData;
-  const backdropUrl = `https://image.tmdb.org/t/p/original${tmdbData?.backdrop_path}`;
+  const backdropUrl = tmdbData?.backdrop_path 
+    ? `https://image.tmdb.org/t/p/original${tmdbData.backdrop_path}` 
+    : getImg(movie?.poster_url || movie?.thumb_url);
 
   return (
     <div className={`absolute inset-0 w-full h-full transition-opacity duration-1000 ease-in-out ${isActive ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}>
@@ -463,33 +465,36 @@ const HeroSlide = memo(({ movie, isActive, setView }) => {
       <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/60 md:via-[#050505]/40 to-transparent" />
       <div className="absolute inset-0 bg-gradient-to-r from-[#050505]/90 via-[#050505]/40 to-transparent" />
       
-      {/* Container ép nội dung thẳng hàng bên trái tuyệt đối */}
-      <div className="absolute inset-0 z-10 flex flex-col justify-center items-start px-4 sm:px-6 md:px-12 max-w-7xl mx-auto h-full pt-10 md:pt-16">
+      {/* SỬ DỤNG justify-end VÀ pb-16 ĐỂ ÉP KHỐI XUỐNG GÓC TRÁI BÊN DƯỚI CÙNG (TRÊN CÁC DẤU CHẤM) */}
+      <div className="absolute inset-0 z-10 flex flex-col justify-end items-start px-4 sm:px-6 md:px-12 max-w-7xl mx-auto h-full pb-16 sm:pb-20 md:pb-28">
         <div className="max-w-2xl w-full flex flex-col items-start text-left animate-in fade-in slide-in-from-bottom-8 duration-700">
           
-          {/* Tiêu đề bé lại trên Mobile, căn lề trái */}
-          <h1 className="text-2xl sm:text-3xl md:text-5xl lg:text-7xl font-black text-white mb-2 md:mb-4 tracking-tight drop-shadow-2xl uppercase leading-[1.2] md:leading-tight line-clamp-3 text-left w-full">
+          {/* Tiêu đề Serif in nghiêng, thanh lịch và căn trái tuyệt đối */}
+          <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-7xl font-serif italic font-bold text-white mb-1 md:mb-3 tracking-wide drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)] leading-[1.1] md:leading-tight line-clamp-2 w-full text-left">
             {movie?.name}
           </h1>
+          <p className="text-[#f5c518] text-[10px] sm:text-xs md:text-base font-medium mb-3 md:mb-5 drop-shadow-md line-clamp-1 w-full text-left">
+            {movie?.origin_name}
+          </p>
           
-          {/* Các thông số: căn lề trái, thẳng hàng, thu nhỏ theo đúng yêu cầu */}
-          <div className="flex flex-wrap items-center justify-start gap-1.5 md:gap-3 text-[10px] sm:text-sm md:text-base font-bold text-gray-300 mb-5 md:mb-8 w-full">
-            <span className="text-[#E50914] font-black">{movie?.year || "2024"}</span>
-            <span className="text-gray-500 text-[8px] md:text-sm">•</span>
-            <span className="flex items-center gap-1 text-[#f5c518]">
-              <Icon.Star fill="currentColor" size={10} className="md:w-4 md:h-4" /> 
-              {tmdbData?.vote_average ? Number(tmdbData.vote_average).toFixed(1) : "10.0"}
-            </span>
-            <span className="text-gray-500 text-[8px] md:text-sm">•</span>
-            <span className="border border-white/40 px-1.5 md:px-2 py-[2px] md:py-0.5 rounded text-[8px] md:text-xs text-white backdrop-blur-sm bg-white/10">
-              {movie?.quality || "HD"}
-            </span>
+          {/* Thông số: Căn lề trái, sát nhau, các nhãn nhỏ nhắn gọn gàng */}
+          <div className="flex flex-wrap items-center justify-start gap-1.5 md:gap-2 text-[9px] sm:text-xs md:text-sm font-medium text-white/90 mb-4 md:mb-6 w-full">
+            {tmdbData?.vote_average > 0 && (
+              <span className="border border-white/30 px-1.5 py-0.5 rounded flex items-center gap-1 backdrop-blur-sm">
+                <span className="text-[#f5c518] font-bold">IMDb</span> {Number(tmdbData.vote_average).toFixed(1)}
+              </span>
+            )}
+            <span className="border border-white/30 px-1.5 py-0.5 rounded backdrop-blur-sm">{movie?.year || "2024"}</span>
+            <span className="border border-white/30 px-1.5 py-0.5 rounded backdrop-blur-sm">Phần 1</span>
+            <span className="border border-white/30 px-1.5 py-0.5 rounded backdrop-blur-sm">{movie?.episode_current || "HD"}</span>
           </div>
 
-          {/* Nút Xem Ngay bé lại một nửa, và chắc chắn nằm bên trái (w-fit) */}
+          {/* ĐÃ XÓA MÔ TẢ PHIM THEO YÊU CẦU */}
+
+          {/* Nút Xem Ngay: Thu nhỏ, căn lề trái thẳng hàng với thông số ở trên */}
           <button
             onClick={() => { setView({ type: "detail", slug: movie?.slug }); window.scrollTo(0, 0); }}
-            className="w-fit bg-[#E50914] hover:bg-red-700 text-white px-5 py-2 sm:px-6 sm:py-2.5 md:px-10 md:py-4 rounded-full font-black flex items-center gap-1.5 md:gap-3 transition-transform hover:scale-105 active:scale-95 shadow-[0_4px_20px_rgba(229,9,20,0.5)] uppercase tracking-widest text-[10px] sm:text-sm md:text-base"
+            className="w-fit bg-[#E50914] hover:bg-red-700 text-white px-5 py-2 md:px-8 md:py-3.5 rounded-full font-bold flex items-center gap-1.5 md:gap-2 transition-transform hover:scale-105 active:scale-95 shadow-[0_4px_15px_rgba(229,9,20,0.5)] uppercase tracking-widest text-[10px] sm:text-xs md:text-sm"
           >
             <Icon.Play size={14} fill="currentColor" className="md:w-5 md:h-5" /> XEM NGAY
           </button>
@@ -507,13 +512,19 @@ const Hero = ({ setView }) => {
   useEffect(() => {
     const fetchBannerData = async () => {
       try {
-        // Fix lỗi vòng lặp xoay: Lấy trực tiếp từ danh sách phim mới để đảm bảo có dữ liệu
-        const res = await fetch(`${API}/danh-sach/phim-moi-cap-nhat`);
+        const res = await fetch(`${API}/home`);
         const j = await res.json();
-        const movies = j?.data?.items || [];
         
-        // Cắt xuống 10 phim (để không bị lỗi rate limit của TMDB gây ra vòng quay đen thui)
-        const candidates = movies.slice(0, 10);
+        const groups = j?.data?.items || [];
+        const firstGroupMovies = groups.length > 0 ? (groups[0].items || []) : [];
+        
+        // Khắc phục lỗi xoay đen thui: Lấy an toàn 10 phim
+        const candidates = firstGroupMovies.slice(0, 10);
+
+        if (candidates.length === 0) {
+           setLoading(false);
+           return;
+        }
 
         const tmdbResults = await Promise.all(
           candidates.map(async (m) => {
@@ -522,10 +533,8 @@ const Hero = ({ setView }) => {
           })
         );
 
-        // Lọc TỐI ĐA các phim chắc chắn CÓ ẢNH NỀN NGANG (Backdrop xịn)
         const withBackdrops = tmdbResults.filter(m => m.tmdbData && m.tmdbData.backdrop_path);
         
-        // Nếu ko có phim ảnh ngang, bắt buộc lấy phim thường để ko bị dính loading đen thui
         setBannerMovies(withBackdrops.length > 0 ? withBackdrops.slice(0, 5) : tmdbResults.slice(0, 5));
       } catch (error) {
         console.error(error);

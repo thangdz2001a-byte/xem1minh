@@ -29,29 +29,50 @@ function formatTime(seconds) {
     : `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
+// HÀM BẢO VỆ CHỐNG CRASH MÀN HÌNH ĐEN (Xử lý mảng/chuỗi an toàn tuyệt đối)
+const safeJoin = (data) => {
+  if (!data) return "Đang cập nhật";
+  if (typeof data === 'string') return data;
+  if (Array.isArray(data)) {
+      return data.map(item => typeof item === 'object' && item !== null ? item.name : item).join(", ");
+  }
+  return "Đang cập nhật";
+};
+
 // --- HỆ THỐNG CACHE TMDB ---
 const tmdbCache = new Map();
 
-async function fetchTMDB(name, originName) {
-  const cacheKey = originName || name;
+async function fetchTMDB(name, originName, slug, year) {
+  const cacheKey = slug || originName || name;
   if (!cacheKey) return null;
   if (tmdbCache.has(cacheKey)) return tmdbCache.get(cacheKey);
 
+  const extractYear = (dateString) => dateString ? dateString.substring(0, 4) : null;
+
   try {
-    let query = encodeURIComponent(originName || name);
-    let res = await fetch(
-      `https://api.themoviedb.org/3/search/multi?api_key=${TMDB_API_KEY}&query=${query}&language=vi-VN`
-    );
-    let data = await res.json();
-    let match = data.results?.find((item) => item.poster_path || item.backdrop_path);
-    
-    if (!match && originName && name) {
-      query = encodeURIComponent(name);
-      res = await fetch(
-        `https://api.themoviedb.org/3/search/multi?api_key=${TMDB_API_KEY}&query=${query}&language=vi-VN`
-      );
-      data = await res.json();
-      match = data.results?.find((item) => item.poster_path || item.backdrop_path);
+    let match = null;
+    const search = async (query) => {
+      let res = await fetch(`https://api.themoviedb.org/3/search/multi?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&language=vi-VN`);
+      let data = await res.json();
+      return data.results || [];
+    };
+
+    let results = [];
+    if (originName) results = await search(originName);
+    if (results.length === 0 && name) results = await search(name);
+
+    if (results.length > 0) {
+       // Ưu tiên tìm phim khớp năm để phân biệt phim trùng tên
+       if (year) {
+          match = results.find(item => 
+             item.media_type !== 'person' &&
+             (item.poster_path || item.backdrop_path) && 
+             (extractYear(item.release_date) === year.toString() || extractYear(item.first_air_date) === year.toString())
+          );
+       }
+       if (!match) {
+          match = results.find(item => item.media_type !== 'person' && (item.poster_path || item.backdrop_path));
+       }
     }
 
     if (match) {
@@ -63,8 +84,8 @@ async function fetchTMDB(name, originName) {
   return null;
 }
 
-function useTMDBData(name, originName) {
-  const cacheKey = originName || name;
+function useTMDBData(name, originName, slug, year) {
+  const cacheKey = slug || originName || name;
   const [data, setData] = useState(() => (cacheKey ? tmdbCache.get(cacheKey) : null));
   const [loading, setLoading] = useState(() => (cacheKey ? !tmdbCache.has(cacheKey) : false));
 
@@ -78,7 +99,7 @@ function useTMDBData(name, originName) {
 
     let isMounted = true;
     setLoading(true);
-    fetchTMDB(name, originName).then((res) => {
+    fetchTMDB(name, originName, slug, year).then((res) => {
       if (isMounted) {
         setData(res);
         setLoading(false);
@@ -86,15 +107,15 @@ function useTMDBData(name, originName) {
     });
 
     return () => { isMounted = false; };
-  }, [name, originName, cacheKey]);
+  }, [name, originName, slug, year, cacheKey]);
 
   return { data, loading };
 }
 
 // --- CÁC COMPONENT ---
 
-function SmartImage({ src, alt, originName, name, className, type = "poster" }) {
-  const { data, loading } = useTMDBData(name, originName);
+function SmartImage({ src, alt, originName, name, className, type = "poster", slug, year }) {
+  const { data, loading } = useTMDBData(name, originName, slug, year);
 
   let finalSrc = src ? getImg(src) : "https://images.unsplash.com/photo-1440404653325-ab127d49abc1?q=80&w=500";
   
@@ -122,8 +143,7 @@ function SmartImage({ src, alt, originName, name, className, type = "poster" }) 
   );
 }
 
-// --- TRÌNH PHÁT VIDEO CUSTOM (ÉP DÙNG HLS CHO MỌI MÁY CHỦ, XÓA NÚT BỎ QUA GIỚI THIỆU) ---
-function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl }) {
+function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieYear, forceIframe }) {
   const vRef = useRef(null);
   const containerRef = useRef(null);
   const hlsRef = useRef(null);
@@ -139,25 +159,47 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl }) {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isIdle, setIsIdle] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [hlsError, setHlsError] = useState(false);
   
   const [levels, setLevels] = useState([]);
   const [currentLevel, setCurrentLevel] = useState(-1);
   
-  // TẮT HOÀN TOÀN SỰ TỰ ĐỘNG CHUYỂN SANG IFRAME NẾU CÓ LINK M3U8
-  const [useIframe, setUseIframe] = useState(false);
+  const [useIframe, setUseIframe] = useState(forceIframe || !m3u8Link || m3u8Link.trim() === "");
   const idleTimeoutRef = useRef(null);
 
   useEffect(() => {
-    // Chỉ bắt buộc dùng iframe nếu hoàn toàn KHÔNG CÓ link m3u8
-    setUseIframe(!m3u8Link || m3u8Link.trim() === "" || m3u8Link.includes('.php'));
+    setUseIframe(forceIframe || !m3u8Link || m3u8Link.trim() === "");
     setIsPlaying(false);
     setCurrentTime(0);
     setShowSettings(false);
     setIsIdle(false);
-  }, [ep, m3u8Link]);
+    setHlsError(false);
+  }, [ep, m3u8Link, forceIframe]);
 
   useEffect(() => {
-    if (useIframe || !vRef.current) return; 
+    if (!useIframe || !movieSlug || !ep?.slug) return;
+    
+    const timer = setTimeout(() => {
+      const progress = JSON.parse(localStorage.getItem("movieProgress") || "{}");
+      const currentProg = progress[movieSlug];
+      
+      progress[movieSlug] = {
+        episodeSlug: ep.slug,
+        currentTime: currentProg?.currentTime || 0,
+        percentage: Math.max(currentProg?.percentage || 0, 1),
+        name: movieName,
+        origin_name: originName, 
+        thumb: thumbUrl,
+        year: movieYear 
+      };
+      localStorage.setItem("movieProgress", JSON.stringify(progress));
+    }, 5000); 
+
+    return () => clearTimeout(timer);
+  }, [useIframe, movieSlug, ep, movieName, originName, thumbUrl, movieYear]);
+
+  useEffect(() => {
+    if (useIframe || !vRef.current || !m3u8Link) return; 
     
     const v = vRef.current;
     let hls;
@@ -188,14 +230,15 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl }) {
           if (data.fatal) {
             switch (data.type) {
               case window.Hls.ErrorTypes.NETWORK_ERROR:
-                console.warn("Mạng chậm, HLS đang cố gắng tải lại...");
-                hls.startLoad(); // Cố gắng tải lại thay vì nhảy sang iframe (né Bỏ qua giới thiệu)
+                hls.destroy();
+                setHlsError(true);
                 break;
               case window.Hls.ErrorTypes.MEDIA_ERROR:
                 hls.recoverMediaError();
                 break;
               default:
                 hls.destroy();
+                setHlsError(true);
                 break;
             }
           }
@@ -221,7 +264,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl }) {
   }, [m3u8Link, useIframe]);
 
   useEffect(() => {
-    if (useIframe || !vRef.current) return; 
+    if (useIframe || !vRef.current || hlsError) return; 
     const video = vRef.current;
 
     const handleTimeUpdate = () => {
@@ -235,6 +278,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl }) {
           name: movieName,
           origin_name: originName, 
           thumb: thumbUrl,
+          year: movieYear 
         };
         localStorage.setItem("movieProgress", JSON.stringify(progress));
       }
@@ -244,7 +288,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl }) {
       setDuration(video.duration);
       const progress = JSON.parse(localStorage.getItem("movieProgress") || "{}");
       const saved = progress[movieSlug];
-      if (saved && saved.episodeSlug === ep.slug && saved.percentage < 95) {
+      if (saved && saved.episodeSlug === ep.slug && saved.percentage < 99) {
         video.currentTime = saved.currentTime;
       }
     };
@@ -260,11 +304,11 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl }) {
       video.removeEventListener("play", () => setIsPlaying(true));
       video.removeEventListener("pause", () => setIsPlaying(false));
     };
-  }, [ep, useIframe, movieSlug, movieName, originName, thumbUrl]);
+  }, [ep, hlsError, useIframe, movieSlug, movieName, originName, thumbUrl, movieYear]);
 
   const togglePlay = (e) => {
     if (e) e.stopPropagation();
-    if (!vRef.current) return;
+    if (!vRef.current || hlsError) return;
     if (vRef.current.paused) vRef.current.play();
     else vRef.current.pause();
   };
@@ -288,6 +332,22 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl }) {
     }
   };
 
+  const skipBackward = (e) => {
+    if (e) e.stopPropagation();
+    if (vRef.current) {
+      vRef.current.currentTime = Math.max(0, vRef.current.currentTime - 15);
+      setCurrentTime(vRef.current.currentTime);
+    }
+  };
+
+  const skipForward = (e) => {
+    if (e) e.stopPropagation();
+    if (vRef.current) {
+      vRef.current.currentTime = Math.min(duration, vRef.current.currentTime + 15);
+      setCurrentTime(vRef.current.currentTime);
+    }
+  };
+
   const handleMouseMove = () => {
     setIsIdle(false);
     if (idleTimeoutRef.current) clearTimeout(idleTimeoutRef.current);
@@ -297,7 +357,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl }) {
   };
 
   useEffect(() => {
-    if (useIframe) return;
+    if (useIframe || hlsError) return;
     const handleKeyDown = (e) => {
       if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
       if (e.code === 'Space') {
@@ -310,22 +370,25 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl }) {
       }
       if (e.code === 'ArrowRight') {
          e.preventDefault();
-         if(vRef.current) vRef.current.currentTime += 10;
+         skipForward();
       }
       if (e.code === 'ArrowLeft') {
          e.preventDefault();
-         if(vRef.current) vRef.current.currentTime -= 10;
+         skipBackward();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [useIframe, isPlaying]);
+  }, [useIframe, hlsError, isPlaying, duration]);
 
   useEffect(() => {
     const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
+
+  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const volumePercent = isMuted ? 0 : volume * 100;
 
   return (
     <div 
@@ -345,24 +408,34 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl }) {
         />
       ) : (
         <>
+          {hlsError && (
+            <div className="absolute inset-0 flex flex-col justify-center items-center bg-black/90 z-40 text-center px-4">
+              <Icon.AlertTriangle className="text-[#E50914] mb-3" size={48} />
+              <p className="text-white text-sm md:text-base font-bold uppercase tracking-widest mb-1">Lỗi kết nối Máy Chủ</p>
+              <p className="text-gray-400 text-xs md:text-sm">Luồng video bị chặn. Vui lòng chọn Máy Chủ Phát khác.</p>
+            </div>
+          )}
+
           <video 
             ref={vRef} 
             poster={poster} 
+            playsInline
+            webkit-playsinline="true"
             className="w-full h-full object-contain cursor-pointer" 
             onClick={togglePlay}
           />
 
           <div className={`absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/30 pointer-events-none transition-opacity duration-300 ${isIdle && isPlaying ? 'opacity-0' : 'opacity-100'}`} />
 
-          {!isPlaying && (
-            <button onClick={togglePlay} className="absolute inset-0 m-auto w-16 h-16 md:w-20 md:h-20 bg-[#E50914]/90 rounded-full flex justify-center items-center text-white z-20 hover:scale-110 transition-transform shadow-[0_0_30px_rgba(229,9,20,0.6)] backdrop-blur-md">
-              <Icon.Play fill="currentColor" size={32} className="ml-1" />
+          {!isPlaying && !hlsError && (
+            <button onClick={togglePlay} className="absolute inset-0 m-auto w-14 h-14 md:w-20 md:h-20 bg-[#E50914]/90 rounded-full flex justify-center items-center text-white z-20 hover:scale-110 transition-transform shadow-[0_0_30px_rgba(229,9,20,0.6)] backdrop-blur-md">
+              <Icon.Play fill="currentColor" className="w-6 h-6 md:w-8 md:h-8 ml-1" />
             </button>
           )}
 
-          <div className={`absolute bottom-0 left-0 right-0 px-4 pb-4 pt-10 z-30 transition-transform duration-500 flex flex-col justify-end ${isIdle && isPlaying ? 'translate-y-[120%]' : 'translate-y-0'}`}>
+          <div className={`absolute bottom-0 left-0 right-0 px-3 md:px-5 pb-3 md:pb-5 pt-12 z-30 transition-transform duration-500 flex flex-col justify-end ${isIdle && isPlaying ? 'translate-y-[120%]' : 'translate-y-0'}`}>
             
-            <div className="w-full flex items-center mb-3 group/progress relative cursor-pointer" onClick={(e) => e.stopPropagation()}>
+            <div className="w-full flex items-center mb-2 md:mb-3 group/progress relative cursor-pointer" onClick={(e) => e.stopPropagation()}>
               <input
                 type="range"
                 min="0"
@@ -374,19 +447,32 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl }) {
                     setCurrentTime(e.target.value); 
                   }
                 }}
-                className="w-full h-1 md:h-1.5 bg-white/30 rounded-lg appearance-none cursor-pointer accent-[#E50914] group-hover/progress:h-2 transition-all relative z-10"
+                className="custom-range w-full h-1 md:h-1.5 transition-all relative z-10"
+                style={{
+                  background: `linear-gradient(to right, #E50914 0%, #E50914 ${progressPercent}%, rgba(255,255,255,0.3) ${progressPercent}%, rgba(255,255,255,0.3) 100%)`
+                }}
               />
             </div>
 
-            <div className="flex justify-between items-center text-white" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center gap-4 md:gap-6">
-                <button onClick={togglePlay} className="hover:text-[#E50914] transition-colors focus:outline-none">
-                  {isPlaying ? <Icon.Pause fill="currentColor" size={24} /> : <Icon.Play fill="currentColor" size={24} />}
+            <div className="flex justify-between items-center text-white w-full" onClick={(e) => e.stopPropagation()}>
+              
+              <div className="flex items-center gap-2 sm:gap-4">
+                
+                <button onClick={skipBackward} className="hover:text-[#E50914] transition-colors focus:outline-none p-1 md:p-0">
+                  <Icon.RotateCcw className="w-4 h-4 md:w-5 md:h-5" />
                 </button>
                 
-                <div className="group/vol flex items-center gap-2 relative">
+                <button onClick={togglePlay} className="hover:text-[#E50914] transition-colors focus:outline-none p-1 md:p-0">
+                  {isPlaying ? <Icon.Pause fill="currentColor" className="w-5 h-5 md:w-6 md:h-6" /> : <Icon.Play fill="currentColor" className="w-5 h-5 md:w-6 md:h-6" />}
+                </button>
+
+                <button onClick={skipForward} className="hover:text-[#E50914] transition-colors focus:outline-none p-1 md:p-0">
+                  <Icon.RotateCw className="w-4 h-4 md:w-5 md:h-5" />
+                </button>
+                
+                <div className="hidden md:flex group/vol items-center gap-2 relative ml-1">
                   <button onClick={() => { if(vRef.current) vRef.current.muted = !vRef.current.muted; setIsMuted(!isMuted); }} className="focus:outline-none hover:text-[#E50914] transition-colors">
-                    {isMuted || volume === 0 ? <Icon.VolumeX size={20} /> : <Icon.Volume2 size={20} />}
+                    {isMuted || volume === 0 ? <Icon.VolumeX className="w-4 h-4 md:w-5 md:h-5" /> : <Icon.Volume2 className="w-4 h-4 md:w-5 md:h-5" />}
                   </button>
                   <input
                     type="range"
@@ -402,30 +488,30 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl }) {
                       setVolume(e.target.value);
                       if(e.target.value > 0) setIsMuted(false);
                     }}
-                    className="w-0 overflow-hidden group-hover/vol:w-20 transition-all duration-300 h-1.5 bg-white/30 rounded-lg appearance-none cursor-pointer accent-white"
+                    className="custom-range w-0 overflow-hidden group-hover/vol:w-20 transition-all duration-300 h-1 md:h-1.5"
+                    style={{
+                      background: `linear-gradient(to right, #ffffff 0%, #ffffff ${volumePercent}%, rgba(255,255,255,0.3) ${volumePercent}%, rgba(255,255,255,0.3) 100%)`
+                    }}
                   />
                 </div>
 
-                <div className="text-[11px] md:text-sm font-bold font-mono tracking-wider drop-shadow-md select-none">
-                  {formatTime(currentTime)} <span className="text-white/50 mx-1">/</span> {formatTime(duration)}
+                <div className="text-[9px] sm:text-[10px] md:text-sm font-bold font-mono tracking-wider drop-shadow-md select-none whitespace-nowrap ml-1">
+                  {formatTime(currentTime)} <span className="text-white/50 mx-0.5 md:mx-1">/</span> {formatTime(duration)}
                 </div>
               </div>
 
-              <div className="flex items-center gap-4 md:gap-6">
-                <span className="hidden lg:inline text-[10px] text-white/60 font-bold uppercase tracking-[0.2em] select-none bg-white/5 px-3 py-1 rounded-md border border-white/10">
-                  [Space] Phát/Dừng • [F] Phóng To
-                </span>
-
+              <div className="flex items-center gap-3 sm:gap-4">
+                
                 <div className="relative">
-                  <button onClick={() => setShowSettings(!showSettings)} className="hover:text-[#E50914] transition-all duration-300 focus:outline-none mt-1">
-                    <Icon.Settings size={22} className={`${showSettings ? "rotate-90 text-[#E50914]" : ""}`} />
+                  <button onClick={() => setShowSettings(!showSettings)} className="hover:text-[#E50914] transition-all duration-300 focus:outline-none p-1 flex items-center">
+                    <Icon.Settings className={`w-4 h-4 md:w-5 md:h-5 ${showSettings ? "rotate-90 text-[#E50914]" : ""}`} />
                   </button>
                   {showSettings && levels.length > 0 && (
-                    <div className="absolute bottom-full right-0 mb-4 bg-[#111]/95 border border-white/10 rounded-xl overflow-hidden py-2 min-w-[120px] flex flex-col items-center backdrop-blur-xl z-50 shadow-[0_10px_40px_rgba(0,0,0,0.8)]">
+                    <div className="absolute bottom-full right-0 mb-4 bg-[#111]/95 border border-white/10 rounded-xl overflow-hidden py-2 min-w-[100px] md:min-w-[120px] flex flex-col items-center backdrop-blur-xl z-50 shadow-[0_10px_40px_rgba(0,0,0,0.8)]">
                       <span className="text-[9px] md:text-[10px] text-[#E50914] font-black uppercase tracking-[0.2em] mb-2 px-4 border-b border-white/10 pb-2 w-full text-center">Chất lượng</span>
-                      <button onClick={(e) => switchQuality(-1, e)} className={`w-full px-4 py-2.5 text-[11px] md:text-xs font-bold hover:bg-white/10 transition-colors ${currentLevel === -1 ? 'text-[#E50914] bg-white/5' : 'text-gray-300'}`}>Tự động</button>
+                      <button onClick={(e) => switchQuality(-1, e)} className={`w-full px-4 py-2.5 text-[10px] md:text-xs font-bold hover:bg-white/10 transition-colors ${currentLevel === -1 ? 'text-[#E50914] bg-white/5' : 'text-gray-300'}`}>Tự động</button>
                       {levels.map((lvl, index) => (
-                        <button key={index} onClick={(e) => switchQuality(index, e)} className={`w-full px-4 py-2.5 text-[11px] md:text-xs font-bold hover:bg-white/10 transition-colors ${currentLevel === index ? 'text-[#E50914] bg-white/5' : 'text-gray-300'}`}>
+                        <button key={index} onClick={(e) => switchQuality(index, e)} className={`w-full px-4 py-2.5 text-[10px] md:text-xs font-bold hover:bg-white/10 transition-colors ${currentLevel === index ? 'text-[#E50914] bg-white/5' : 'text-gray-300'}`}>
                           {lvl.height}p
                         </button>
                       ))}
@@ -433,8 +519,8 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl }) {
                   )}
                 </div>
 
-                <button onClick={toggleFullscreen} className="hover:text-[#E50914] transition-colors focus:outline-none">
-                  {isFullscreen ? <Icon.Minimize size={22} /> : <Icon.Maximize size={22} />}
+                <button onClick={toggleFullscreen} className="hover:text-[#E50914] transition-colors focus:outline-none p-1 flex items-center">
+                  {isFullscreen ? <Icon.Minimize className="w-4 h-4 md:w-5 md:h-5" /> : <Icon.Maximize className="w-4 h-4 md:w-5 md:h-5" />}
                 </button>
               </div>
             </div>
@@ -446,30 +532,34 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl }) {
 }
 
 const SearchItem = memo(function SearchItem({ m, navigate, onClose }) {
-  const { data: tmdbData } = useTMDBData(m.name, m.origin_name);
+  const { data: tmdbData } = useTMDBData(m.name, m.origin_name || m.original_name, m.slug, m.year);
   const voteAverage = tmdbData?.vote_average || m.tmdb?.vote_average;
 
   return (
     <div
       onClick={() => {
-        navigate({ type: "detail", slug: m.slug });
-        onClose();
-        window.scrollTo(0, 0);
+        if(m.slug) {
+            navigate({ type: "detail", slug: m.slug });
+            onClose();
+            window.scrollTo(0, 0);
+        }
       }}
       className="flex gap-4 p-4 hover:bg-white/5 rounded-xl cursor-pointer transition border-b border-white/5 last:border-0 group/card"
     >
       <div className="w-16 md:w-20 shrink-0 aspect-[2/3] rounded-lg overflow-hidden bg-[#111] shadow-lg">
         <SmartImage
-          src={m.thumb_url}
-          originName={m.origin_name}
+          slug={m.slug}
+          src={m.thumb_url || m.poster_url}
+          originName={m.origin_name || m.original_name}
           name={m.name}
+          year={m.year}
           className="w-full h-full object-cover group-hover/card:scale-105 transition-transform duration-300"
           alt={m.name}
         />
       </div>
       <div className="flex flex-col justify-center py-1">
         <h4 className="text-base md:text-lg font-bold text-white mb-1 line-clamp-1">{m.name}</h4>
-        <p className="text-xs md:text-sm text-gray-400 mb-2.5">{m.origin_name} • {m.year}</p>
+        <p className="text-xs md:text-sm text-gray-400 mb-2.5">{(m.origin_name || m.original_name)} • {m.year}</p>
         <div className="flex flex-wrap items-center gap-2 text-[11px] md:text-xs text-gray-400 font-medium">
           <span className="text-gray-300">{m.quality || "HD"}</span>
           <span>•</span>
@@ -529,7 +619,7 @@ function SearchModal({ isOpen, onClose, navigate }) {
         
         setResults(Array.from(uniqueMap.values()));
       } catch (error) {
-        if (error.name !== 'AbortError') console.error("Lỗi tìm kiếm đa nguồn:", error);
+        if (error.name !== 'AbortError') console.error("Lỗi tìm kiếm:", error);
       } finally {
         setLoading(false);
       }
@@ -591,7 +681,7 @@ const MovieCard = memo(function MovieCard({ m, navigate, progressData, isRow = f
   const progData = progressData?.[m.slug];
   const prog = progData?.percentage || 0;
   const thumbSrc = m.thumb_url || m.thumb || m.poster_url;
-  const { data: tmdbData } = useTMDBData(m.name, m.origin_name);
+  const { data: tmdbData } = useTMDBData(m.name, m.origin_name || m.original_name, m.slug, m.year);
   const voteAverage = tmdbData?.vote_average || m.tmdb?.vote_average;
 
   return (
@@ -599,7 +689,7 @@ const MovieCard = memo(function MovieCard({ m, navigate, progressData, isRow = f
       className={`group/card cursor-pointer flex flex-col shrink-0 relative ${isRow ? "w-[120px] sm:w-[150px] md:w-52 lg:w-60 xl:w-64" : ""}`}
       onClick={() => {
         if (onClickOverride) onClickOverride();
-        else { navigate({ type: "detail", slug: m.slug }); window.scrollTo(0, 0); }
+        else if (m.slug) { navigate({ type: "detail", slug: m.slug }); window.scrollTo(0, 0); }
       }}
     >
       {onRemove && (
@@ -610,9 +700,11 @@ const MovieCard = memo(function MovieCard({ m, navigate, progressData, isRow = f
       
       <div className="relative overflow-hidden rounded-xl aspect-[2/3] bg-[#111] shadow-xl border border-white/5">
         <SmartImage 
+          slug={m.slug}
           src={thumbSrc} 
-          originName={m.origin_name} 
+          originName={m.origin_name || m.original_name} 
           name={m.name} 
+          year={m.year}
           className="w-full h-full object-cover transition-all duration-500 group-hover/card:scale-110 group-hover/card:opacity-80" 
           alt={m.name} 
         />
@@ -623,12 +715,12 @@ const MovieCard = memo(function MovieCard({ m, navigate, progressData, isRow = f
           {m.quality || "HD"}
         </div>
         
-        {prog > 0 && prog < 95 && (
+        {prog > 0 && prog < 99 && (
           <>
             <div className="absolute bottom-0 left-0 w-full h-1/2 bg-gradient-to-t from-black/90 via-black/40 to-transparent z-10 pointer-events-none" />
             <div className="absolute bottom-2 md:bottom-3 left-0 w-full flex justify-center items-center z-20 pointer-events-none px-1">
               <span className="text-[9px] md:text-[11px] font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] tracking-wider truncate">
-                {progData.episodeSlug?.toUpperCase().replace("TAP-", "TẬP ")?.replace("FULL", "FULL")} • {formatTime(progData.currentTime)}
+                {progData.episodeSlug?.toUpperCase().replace("TAP-", "TẬP ")?.replace("FULL", "FULL")?.replace(/['"]/g, '').trim()} • {formatTime(progData.currentTime)}
               </span>
             </div>
             <div className="absolute bottom-0 left-0 w-full h-1 md:h-1.5 bg-gray-500/80 z-20">
@@ -779,14 +871,20 @@ function MovieSection({ title, slug, type = "the-loai", navigate, progressData }
         const uniqueItems = Array.from(uniqueMap.values());
 
         const tmdbPromises = uniqueItems.map(async (m) => {
-          const tmdb = await fetchTMDB(m.name, m.origin_name);
+          const tmdb = await fetchTMDB(m.name, m.origin_name || m.original_name, m.slug, m.year);
           return { ...m, tmdbData: tmdb };
         });
 
         const tmdbResults = await Promise.all(tmdbPromises);
-        const beautifulMovies = tmdbResults.filter(m => m.tmdbData && m.tmdbData.backdrop_path);
         
-        setMovies(beautifulMovies.length >= 4 ? beautifulMovies : tmdbResults);
+        // Khắc phục lỗi phim biến mất ngẫu nhiên: Sort thay vì Filter
+        const sortedMovies = tmdbResults.sort((a, b) => {
+           const aHas = (a.tmdbData?.backdrop_path || a.tmdbData?.poster_path) ? 1 : 0;
+           const bHas = (b.tmdbData?.backdrop_path || b.tmdbData?.poster_path) ? 1 : 0;
+           return bHas - aHas;
+        });
+        
+        setMovies(sortedMovies);
       } catch (error) {
         if (error.name !== 'AbortError') console.error("Lỗi fetch section:", error);
       } finally {
@@ -843,7 +941,7 @@ function MovieSection({ title, slug, type = "the-loai", navigate, progressData }
 
 function ContinueWatching({ navigate, progressData, onRemove }) {
   const scrollRef = useRef(null);
-  const watchedSlugs = useMemo(() => Object.keys(progressData).filter((key) => progressData[key].percentage < 95), [progressData]);
+  const watchedSlugs = useMemo(() => Object.keys(progressData).filter((key) => progressData[key].percentage < 99), [progressData]);
   
   const [fetchedData, setFetchedData] = useState({});
 
@@ -908,8 +1006,8 @@ function ContinueWatching({ navigate, progressData, onRemove }) {
             const prog = progressData[slug];
             const fetched = fetchedData[slug];
             
-            // Đảm bảo lấy đúng origin_name để SmartImage map được với TMDB
             const exactOriginName = prog.origin_name || fetched?.origin_name || fetched?.original_name || prog.name;
+            const exactYear = prog.year || fetched?.year;
             const thumb = fetched?.thumb_url || fetched?.poster_url || prog.thumb;
 
             return (
@@ -919,7 +1017,8 @@ function ContinueWatching({ navigate, progressData, onRemove }) {
                   slug, 
                   name: prog.name, 
                   origin_name: exactOriginName, 
-                  thumb: thumb 
+                  thumb: thumb,
+                  year: exactYear
                 }} 
                 navigate={navigate} 
                 progressData={progressData} 
@@ -960,53 +1059,51 @@ function Header({ navigate, categories, countries }) {
             POLITE
           </div>
 
-          {/* Đã tinh chỉnh md:flex thay vì lg:flex để hiện thanh Navbar trên mọi kích thước PC/Laptop */}
           <nav className="hidden md:flex flex-1 justify-center gap-4 lg:gap-8 text-[11px] lg:text-[12px] font-black tracking-widest text-gray-300 items-center whitespace-nowrap">
             <button onClick={() => navigate({ type: "home" })} className="hover:text-white transition uppercase">Trang Chủ</button>
             
-            {/* Dropdown Thể Loại */}
+            {/* DROPDOWN CĂN GIỮA HOÀN HẢO */}
             <div className="relative group cursor-pointer flex items-center gap-1 hover:text-white transition uppercase py-2">
-              Thể Loại <Icon.ChevronDown size={14} />
-              <div className="absolute hidden group-hover:grid grid-cols-3 gap-3 bg-[#111]/95 backdrop-blur-xl p-6 w-[450px] lg:w-[500px] rounded-2xl top-full left-1/2 -translate-x-1/2 border border-white/10 shadow-2xl mt-0">
-                {categories && categories.map((c) => (
-                  <button key={c.slug} onClick={() => navigate({ type: "list", slug: c.slug, title: c.name, mode: "the-loai" })} className="text-left text-[10px] lg:text-xs font-bold text-gray-400 hover:text-white hover:pl-2 transition-all uppercase tracking-tight">{c.name}</button>
-                ))}
+              Thể Loại <Icon.ChevronDown size={14} className="opacity-60 group-hover:rotate-180 transition-transform duration-300" />
+              <div className="absolute hidden group-hover:block bg-[#111]/95 backdrop-blur-xl p-5 w-[360px] rounded-2xl top-full left-1/2 -translate-x-1/2 border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.9)] mt-0 z-50">
+                <div className="grid grid-cols-3 gap-2">
+                  {categories && categories.map((c) => (
+                    <button key={c.slug} onClick={() => navigate({ type: "list", slug: c.slug, title: c.name, mode: "the-loai" })} className="text-center py-2 px-1 text-[10px] lg:text-[11px] font-bold text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all uppercase tracking-tight truncate">{c.name}</button>
+                  ))}
+                </div>
               </div>
             </div>
 
-            {/* Dropdown Quốc Gia */}
             <div className="relative group cursor-pointer flex items-center gap-1 hover:text-white transition uppercase py-2">
-              Quốc Gia <Icon.ChevronDown size={14} />
-              <div className="absolute hidden group-hover:grid grid-cols-3 gap-3 bg-[#111]/95 backdrop-blur-xl p-6 w-[450px] lg:w-[500px] rounded-2xl top-full left-1/2 -translate-x-1/2 border border-white/10 shadow-2xl mt-0">
-                {countries && countries.map((c) => (
-                  <button key={c.slug} onClick={() => navigate({ type: "list", slug: c.slug, title: c.name, mode: "quoc-gia" })} className="text-left text-[10px] lg:text-xs font-bold text-gray-400 hover:text-white hover:pl-2 transition-all uppercase tracking-tight">{c.name}</button>
-                ))}
+              Quốc Gia <Icon.ChevronDown size={14} className="opacity-60 group-hover:rotate-180 transition-transform duration-300" />
+              <div className="absolute hidden group-hover:block bg-[#111]/95 backdrop-blur-xl p-5 w-[360px] rounded-2xl top-full left-1/2 -translate-x-1/2 border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.9)] mt-0 z-50">
+                <div className="grid grid-cols-3 gap-2">
+                  {countries && countries.map((c) => (
+                    <button key={c.slug} onClick={() => navigate({ type: "list", slug: c.slug, title: c.name, mode: "quoc-gia" })} className="text-center py-2 px-1 text-[10px] lg:text-[11px] font-bold text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all uppercase tracking-tight truncate">{c.name}</button>
+                  ))}
+                </div>
               </div>
             </div>
 
-            {/* Dropdown Năm */}
             <div className="relative group cursor-pointer flex items-center gap-1 hover:text-white transition uppercase py-2">
-              Năm Phát Hành <Icon.ChevronDown size={14} />
-              <div className="absolute hidden group-hover:grid grid-cols-4 gap-3 bg-[#111]/95 backdrop-blur-xl p-6 w-[350px] lg:w-[400px] rounded-2xl top-full left-1/2 -translate-x-1/2 border border-white/10 shadow-2xl mt-0">
-                {YEARS.map((y) => (
-                  <button key={y} onClick={() => navigate({ type: "search", keyword: y.toString() })} className="text-left text-[10px] lg:text-xs font-bold text-gray-400 hover:text-white hover:pl-2 transition-all uppercase tracking-tight">{y}</button>
-                ))}
+              Năm Phát Hành <Icon.ChevronDown size={14} className="opacity-60 group-hover:rotate-180 transition-transform duration-300" />
+              <div className="absolute hidden group-hover:block bg-[#111]/95 backdrop-blur-xl p-5 w-[360px] rounded-2xl top-full left-1/2 -translate-x-1/2 border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.9)] mt-0 z-50">
+                <div className="grid grid-cols-4 gap-2">
+                  {YEARS.map((y) => (
+                    <button key={y} onClick={() => navigate({ type: "search", keyword: y.toString() })} className="text-center py-2 px-1 text-[10px] lg:text-[11px] font-bold text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all uppercase tracking-tight truncate">{y}</button>
+                  ))}
+                </div>
               </div>
             </div>
-
-            {/* Nút Bộ Lọc */}
-            <button onClick={() => setIsSearchOpen(true)} className="hover:text-[#E50914] transition uppercase flex items-center gap-1 py-2">
-              Lọc Phim <Icon.Filter size={14}/>
-            </button>
 
           </nav>
 
           <div className="flex items-center gap-3 md:gap-5 shrink-0">
-            <div onClick={() => setIsSearchOpen(true)} className="hidden md:flex relative group cursor-pointer">
+            <div onClick={() => setIsSearchOpen(true)} className="hidden lg:flex relative group cursor-pointer">
               <div className="bg-black/40 border border-white/10 px-4 py-2 pl-10 rounded-full w-48 lg:w-72 text-xs lg:text-sm text-gray-400 group-hover:bg-black/60 transition-all backdrop-blur-md flex items-center">Tìm kiếm phim...</div>
               <Icon.Search className="absolute left-3.5 top-2 lg:top-2.5 text-gray-400 group-hover:text-white transition" size={16} />
             </div>
-            <button onClick={() => setIsSearchOpen(true)} className="md:hidden p-1.5"><Icon.Search size={20} className="text-white" /></button>
+            <button onClick={() => setIsSearchOpen(true)} className="lg:hidden p-1.5"><Icon.Search size={20} className="text-white" /></button>
           </div>
         </div>
       </header>
@@ -1015,7 +1112,7 @@ function Header({ navigate, categories, countries }) {
 }
 
 function BottomNav({ navigate, categories, countries, currentView }) {
-  const [menuType, setMenuType] = useState(null); // null, 'cat', 'country', 'year'
+  const [menuType, setMenuType] = useState(null); 
   
   let menuTitle = "";
   let menuData = [];
@@ -1089,7 +1186,7 @@ const HeroSlide = memo(function HeroSlide({ movie, isActive, navigate }) {
               {movie?.name}
             </h1>
             <p className="text-[#f5c518] text-[10px] sm:text-xs md:text-sm font-black mb-3 md:mb-5 drop-shadow-md line-clamp-1 w-full uppercase tracking-[0.2em] !font-sans">
-              {movie?.origin_name}
+              {movie?.origin_name || movie?.original_name}
             </p>
             <div className="flex flex-wrap items-center justify-start gap-1.5 md:gap-3 text-[10px] sm:text-xs md:text-sm font-black text-gray-300 mb-4 md:mb-6 w-full tracking-widest !font-sans">
               <span className="text-[#E50914]">{movie?.year || "2024"}</span>
@@ -1140,10 +1237,10 @@ function Hero({ navigate }) {
         if (combinedItems.length === 0) { setLoading(false); return; }
         
         const uniqueMovies = Array.from(new Map(combinedItems.map(m => [m.slug, m])).values());
-        const candidates = uniqueMovies.slice(0, 20); 
+        const candidates = uniqueMovies.slice(0, 30); 
         
         const tmdbResults = await Promise.all(candidates.map(async (m) => {
-          const tmdb = await fetchTMDB(m.name, m.origin_name);
+          const tmdb = await fetchTMDB(m.name, m.origin_name || m.original_name, m.slug, m.year);
           return { ...m, tmdbData: tmdb };
         }));
         
@@ -1206,25 +1303,49 @@ function MovieGrid({ movies, navigate, loading, title, onLoadMore, hasMore, load
 
 function MovieDetail({ slug, navigate }) {
   const [m, setM] = useState(null);
+  const [cast, setCast] = useState([]); 
+  const [loadingPage, setLoadingPage] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
     const fetchDetail = async () => {
-      let found = false;
+      setLoadingPage(true);
+      setError(false);
       try {
-        const r1 = await fetch(`${API}/phim/${slug}`, { signal: controller.signal });
-        const j1 = await r1.json();
-        if (j1?.data?.item) { setM(j1.data); found = true; }
-      } catch (e) {}
+        const [resO, resN] = await Promise.allSettled([
+          fetch(`${API}/phim/${slug}`, { signal: controller.signal }).then(r => r.json()),
+          fetch(`${API_NGUONC_DETAIL}/${slug}`, { signal: controller.signal }).then(r => r.json())
+        ]);
 
-      if (!found) {
-        try {
-          const r2 = await fetch(`${API_NGUONC_DETAIL}/${slug}`, { signal: controller.signal });
-          const j2 = await r2.json();
-          if (j2?.movie || j2?.item) {
-             setM({ item: j2.movie || j2.item });
-          }
-        } catch (e) {}
+        let finalItem = null;
+        if (resO.status === 'fulfilled' && resO.value?.data?.item) {
+           finalItem = resO.value.data.item;
+        }
+        if (!finalItem && resN.status === 'fulfilled' && (resN.value?.movie || resN.value?.item)) {
+           finalItem = resN.value.movie || resN.value.item;
+        }
+        
+        if (finalItem) {
+           setM({ item: finalItem });
+        } else {
+           const searchRes = await fetch(`${API_NGUONC}/search?keyword=${slug.replace(/-/g, ' ')}`);
+           const searchJ = await searchRes.json();
+           const match = searchJ?.items?.[0] || searchJ?.data?.items?.[0];
+           if (match && match.slug) {
+              const resN2 = await fetch(`${API_NGUONC_DETAIL}/${match.slug}`).then(r => r.json());
+              if (resN2?.movie || resN2?.item) {
+                 setM({ item: resN2.movie || resN2.item });
+                 setLoadingPage(false);
+                 return;
+              }
+           }
+           setError(true);
+        }
+      } catch (e) {
+        if (e.name !== 'AbortError') setError(true);
+      } finally {
+        setLoadingPage(false);
       }
     };
     fetchDetail();
@@ -1232,10 +1353,33 @@ function MovieDetail({ slug, navigate }) {
   }, [slug]);
 
   const i = m?.item;
-  const { data: tmdbData } = useTMDBData(i?.name, i?.origin_name || i?.original_name);
+  const { data: tmdbData } = useTMDBData(i?.name, i?.origin_name || i?.original_name, i?.slug, i?.year);
   const voteAverage = tmdbData?.vote_average || i?.tmdb?.vote_average;
 
-  if (!m) return <div className="h-screen flex justify-center items-center bg-[#050505]"><Icon.Loader2 className="animate-spin text-[#E50914]" size={40} /></div>;
+  useEffect(() => {
+    if (tmdbData?.id) {
+       const type = tmdbData.media_type || (i?.episode_total > 1 ? 'tv' : 'movie');
+       fetch(`https://api.themoviedb.org/3/${type}/${tmdbData.id}/credits?api_key=${TMDB_API_KEY}&language=vi-VN`)
+         .then(r => r.json())
+         .then(d => {
+            if (Array.isArray(d.cast)) setCast(d.cast.slice(0, 12)); 
+         })
+         .catch(e => console.log(e));
+    }
+  }, [tmdbData?.id, tmdbData?.media_type, i?.episode_total]);
+
+  if (loadingPage) return <div className="h-screen flex justify-center items-center bg-[#050505]"><Icon.Loader2 className="animate-spin text-[#E50914]" size={40} /></div>;
+  
+  if (error || !m) return (
+     <div className="h-screen flex flex-col justify-center items-center bg-[#050505] text-white">
+        <Icon.AlertTriangle className="text-[#E50914] mb-4" size={48}/>
+        <h2 className="text-xl font-bold">Lỗi tải phim!</h2>
+        <p className="text-gray-400 mt-2">Dữ liệu phim có thể đã bị xóa hoặc máy chủ đang quá tải.</p>
+        <button onClick={() => navigate({type: 'home'})} className="mt-6 bg-[#E50914] hover:bg-red-700 transition-colors px-6 py-2.5 rounded-full font-bold uppercase text-xs tracking-widest">
+           Về Trang Chủ
+        </button>
+     </div>
+  );
 
   const backdropUrl = tmdbData?.backdrop_path ? `https://image.tmdb.org/t/p/original${tmdbData.backdrop_path}` : getImg(i?.poster_url || i?.thumb_url);
 
@@ -1257,7 +1401,7 @@ function MovieDetail({ slug, navigate }) {
         
         <div className="relative max-w-[1400px] mx-auto w-full px-4 md:px-12 pb-16 flex flex-col md:flex-row gap-10 items-center md:items-end text-center md:text-left z-20">
           <div className="w-44 md:w-72 shrink-0 shadow-[0_20px_50px_rgba(0,0,0,0.8)] rounded-2xl overflow-hidden border border-white/10">
-            <SmartImage src={i?.thumb_url || i?.poster_url} name={i?.name} originName={i?.origin_name || i?.original_name} className="w-full h-full object-cover" />
+            <SmartImage slug={i?.slug} year={i?.year} src={i?.thumb_url || i?.poster_url} name={i?.name} originName={i?.origin_name || i?.original_name} className="w-full h-full object-cover" />
           </div>
           <div className="flex-1">
             <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-white mb-4 uppercase tracking-tighter leading-none !font-sans">{i?.name}</h1>
@@ -1283,13 +1427,39 @@ function MovieDetail({ slug, navigate }) {
            <h3 className="text-xl font-black text-white uppercase mb-6 flex items-center gap-3">
              <span className="w-1.5 h-7 bg-[#E50914] block" /> Nội dung phim
            </h3>
-           <div className="text-gray-400 leading-relaxed text-base md:text-lg font-medium" dangerouslySetInnerHTML={{ __html: i?.content }} />
+           <div className="text-gray-400 leading-relaxed text-base md:text-lg font-medium" dangerouslySetInnerHTML={{ __html: typeof i?.content === 'string' ? i.content : "Đang cập nhật nội dung..." }} />
+           
+           {cast && cast.length > 0 && (
+             <div className="mt-10 pt-8 border-t border-white/5">
+                <h4 className="text-sm font-black text-white uppercase mb-6 tracking-[0.2em] text-[#E50914]">Diễn viên</h4>
+                <div className="flex gap-4 md:gap-6 overflow-x-auto scroll-smooth no-scrollbar pb-4">
+                  {cast.map((actor, idx) => (
+                    <div 
+                      key={idx} 
+                      onClick={() => { navigate({ type: "actor", actorId: actor.id, actorName: actor.name }); window.scrollTo(0,0); }} 
+                      className="cursor-pointer shrink-0 text-center w-[72px] md:w-[88px] group"
+                    >
+                      <div className="w-16 h-16 md:w-[80px] md:h-[80px] mx-auto rounded-full overflow-hidden bg-[#222] mb-3 md:mb-4 border border-white/10 group-hover:border-[#E50914] group-hover:scale-105 transition-all shadow-lg flex items-center justify-center">
+                         <img 
+                            src={actor.profile_path ? `https://image.tmdb.org/t/p/w200${actor.profile_path}` : 'https://ui-avatars.com/api/?name=' + encodeURIComponent(actor.name) + '&background=111&color=fff'} 
+                            alt={actor.name} 
+                            className="w-full h-full object-cover" 
+                         />
+                      </div>
+                      <p className="text-[10px] md:text-[11px] text-gray-400 group-hover:text-white font-bold leading-snug line-clamp-2 uppercase tracking-tight">{actor.name}</p>
+                    </div>
+                  ))}
+                </div>
+             </div>
+           )}
+
         </div>
+
         <div className="md:col-span-4 bg-[#111]/50 p-6 md:p-10 rounded-3xl border border-white/5 backdrop-blur-md shadow-2xl space-y-8">
-           {[{ l: "Quốc gia", v: i?.country?.map((c) => c.name).join(", ") }, { l: "Thể loại", v: i?.category?.map((c) => c.name).join(", ") }, { l: "Diễn viên", v: i?.actor?.slice(0, 8).join(", ") }].map((x) => (
+           {[{ l: "Quốc gia", v: safeJoin(i?.country) }, { l: "Thể loại", v: safeJoin(i?.category) }, ...(cast.length === 0 ? [{ l: "Diễn viên", v: safeJoin(i?.actor) }] : [])].map((x) => (
             <div key={x.l} className="space-y-2 md:space-y-3 border-b border-white/5 pb-4 md:pb-6 last:border-0 last:pb-0">
               <p className="text-[10px] md:text-xs text-gray-500 font-black uppercase tracking-[0.3em]">{x.l}</p>
-              <p className="text-xs md:text-base font-bold text-gray-300 leading-snug uppercase tracking-tight">{x.v || "Đang cập nhật"}</p>
+              <p className="text-xs md:text-base font-bold text-gray-300 leading-snug uppercase tracking-tight">{x.v}</p>
             </div>
           ))}
         </div>
@@ -1305,100 +1475,114 @@ function Watch({ slug, movieData }) {
   
   const [activeServerIdx, setActiveServerIdx] = useState(0);
   const [activeTabIdx, setActiveTabIdx] = useState(0);
+  const [loadingPage, setLoadingPage] = useState(false);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     const fetchDualSources = async () => {
       let ophimItem = movieData?.item;
       let nguoncItem = null;
-
-      if (!ophimItem) {
-        try {
-          const res = await fetch(`${API}/phim/${slug}`);
-          const j = await res.json();
-          if (j?.status) ophimItem = j?.data?.item;
-        } catch (error) {}
-      }
+      setLoadingPage(true);
+      setError(false);
 
       try {
-        const res = await fetch(`${API_NGUONC_DETAIL}/${slug}`);
-        const j = await res.json();
-        nguoncItem = j?.movie || j?.item || j?.data?.item;
-      } catch (error) {}
+        const [resO, resN] = await Promise.allSettled([
+          !ophimItem ? fetch(`${API}/phim/${slug}`).then(r => r.json()) : Promise.resolve({ data: { item: ophimItem } }),
+          fetch(`${API_NGUONC_DETAIL}/${slug}`).then(r => r.json())
+        ]);
 
-      if (!nguoncItem && (ophimItem?.name || ophimItem?.origin_name)) {
-        try {
-          const searchRes = await fetch(`${API_NGUONC}/search?keyword=${encodeURIComponent(ophimItem.origin_name || ophimItem.name)}`);
-          const searchJ = await searchRes.json();
-          let match = searchJ?.items?.[0] || searchJ?.data?.items?.[0]; 
-          
-          if (!match && ophimItem.name) {
-            const searchRes2 = await fetch(`${API_NGUONC}/search?keyword=${encodeURIComponent(ophimItem.name)}`);
-            const searchJ2 = await searchRes2.json();
-            match = searchJ2?.items?.[0] || searchJ2?.data?.items?.[0]; 
-          }
+        if (resO.status === 'fulfilled' && resO.value?.data?.item) ophimItem = resO.value.data.item;
+        if (resN.status === 'fulfilled' && (resN.value?.movie || resN.value?.item)) nguoncItem = resN.value.movie || resN.value.item;
 
-          if (match && match.slug) {
-            const detailRes = await fetch(`${API_NGUONC_DETAIL}/${match.slug}`);
-            const detailJ = await detailRes.json();
-            nguoncItem = detailJ?.movie || detailJ?.item || detailJ?.data?.item;
-          }
-        } catch (error) {}
-      }
+        if (!nguoncItem && (ophimItem?.name || ophimItem?.origin_name)) {
+            const searchRes = await fetch(`${API_NGUONC}/search?keyword=${encodeURIComponent(ophimItem.origin_name || ophimItem.name)}`);
+            const searchJ = await searchRes.json();
+            let match = searchJ?.items?.[0] || searchJ?.data?.items?.[0]; 
+            
+            if (!match && ophimItem.name) {
+              const searchRes2 = await fetch(`${API_NGUONC}/search?keyword=${encodeURIComponent(ophimItem.name)}`);
+              const searchJ2 = await searchRes2.json();
+              match = searchJ2?.items?.[0] || searchJ2?.data?.items?.[0]; 
+            }
 
-      // Gộp Danh Sách
-      let combinedServers = [];
-      let serverIndexCount = 1;
-      
-      if (ophimItem?.episodes) {
-        ophimItem.episodes.forEach((server) => {
-          const eps = server.server_data || [];
-          if (eps.length > 0) {
-            combinedServers.push({
-              sourceName: `Máy Chủ ${serverIndexCount++}`,
-              server_data: eps.map(e => ({
-                name: e.name,
-                slug: e.slug,
-                link_m3u8: e.link_m3u8 || "",
-                link_embed: e.link_embed || ""
-              }))
-            });
-          }
-        });
-      }
+            if (match && match.slug) {
+              const detailRes = await fetch(`${API_NGUONC_DETAIL}/${match.slug}`);
+              const detailJ = await detailRes.json();
+              nguoncItem = detailJ?.movie || detailJ?.item || detailJ?.data?.item;
+            }
+        }
 
-      if (nguoncItem?.episodes) {
-        nguoncItem.episodes.forEach((server) => {
-          const eps = server.server_data || server.items || [];
-          if (eps.length > 0) {
-            combinedServers.push({
-              sourceName: `Máy Chủ ${serverIndexCount++}`,
-              server_data: eps.map(e => ({
-                name: e.name,
-                slug: e.slug,
-                // Đảm bảo lấy HLS m3u8 từ Nguonc để chạy custom player
-                link_m3u8: e.link_m3u8 || e.m3u8_url || e.m3u8 || e.hls_link || "", 
-                link_embed: e.link_embed || e.embed_url || e.embed || ""
-              }))
-            });
-          }
-        });
-      }
+        let combinedServers = [];
+        let serverIndexCount = 1;
+        
+        if (ophimItem?.episodes) {
+          ophimItem.episodes.forEach((server) => {
+            const eps = server.server_data || [];
+            if (eps.length > 0) {
+              combinedServers.push({
+                sourceName: `Máy Chủ ${serverIndexCount++}`,
+                isIframe: false, 
+                server_data: eps.map(e => ({
+                  name: e.name,
+                  slug: e.slug,
+                  link_m3u8: e.link_m3u8 || "",
+                  link_embed: e.link_embed || ""
+                }))
+              });
+            }
+          });
+        }
 
-      const finalData = ophimItem || nguoncItem;
-      setData(finalData);
-      setServerList(combinedServers);
+        if (nguoncItem?.episodes) {
+          nguoncItem.episodes.forEach((server) => {
+            const eps = server.server_data || server.items || [];
+            if (eps.length > 0) {
+              combinedServers.push({
+                sourceName: `Máy Chủ ${serverIndexCount++}`,
+                isIframe: true,
+                server_data: eps.map(e => ({
+                  name: e.name,
+                  slug: e.slug,
+                  link_m3u8: e.link_m3u8 || e.m3u8_url || e.m3u8 || e.hls_link || "", 
+                  link_embed: e.link_embed || e.embed_url || e.embed || ""
+                }))
+              });
+            }
+          });
+        }
 
-      if (combinedServers.length > 0 && combinedServers[0].server_data?.length > 0) {
-        setEp(combinedServers[0].server_data[0]);
-        setActiveServerIdx(0);
-        setActiveTabIdx(0);
+        const finalData = ophimItem || nguoncItem;
+        
+        if (!finalData) {
+           setError(true);
+        } else {
+           setData(finalData);
+           setServerList(combinedServers);
+           if (combinedServers.length > 0 && combinedServers[0].server_data?.length > 0) {
+             setEp(combinedServers[0].server_data[0]);
+             setActiveServerIdx(0);
+             setActiveTabIdx(0);
+           }
+        }
+      } catch(e) {
+          setError(true);
+      } finally {
+          setLoadingPage(false);
       }
     };
 
     fetchDualSources();
   }, [slug, movieData]);
 
-  if (!data) return <div className="h-screen flex justify-center items-center bg-[#050505]"><Icon.Loader2 className="animate-spin text-[#E50914]" size={40} /></div>;
+  if (loadingPage) return <div className="h-screen flex justify-center items-center bg-[#050505]"><Icon.Loader2 className="animate-spin text-[#E50914]" size={40} /></div>;
+  
+  if (error || !data) return (
+     <div className="h-screen flex flex-col justify-center items-center bg-[#050505] text-white">
+        <Icon.AlertTriangle className="text-[#E50914] mb-4" size={48}/>
+        <h2 className="text-xl font-bold">Lỗi tải phim!</h2>
+        <p className="text-gray-400 mt-2">Dữ liệu phim có thể đã bị xóa hoặc máy chủ đang quá tải.</p>
+     </div>
+  );
 
   const currentServer = serverList[activeServerIdx];
   const episodes = currentServer?.server_data || [];
@@ -1430,13 +1614,15 @@ function Watch({ slug, movieData }) {
          movieName={data?.name} 
          originName={data?.origin_name || data?.original_name} 
          thumbUrl={data?.thumb_url || data?.poster_url} 
+         movieYear={data?.year}
+         forceIframe={currentServer?.isIframe}
       />}
       
       <div className="mt-6 md:mt-10 bg-[#111] p-5 md:p-8 rounded-none sm:rounded-2xl border-y sm:border border-white/5 shadow-2xl">
         <h1 className="text-xl md:text-3xl font-black text-white mb-2 md:mb-4 uppercase tracking-tighter line-clamp-2 !font-sans">{data?.name}</h1>
         
         <p className="text-gray-400 text-xs md:text-lg mb-8 md:mb-10 font-bold uppercase tracking-widest !font-sans">
-          Đang phát: Tập <span className="text-[#E50914]">{ep?.name?.replace(/tập\s*/i, '').trim()}</span>
+          Đang phát: Tập <span className="text-[#E50914]">{ep?.name?.replace(/tập\s*/i, '').replace(/['"]/g, '').trim()}</span>
         </p>
         
         {serverList.length > 0 && (
@@ -1502,7 +1688,7 @@ function Watch({ slug, movieData }) {
                              }}
                              className={`py-3 md:py-4 text-[11px] md:text-sm rounded-lg border transition-all font-black uppercase tracking-tighter flex items-center justify-center ${isActive ? "bg-[#E50914] border-[#E50914] text-white shadow-[0_4px_15px_rgba(229,9,20,0.4)] scale-105 z-10" : "bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:text-white hover:border-white/20"}`}
                           >
-                             {e.name?.replace(/tập\s*/i, '').trim()}
+                             {e.name?.replace(/tập\s*/i, '').replace(/['"]/g, '').trim()}
                           </button>
                        )
                     })}
@@ -1552,11 +1738,9 @@ export default function App() {
     document.title = "POLITE";
     refreshProgress();
     
-    // Gọi API Lấy Thể loại & Quốc gia cho Header
     fetch(`${API}/the-loai`).then((r) => r.json()).then((j) => setCats(j?.data?.items || [])).catch(() => {});
     fetch(`${API}/quoc-gia`).then((r) => r.json()).then((j) => setCountries(j?.data?.items || [])).catch(() => {});
 
-    // Cập nhật FAVICON ĐỘNG
     const updateFavicon = () => {
       const link = document.querySelector("link[rel~='icon']") || document.createElement('link');
       link.rel = 'icon';
@@ -1568,9 +1752,78 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  const fetchData = (pageNum, isNewView = false) => {
+  const fetchData = async (pageNum, isNewView = false) => {
     if (isNewView) { setLoading(true); setMovies([]); } 
     else { setLoadingMore(true); }
+
+    if (view.type === "actor") {
+       try {
+         const tmdbRes = await fetch(`https://api.themoviedb.org/3/person/${view.actorId}/combined_credits?api_key=${TMDB_API_KEY}&language=vi-VN`);
+         const tmdbData = await tmdbRes.json();
+         
+         const topMovies = (tmdbData.cast || [])
+            .filter(m => (m.media_type === "movie" || m.media_type === "tv") && !m.character?.toLowerCase().includes("self") && !m.character?.toLowerCase().includes("voice") && !m.character?.toLowerCase().includes("uncredited"))
+            .sort((a,b) => b.popularity - a.popularity)
+            .slice(0, 20); 
+
+         const searchPromises = topMovies.map(async (tmdbItem) => {
+            const titleQuery = tmdbItem.title || tmdbItem.name || tmdbItem.original_title || tmdbItem.original_name;
+            const releaseYear = (tmdbItem.release_date || tmdbItem.first_air_date || '').substring(0, 4);
+            if (!titleQuery) return null;
+            
+            const checkMatch = (items) => {
+                if (!items || items.length === 0) return null;
+                const exactMatch = items.find(m => 
+                    m.name?.toLowerCase() === (tmdbItem.title || tmdbItem.name)?.toLowerCase() ||
+                    m.origin_name?.toLowerCase() === (tmdbItem.original_title || tmdbItem.original_name)?.toLowerCase() ||
+                    m.original_name?.toLowerCase() === (tmdbItem.original_title || tmdbItem.original_name)?.toLowerCase()
+                );
+                if (exactMatch) return exactMatch;
+                
+                if (releaseYear) {
+                    const yearMatch = items.find(m => m.year?.toString() === releaseYear);
+                    if (yearMatch) return yearMatch;
+                }
+                return items[0]; 
+            };
+
+            try {
+               const resN = await fetch(`${API_NGUONC}/search?keyword=${encodeURIComponent(titleQuery)}`);
+               const jN = await resN.json();
+               const matchN = checkMatch(jN?.items || jN?.data?.items);
+               if (matchN) return matchN;
+               
+               const resO = await fetch(`${API}/tim-kiem?keyword=${encodeURIComponent(titleQuery)}`);
+               const jO = await resO.json();
+               const matchO = checkMatch(jO?.data?.items);
+               if (matchO) return matchO;
+               
+            } catch(e) { return null; }
+            return null;
+         });
+
+         const results = await Promise.all(searchPromises);
+         const validMovies = results.filter(Boolean);
+         
+         const sortedMovies = validMovies.sort((a, b) => {
+           const aHas = (a.thumb_url || a.poster_url) ? 1 : 0;
+           const bHas = (b.thumb_url || b.poster_url) ? 1 : 0;
+           return bHas - aHas;
+         });
+
+         const uniqueMap = new Map();
+         sortedMovies.forEach(m => uniqueMap.set(m.slug, m));
+         
+         setMovies(Array.from(uniqueMap.values()));
+         setHasMore(false); 
+       } catch(e) {
+         console.error(e);
+       } finally {
+         setLoading(false);
+         setLoadingMore(false);
+       }
+       return; 
+    }
 
     let urlOphim = "";
     let urlNguonc = "";
@@ -1636,6 +1889,12 @@ export default function App() {
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         @keyframes custom-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .animate-spin { animation: custom-spin 1s linear infinite !important; }
+        
+        .custom-range { -webkit-appearance: none; outline: none; border-radius: 4px; }
+        .custom-range::-webkit-slider-thumb { -webkit-appearance: none; height: 14px; width: 14px; border-radius: 50%; background: #E50914; cursor: pointer; box-shadow: 0 0 5px rgba(0,0,0,0.5); }
+        .custom-range::-webkit-slider-runnable-track { width: 100%; height: 100%; background: transparent; cursor: pointer; border-radius: 4px; }
+        .custom-range::-moz-range-thumb { height: 14px; width: 14px; border-radius: 50%; background: #E50914; border: none; cursor: pointer; box-shadow: 0 0 5px rgba(0,0,0,0.5); }
+        .custom-range::-moz-range-track { width: 100%; height: 100%; background: transparent; cursor: pointer; border-radius: 4px; }
       `}</style>
       
       <Header navigate={navigate} categories={cats} countries={countries} />
@@ -1666,7 +1925,7 @@ export default function App() {
         <Watch slug={view.slug} movieData={view.movieData} />
       ) : (
         <MovieGrid 
-          title={view.type === "search" ? `Tìm kiếm: ${view.keyword}` : view.title} 
+          title={view.type === "actor" ? `Phim của: ${view.actorName}` : view.type === "search" ? `Tìm kiếm: ${view.keyword}` : view.title} 
           movies={movies} 
           loading={loading} 
           navigate={navigate}

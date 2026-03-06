@@ -218,25 +218,23 @@ const SearchItem = memo(({ m, setView, onClose }) => {
 const SearchModal = ({ isOpen, onClose, setView }) => {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
-  const [totalItems, setTotalItems] = useState(0);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => {
     if (isOpen) setTimeout(() => inputRef.current?.focus(), 100);
-    else { setQuery(""); setResults([]); setTotalItems(0); }
+    else { setQuery(""); setResults([]); }
   }, [isOpen]);
 
   useEffect(() => {
-    if (query.trim().length < 2) { setResults([]); setTotalItems(0); return; }
+    if (query.trim().length < 2) { setResults([]); return; }
     setLoading(true);
     const controller = new AbortController();
     const delay = setTimeout(() => {
-      fetch(`${API}/tim-kiem?keyword=${query}`, { signal: controller.signal })
+      fetch(`${API}/tim-kiem?keyword=${encodeURIComponent(query)}`, { signal: controller.signal })
         .then((r) => r.json())
         .then((data) => {
           setResults(data?.data?.items || []);
-          setTotalItems(data?.data?.params?.pagination?.totalItems || data?.data?.items?.length || 0);
           setLoading(false);
         })
         .catch(() => setLoading(false));
@@ -267,11 +265,6 @@ const SearchModal = ({ isOpen, onClose, setView }) => {
           />
           <button type="button" onClick={onClose} className="absolute right-6 text-xs text-gray-400 font-bold hover:text-white bg-white/5 hover:bg-white/10 px-2.5 py-1.5 rounded transition-colors">ESC</button>
         </form>
-        {query.trim().length >= 2 && !loading && (
-          <div className="px-5 py-3 text-gray-400 text-sm border-b border-white/5 bg-[#141414]">
-            Hiển thị {results.length} / {totalItems} kết quả cho "{query}"
-          </div>
-        )}
         <div className="overflow-y-auto flex-1 p-2 no-scrollbar">
           {loading ? (
             <div className="py-10 flex justify-center"><Icon.Loader2 className="animate-spin text-[#E50914]" size={30} /></div>
@@ -282,7 +275,7 @@ const SearchModal = ({ isOpen, onClose, setView }) => {
                 onClick={() => { setView({ type: "search", keyword: query }); onClose(); }}
                 className="w-full mt-2 py-4 text-center text-[#E50914] font-bold text-sm hover:bg-white/5 transition-colors rounded-xl border border-dashed border-white/10"
               >
-                Xem tất cả {totalItems} kết quả
+                Xem tất cả kết quả
               </button>
             </>
           ) : query.trim().length >= 2 && !loading ? (
@@ -448,7 +441,14 @@ const Header = ({ setView, categories }) => {
       <header className={`fixed top-0 w-full z-[100] transition-all duration-300 ${scrolled ? "bg-[#050505]/95 backdrop-blur-md border-b border-white/5 py-2 md:py-3 shadow-2xl" : "bg-gradient-to-b from-black/90 via-black/40 to-transparent py-4 md:py-5"}`}>
         <div className="w-full px-4 md:px-12 lg:px-16 flex justify-between items-center">
           <div className="flex items-center gap-6 md:gap-10">
-            <div className="text-[#E50914] font-black text-2xl md:text-3xl tracking-widest cursor-pointer drop-shadow-md" onClick={() => { setView({ type: "home" }); window.scrollTo(0, 0); }}>POLITE</div>
+            {/* LOGO: GIỮ CHỮ POLITE, XÓA ICON TRANG CHỦ */}
+            <div 
+              className="text-[#E50914] font-black text-2xl md:text-3xl tracking-widest cursor-pointer drop-shadow-md" 
+              onClick={() => { setView({ type: "home" }); window.scrollTo(0, 0); }}
+            >
+              POLITE
+            </div>
+
             <nav className="hidden lg:flex gap-8 text-[12px] font-black tracking-widest text-gray-300">
               <button onClick={() => setView({ type: "home" })} className="hover:text-white transition uppercase">Trang Chủ</button>
               <div className="relative group cursor-pointer flex items-center gap-1 hover:text-white transition uppercase">
@@ -749,22 +749,50 @@ export default function App() {
   };
 
   useEffect(() => {
+    document.title = "POLITE"; // Cập nhật tiêu đề trang
     refreshProgress();
     fetch(`${API}/the-loai`).then((r) => r.json()).then((j) => setCats(j?.data?.items || [])).catch(() => {});
+
+    // Cập nhật FAVICON ĐỘNG: Chữ P đỏ nền đen vuông bo góc
+    const updateFavicon = () => {
+      const link = document.querySelector("link[rel~='icon']") || document.createElement('link');
+      link.rel = 'icon';
+      // Tạo SVG data URI cho favicon
+      link.href = `data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22black%22/><text x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22central%22 text-anchor=%22middle%22 font-family=%22Arial%22 font-weight=%22900%22 font-style=%22italic%22 font-size=%2270%22 fill=%22%23E50914%22>P</text></svg>`;
+      document.getElementsByTagName('head')[0].appendChild(link);
+    };
+    updateFavicon();
   }, [view]);
 
   const fetchData = (pageNum, isNewView = false) => {
-    if (isNewView) setLoading(true); else setLoadingMore(true);
+    if (isNewView) {
+      setLoading(true);
+      setMovies([]);
+    } else {
+      setLoadingMore(true);
+    }
+
     let url = "";
-    if (view.type === "search") url = `${API}/tim-kiem?keyword=${view.keyword}&page=${pageNum}`;
-    else if (view.type === "list") url = `${API}/${view.mode}/${view.slug}?page=${pageNum}`;
-    else url = `${API}/home?page=${pageNum}`;
+    if (view.type === "search") {
+      url = `${API}/tim-kiem?keyword=${encodeURIComponent(view.keyword)}&page=${pageNum}`;
+    } else if (view.type === "list") {
+      url = `${API}/${view.mode}/${view.slug}?page=${pageNum}`;
+    } else {
+      url = `${API}/home?page=${pageNum}`;
+    }
 
     fetch(url)
       .then((r) => r.json())
       .then((j) => {
         const newItems = j?.data?.items || [];
-        if (isNewView) setMovies(newItems); else setMovies((prev) => [...prev, ...newItems]);
+        
+        setMovies((prev) => {
+          const combined = isNewView ? newItems : [...prev, ...newItems];
+          const uniqueMap = new Map();
+          combined.forEach(m => uniqueMap.set(m.slug, m));
+          return Array.from(uniqueMap.values());
+        });
+
         const pagination = j?.data?.params?.pagination;
         setHasMore(pagination ? pageNum * pagination.totalItemsPerPage < pagination.totalItems : false);
       })
@@ -774,7 +802,7 @@ export default function App() {
 
   useEffect(() => {
     if (view.type !== "home" && view.type !== "detail" && view.type !== "watch") {
-      setPage(1); setMovies([]); fetchData(1, true);
+      setPage(1); fetchData(1, true);
     }
   }, [view]);
 
@@ -795,6 +823,10 @@ export default function App() {
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         @keyframes custom-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .animate-spin { animation: custom-spin 1s linear infinite !important; }
+        
+        iframe {
+          background: #000;
+        }
       `}</style>
       
       <Header setView={setView} categories={cats} />
@@ -802,7 +834,6 @@ export default function App() {
       {view.type === "home" ? (
         <>
           <Hero setView={setView} />
-          {/* Bố cục full-width cho nội dung trang chủ */}
           <div className="w-full px-4 md:px-12 lg:px-16 relative z-20 pb-20 pt-4 md:pt-0">
             <MovieSection title="Phim Mới Cập Nhật" slug="phim-moi-cap-nhat" type="danh-sach" setView={setView} progressData={progressData} />
             <MovieSection title="Phim Trending 🔥" slug="phim-bo" type="danh-sach" setView={setView} progressData={progressData} />

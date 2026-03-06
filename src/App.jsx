@@ -39,6 +39,7 @@ const fetchTMDB = async (name, originName) => {
     );
     const data = await res.json();
     const match = data.results?.find((item) => item.poster_path || item.backdrop_path);
+    
     if (match) {
       tmdbCache.set(cacheKey, match);
       return match;
@@ -302,7 +303,7 @@ const MovieCard = memo(({ m, setView, progressData, isRow = false, onRemove = nu
 
   return (
     <div
-      className={`group/card cursor-pointer flex flex-col shrink-0 relative ${isRow ? "w-[120px] sm:w-[150px] md:w-56 lg:w-64" : ""}`}
+      className={`group/card cursor-pointer flex flex-col shrink-0 relative ${isRow ? "w-[120px] sm:w-[150px] md:w-52 lg:w-60 xl:w-64" : ""}`}
       onClick={() => {
         if (onClickOverride) onClickOverride();
         else { setView({ type: "detail", slug: m.slug }); window.scrollTo(0, 0); }
@@ -334,7 +335,7 @@ const MovieCard = memo(({ m, setView, progressData, isRow = false, onRemove = nu
         )}
       </div>
       <div className="mt-2 md:mt-3 flex flex-col flex-1 px-1">
-        <h3 className="text-[12px] sm:text-[13px] md:text-[15px] font-bold text-gray-200 line-clamp-1 group-hover/card:text-white transition-colors uppercase tracking-tight">{m.name}</h3>
+        <h3 className="text-[12px] sm:text-[13px] md:text-[15px] font-bold text-gray-200 line-clamp-2 group-hover/card:text-white transition-colors uppercase tracking-tight">{m.name}</h3>
         <div className="flex justify-between items-center mt-1">
           <p className="text-[9px] sm:text-[10px] md:text-[11px] text-gray-500 font-medium">{m.year || "2025"}</p>
           {voteAverage ? (
@@ -445,7 +446,7 @@ const Header = ({ setView, categories }) => {
     <>
       <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} setView={setView} />
       <header className={`fixed top-0 w-full z-[100] transition-all duration-300 ${scrolled ? "bg-[#050505]/95 backdrop-blur-md border-b border-white/5 py-2 md:py-3 shadow-2xl" : "bg-gradient-to-b from-black/90 via-black/40 to-transparent py-4 md:py-5"}`}>
-        <div className="max-w-7xl mx-auto flex justify-between items-center px-4 md:px-8">
+        <div className="w-full px-4 md:px-12 lg:px-16 flex justify-between items-center">
           <div className="flex items-center gap-6 md:gap-10">
             <div className="text-[#E50914] font-black text-2xl md:text-3xl tracking-widest cursor-pointer drop-shadow-md" onClick={() => { setView({ type: "home" }); window.scrollTo(0, 0); }}>POLITE</div>
             <nav className="hidden lg:flex gap-8 text-[12px] font-black tracking-widest text-gray-300">
@@ -514,27 +515,22 @@ const HeroSlide = memo(({ movie, isActive, setView }) => {
       <img src={backdropUrl} className={`w-full h-full object-cover ${isBackdropValid ? 'opacity-70 object-top md:object-center' : 'opacity-40 blur-md scale-105'}`} alt={movie?.name} />
       <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/60 md:via-[#050505]/40 to-transparent" />
       <div className="absolute inset-0 bg-gradient-to-r from-[#050505]/90 via-[#050505]/40 to-transparent" />
-      <div className="absolute inset-0 z-10 flex flex-col justify-end items-start px-4 sm:px-6 md:px-12 max-w-7xl mx-auto h-full pb-14 sm:pb-20 md:pb-28">
+      <div className="absolute inset-0 z-10 flex flex-col justify-end items-start px-4 md:px-12 lg:px-16 w-full h-full pb-14 sm:pb-20 md:pb-28">
         <div className="max-w-3xl w-full flex flex-col items-start text-left animate-in fade-in slide-in-from-bottom-8 duration-700">
-          
-          {/* CẢI THIỆN FONT CHỮ TẠI ĐÂY */}
-          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-8xl font-black text-white mb-2 md:mb-4 uppercase tracking-tighter leading-[0.9] drop-shadow-[0_10px_30px_rgba(0,0,0,0.9)] w-full">
+          <h1 className="text-2xl sm:text-3xl md:text-5xl lg:text-6xl font-black text-white mb-2 md:mb-4 uppercase tracking-tighter leading-[1.1] drop-shadow-[0_10px_30px_rgba(0,0,0,0.9)] w-full line-clamp-2 !font-sans italic-none">
             {movie?.name}
           </h1>
-          
-          <p className="text-[#f5c518] text-xs sm:text-sm md:text-base font-black mb-4 md:mb-8 drop-shadow-md line-clamp-1 w-full uppercase tracking-[0.2em]">
+          <p className="text-[#f5c518] text-[10px] sm:text-xs md:text-sm font-black mb-4 md:mb-6 drop-shadow-md line-clamp-1 w-full uppercase tracking-[0.2em] !font-sans">
             {movie?.origin_name}
           </p>
-          
-          <div className="flex flex-wrap items-center justify-start gap-1.5 md:gap-3 text-[10px] sm:text-xs md:text-sm font-black text-gray-300 mb-6 md:mb-10 w-full tracking-widest">
+          <div className="flex flex-wrap items-center justify-start gap-1.5 md:gap-3 text-[10px] sm:text-xs md:text-sm font-black text-gray-300 mb-6 md:mb-8 w-full tracking-widest !font-sans">
             <span className="text-[#E50914]">{movie?.year || "2024"}</span>
             <span className="text-gray-600">|</span>
             <span className="flex items-center gap-1 text-[#f5c518]"><Icon.Star fill="currentColor" size={14} /> {tmdbData?.vote_average ? Number(tmdbData.vote_average).toFixed(1) : "10.0"}</span>
             <span className="text-gray-600">|</span>
             <span className="border-2 border-white/60 px-2 py-0.5 rounded text-white bg-white/5 uppercase font-black">{movie?.quality || "HD"}</span>
           </div>
-          
-          <button onClick={() => { setView({ type: "detail", slug: movie?.slug }); window.scrollTo(0, 0); }} className="w-fit bg-[#E50914] hover:bg-red-700 text-white px-6 py-2.5 md:px-10 md:py-4 rounded-full font-black flex items-center gap-2 md:gap-3 transition-all transform hover:scale-105 active:scale-95 shadow-[0_8px_25px_rgba(229,9,20,0.6)] uppercase tracking-[0.2em] text-[10px] sm:text-xs md:text-sm">
+          <button onClick={() => { setView({ type: "detail", slug: movie?.slug }); window.scrollTo(0, 0); }} className="w-fit bg-[#E50914] hover:bg-red-700 text-white px-6 py-2.5 md:px-8 md:py-3.5 rounded-full font-black flex items-center gap-2 md:gap-3 transition-all transform hover:scale-105 active:scale-95 shadow-[0_8px_25px_rgba(229,9,20,0.6)] uppercase tracking-[0.2em] text-[10px] sm:text-xs md:text-sm !font-sans">
             <Icon.Play size={14} fill="currentColor" /> XEM NGAY
           </button>
         </div>
@@ -604,11 +600,11 @@ const MovieGrid = ({ movies, setView, loading, title, onLoadMore, hasMore, loadi
   }, [loading, loadingMore, hasMore, onLoadMore]);
 
   return (
-    <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-8 pt-20 md:pt-24 pb-10 min-h-screen">
+    <div className="w-full px-4 md:px-12 lg:px-16 pt-20 md:pt-24 pb-10 min-h-screen">
       <h2 className="text-[15px] sm:text-xl md:text-2xl font-black text-white mb-4 md:mb-6 uppercase tracking-tighter flex items-center gap-2 md:gap-3">
         <span className="w-1 sm:w-1.5 h-4 sm:h-7 bg-[#E50914] rounded-full" /> {title}
       </h2>
-      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 sm:gap-4 md:gap-6">
+      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2 sm:gap-4 md:gap-6">
         {movies.map((m, idx) => <MovieCard key={`${m.slug}-${idx}`} m={m} setView={setView} progressData={progressData} />)}
       </div>
       {(loading || loadingMore) && <div className="py-8 flex justify-center"><Icon.Loader2 className="animate-spin text-[#E50914]" size={28} /></div>}
@@ -639,31 +635,37 @@ const MovieDetail = ({ slug, setView }) => {
 
   return (
     <div className="pb-20 animate-in fade-in duration-700 bg-[#050505]">
-      <div className="relative min-h-[55vh] md:h-[80vh] w-full overflow-hidden flex flex-col justify-end pt-24 px-4 md:px-8">
+      <div className="relative min-h-[55vh] md:h-[80vh] w-full overflow-hidden flex flex-col justify-end pt-24 px-4 md:px-12 lg:px-16">
         <img src={backdropUrl} className="absolute inset-0 w-full h-full object-cover opacity-40" alt="" />
         <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/80 to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-r from-[#050505] via-[#050505]/40 to-transparent hidden md:block" />
-        <div className="relative z-10 w-full max-w-7xl mx-auto pb-6 md:pb-8 flex flex-col md:flex-row gap-5 md:gap-10 items-center md:items-end">
+        <div className="relative z-10 w-full pb-6 md:pb-8 flex flex-col md:flex-row gap-5 md:gap-10 items-center md:items-end">
           <div className="w-28 sm:w-36 md:w-56 lg:w-64 shrink-0 shadow-2xl">
             <SmartImage src={i?.thumb_url || i?.poster_url} name={i?.name} originName={i?.origin_name} className="w-full aspect-[2/3] object-cover rounded-xl border border-white/10 shadow-2xl" />
           </div>
           <div className="flex-1 text-center md:text-left w-full">
-            <h1 className="text-3xl sm:text-4xl md:text-7xl font-black text-white mb-2 md:mb-4 uppercase tracking-tighter leading-[0.9] drop-shadow-2xl">{i?.name}</h1>
-            <p className="text-xs md:text-xl text-gray-400 font-black mb-4 md:mb-8 drop-shadow-md uppercase tracking-[0.2em]">{i?.origin_name}</p>
-            <div className="flex flex-wrap justify-center md:justify-start items-center gap-2 md:gap-4 mb-6 md:mb-10 text-gray-300 text-[10px] md:text-base font-black tracking-widest uppercase">
+            <h1 className="text-2xl sm:text-3xl md:text-5xl lg:text-6xl font-black text-white mb-2 md:mb-4 uppercase tracking-tighter leading-[1.1] drop-shadow-2xl line-clamp-2 !font-sans">{i?.name}</h1>
+            <p className="text-xs md:text-xl text-gray-400 font-black mb-4 md:mb-8 drop-shadow-md uppercase tracking-[0.2em] !font-sans">{i?.origin_name}</p>
+            <div className="flex flex-wrap justify-center md:justify-start items-center gap-2 md:gap-4 mb-6 md:mb-10 text-gray-300 text-[10px] md:text-base font-black tracking-widest uppercase !font-sans">
               {voteAverage && <span className="flex items-center gap-1 text-[#f5c518]"><Icon.Star fill="currentColor" size={16} /> {Number(voteAverage).toFixed(1)}</span>}
               {voteAverage && <span>|</span>}
               <span className="text-[#E50914]">{i?.year}</span><span>|</span>
               <span className="bg-[#E50914] px-2 py-0.5 rounded text-white text-[9px] md:text-xs font-black">{i?.quality || "HD"}</span><span>|</span>
               <span className="border-2 border-gray-600 px-2 py-0.5 rounded text-xs">{i?.episode_current}</span>
             </div>
-            <button onClick={() => { setView({ type: "watch", slug: i?.slug, movieData: m }); window.scrollTo(0, 0); }} className="w-full sm:w-fit md:min-w-[300px] bg-[#E50914] hover:bg-red-700 text-white px-8 py-3.5 md:px-12 md:py-5 rounded-full font-black flex justify-center items-center gap-3 md:gap-4 transition-all transform active:scale-95 shadow-[0_10px_30px_rgba(229,9,20,0.6)] uppercase tracking-[0.2em] text-[12px] md:text-base">
-              <Icon.Play size={20} fill="currentColor" /> BẮT ĐẦU PHÁT
-            </button>
+            
+            <div className="flex flex-col sm:flex-row gap-3 md:gap-4 justify-center md:justify-start">
+              <button 
+                onClick={() => { setView({ type: "watch", slug: i?.slug, movieData: m }); window.scrollTo(0, 0); }} 
+                className="w-full sm:w-fit md:min-w-[240px] bg-[#E50914] hover:bg-red-700 text-white px-8 py-3.5 md:px-10 md:py-4 rounded-full font-black flex justify-center items-center gap-3 md:gap-4 transition-all transform active:scale-95 shadow-[0_10px_30px_rgba(229,9,20,0.6)] uppercase tracking-[0.2em] text-[12px] md:text-base !font-sans"
+              >
+                <Icon.Play size={20} fill="currentColor" /> BẮT ĐẦU PHÁT
+              </button>
+            </div>
           </div>
         </div>
       </div>
-      <div className="max-w-7xl mx-auto px-4 md:px-8 mt-8 md:mt-12 grid md:grid-cols-12 gap-6 md:gap-8 items-start">
+      <div className="w-full px-4 md:px-12 lg:px-16 mt-8 md:mt-12 grid md:grid-cols-12 gap-6 md:gap-8 items-start">
         <div className="md:col-span-8 bg-[#111] p-5 md:p-8 rounded-2xl border border-white/5 shadow-xl h-fit">
           <div className="flex items-center gap-2 md:gap-3 mb-4 md:mb-6">
             <span className="w-1.5 h-6 md:h-8 bg-[#E50914] rounded-full" />
@@ -705,14 +707,14 @@ const Watch = ({ slug, movieData }) => {
   if (!data) return <div className="h-screen flex justify-center items-center bg-[#050505]"><Icon.Loader2 className="animate-spin text-[#E50914]" size={40} /></div>;
 
   return (
-    <div className="pt-16 md:pt-28 pb-10 max-w-7xl mx-auto px-0 sm:px-4 md:px-8 animate-in fade-in duration-500 bg-[#050505]">
+    <div className="pt-16 md:pt-28 pb-10 w-full px-0 sm:px-4 md:px-12 lg:px-16 animate-in fade-in duration-500 bg-[#050505]">
       {ep && <Player src={ep.link_m3u8} poster={getImg(data?.poster_url || data?.thumb_url)} movieSlug={slug} episodeSlug={ep.slug} movieName={data?.name} thumbUrl={data?.thumb_url || data?.poster_url} />}
       <div className="mt-6 md:mt-10 bg-[#111] p-5 md:p-8 rounded-none sm:rounded-2xl border-y sm:border border-white/5 shadow-2xl">
-        <h1 className="text-xl md:text-4xl font-black text-white mb-2 md:mb-4 uppercase tracking-tighter">{data?.name}</h1>
-        <p className="text-gray-400 text-xs md:text-lg mb-8 md:mb-12 font-bold uppercase tracking-widest">Đang phát: <span className="text-[#E50914]">{ep?.name}</span></p>
+        <h1 className="text-xl md:text-3xl font-black text-white mb-2 md:mb-4 uppercase tracking-tighter line-clamp-2 !font-sans">{data?.name}</h1>
+        <p className="text-gray-400 text-xs md:text-lg mb-8 md:mb-12 font-bold uppercase tracking-widest !font-sans">Đang phát: <span className="text-[#E50914]">{ep?.name}</span></p>
         {data?.episodes?.map((s) => (
           <div key={s.server_name} className="mb-8 md:mb-12 last:mb-0">
-            <p className="text-[10px] md:text-xs text-gray-500 font-black mb-4 md:mb-6 uppercase tracking-[0.3em]">{s.server_name}</p>
+            <p className="text-[10px] md:text-xs text-gray-500 font-black mb-4 md:mb-6 uppercase tracking-[0.3em] !font-sans">{s.server_name}</p>
             <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2 md:gap-4">
               {s.server_data.map((e) => (
                 <button key={e.slug} onClick={() => { setEp(e); window.scrollTo(0, 0); }} className={`py-2.5 md:py-4 text-[11px] md:text-sm rounded-lg font-black transition-all uppercase tracking-tighter ${ep?.slug === e.slug ? "bg-[#E50914] text-white shadow-xl shadow-red-600/40" : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"}`}>
@@ -779,12 +781,15 @@ export default function App() {
   return (
     <div className="bg-[#050505] min-h-screen text-white font-sans antialiased selection:bg-[#E50914] selection:text-white pb-16 md:pb-10">
       
-      {/* NHÚNG FONT CHỮ HIỆN ĐẠI TỪ GOOGLE FONTS */}
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="true" />
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet" />
       
       <style>{`
+        * {
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+          font-style: normal !important;
+        }
         :root { font-family: 'Inter', sans-serif; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -797,7 +802,8 @@ export default function App() {
       {view.type === "home" ? (
         <>
           <Hero setView={setView} />
-          <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-8 relative z-20 pb-20 pt-4 md:pt-0">
+          {/* Bố cục full-width cho nội dung trang chủ */}
+          <div className="w-full px-4 md:px-12 lg:px-16 relative z-20 pb-20 pt-4 md:pt-0">
             <MovieSection title="Phim Mới Cập Nhật" slug="phim-moi-cap-nhat" type="danh-sach" setView={setView} progressData={progressData} />
             <MovieSection title="Phim Trending 🔥" slug="phim-bo" type="danh-sach" setView={setView} progressData={progressData} />
             <ContinueWatching setView={setView} progressData={progressData} onRemove={removeProgress} />

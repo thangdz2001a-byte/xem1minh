@@ -367,7 +367,7 @@ const BottomNav = ({ setView, categories, currentView }) => {
       <div className="md:hidden fixed bottom-0 w-full bg-[#0a0a0a]/95 backdrop-blur-xl border-t border-white/5 pb-safe z-[100]">
         <div className="flex justify-around items-center p-3">
           {[ {id:'home', icon: Icon.Home, label: 'Trang chủ'}, {id:'cat', icon: Icon.LayoutGrid, label: 'Thể loại'}, {id:'hot', icon: Icon.Flame, label: 'Hot'}, {id:'user', icon: Icon.User, label: 'Thông tin'} ].map(item => (
-            <button key={item.id} onClick={() => item.id === 'home' ? setView({type:"home"}) : item.id === 'cat' ? setShowCat(true) : {}} className={`flex flex-col items-center gap-1.5 transition-colors ${currentView === item.id || (item.id==='home' && currentView==='home') ? 'text-orange-500' : 'text-gray-500'}`}>
+            <button key={item.id} onClick={() => item.id === 'home' ? setView({type:"home"}) : item.id === 'cat' ? setShowCat(true) : {}} className={`flex flex-col items-center gap-1.5 transition-colors ${currentView === item.id || (item.id==='home' && currentView==='home') ? 'text-[#E50914]' : 'text-gray-500'}`}>
               <item.icon size={22} strokeWidth={currentView === item.id ? 2.5 : 2} />
               <span className="text-[10px] font-bold">{item.label}</span>
             </button>
@@ -437,7 +437,7 @@ const MovieGrid = ({ movies, setView, loading, title, onLoadMore, hasMore, loadi
   );
 };
 
-// --- 8. CHI TIẾT PHIM (DÀN TRANG CHUẨN NETFLIX APP MOBILE) ---
+// --- 8. CHI TIẾT PHIM (DÀN TRANG CHUẨN NETFLIX APP MOBILE - FIX OVERLAP) ---
 const MovieDetail = ({ slug, setView }) => {
   const [m, setM] = useState(null);
   const [error, setError] = useState(false);
@@ -458,21 +458,22 @@ const MovieDetail = ({ slug, setView }) => {
   return (
     <div className="pb-20 animate-in fade-in duration-700">
       {/* SECTION 1: HERO - IMMERSIVE VIEW */}
-      <div className="relative h-[50vh] md:h-[80vh] w-full overflow-hidden flex flex-col justify-end">
+      {/* Đã thêm pt-24 để Poster không bao giờ bị vướng vào logo Polite ở trên cùng */}
+      <div className="relative min-h-[65vh] md:h-[80vh] w-full overflow-hidden flex flex-col justify-end pt-24">
         {/* Big Backdrop Background */}
         <img src={getImg(i?.poster_url || i?.thumb_url)} className="absolute inset-0 w-full h-full object-cover opacity-60" alt="" />
         <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/80 to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-r from-[#050505] via-black/20 to-transparent hidden md:block" />
         
         {/* Hero Content Wrapper */}
-        <div className="relative z-10 w-full max-w-7xl mx-auto px-6 md:px-8 pb-6 flex flex-col md:flex-row gap-6 items-center md:items-end">
+        <div className="relative z-10 w-full max-w-7xl mx-auto px-6 md:px-8 pb-8 flex flex-col md:flex-row gap-6 md:gap-8 items-center md:items-end">
           {/* POSTER - High shadow & clean edges */}
-          <div className="w-40 md:w-56 lg:w-64 shrink-0 shadow-[0_20px_50px_rgba(0,0,0,1)] transform md:hover:scale-105 transition-transform duration-500">
+          <div className="w-36 md:w-56 lg:w-64 shrink-0 shadow-[0_20px_50px_rgba(0,0,0,1)] transform md:hover:scale-105 transition-transform duration-500">
             <img src={getImg(posterPath)} className="w-full aspect-[2/3] object-cover rounded-xl border border-white/5" alt={i?.name} />
           </div>
           
           {/* MOVIE INFO */}
-          <div className="flex-1 flex flex-col items-center md:items-start text-center md:text-left">
+          <div className="flex-1 flex flex-col items-center md:items-start text-center md:text-left w-full">
             <h1 className="text-2xl md:text-5xl lg:text-6xl font-black text-white mb-2 tracking-tight leading-tight drop-shadow-2xl line-clamp-2 md:line-clamp-none">
               {i?.name}
             </h1>
@@ -503,13 +504,16 @@ const MovieDetail = ({ slug, setView }) => {
       <div className="max-w-7xl mx-auto px-6 md:px-8 mt-12 grid md:grid-cols-12 gap-8 lg:gap-14 items-start">
          {/* SYNOPSIS */}
          <div className="md:col-span-8">
-            <h3 className="text-sm font-black text-white/50 uppercase tracking-[0.2em] mb-4">Nội dung phim</h3>
-            <div className="text-gray-200 text-[13px] md:text-base leading-relaxed font-medium" 
+            <div className="flex items-center gap-3 mb-6">
+              <span className="w-1 h-7 bg-[#E50914] rounded-full"></span>
+              <h3 className="text-sm font-black text-white/80 uppercase tracking-[0.2em]">Nội dung phim</h3>
+            </div>
+            <div className="text-gray-300 text-[13px] md:text-base leading-relaxed font-medium" 
                  dangerouslySetInnerHTML={{__html:i?.content || "Thông tin đang được cập nhật..."}} />
          </div>
          
          {/* DETAILS SIDEBAR */}
-         <div className="md:col-span-4 space-y-8 md:pt-4">
+         <div className="md:col-span-4 space-y-8 md:pt-12">
             {[
               {l:"Quốc gia", v:i?.country?.map(c=>c.name).join(", ")}, 
               {l:"Thể loại", v:i?.category?.map(c=>c.name).join(", ")}, 
@@ -643,10 +647,13 @@ export default function App() {
         <>
           <Hero />
           <div className="max-w-7xl mx-auto px-4 md:px-8 -mt-10 md:-mt-24 relative z-20 pb-20">
+             {/* 1. Hàng Phim Mới Cập Nhật */}
              <MovieSection title="Phim Mới Cập Nhật" slug="phim-moi" setView={setView} progressData={progressData} />
 
+             {/* 2. Hàng Phim Đang Xem Dở - Đã dời xuống dưới mục Cập nhật và thêm Padding an toàn */}
              <ContinueWatching setView={setView} progressData={progressData} onRemove={removeProgress} />
 
+             {/* 3. Các hàng phim khác */}
              <MovieSection title="Hành Động & Phiêu Lưu" slug="hanh-dong" setView={setView} progressData={progressData} />
              <MovieSection title="Viễn Tưởng & Siêu Anh Hùng" slug="vien-tuong" setView={setView} progressData={progressData} />
              <MovieSection title="Kinh Dị & Giật Gân" slug="kinh-di" setView={setView} progressData={progressData} />

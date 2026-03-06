@@ -2,7 +2,14 @@ import React, { useState, useEffect, useRef } from "react"
 import * as Icon from "lucide-react"
 
 const API = "https://ophim1.com/v1/api", IMG = "https://img.ophim.live/uploads/movies";
-const getImg = (p) => !p ? "https://images.unsplash.com/photo-1440404653325-ab127d49abc1?q=80&w=500" : (p.startsWith("http") ? p : `${IMG}/${p}`);
+
+// Hàm xử lý ảnh thông minh: Tự động ghép domain nếu thiếu, dùng placeholder nếu trống
+const getImg = (p) => {
+  if (!p) return "https://images.unsplash.com/photo-1440404653325-ab127d49abc1?q=80&w=500";
+  if (p.startsWith("http")) return p;
+  const path = p.startsWith('/') ? p.substring(1) : p;
+  return `${IMG}/${path}`;
+};
 
 // Hàm chuyển đổi giây thành định dạng mm:ss hoặc hh:mm:ss
 const formatTime = (seconds) => {
@@ -14,7 +21,7 @@ const formatTime = (seconds) => {
 };
 
 // --- 1. TRÌNH PHÁT VIDEO CÓ LƯU TIẾN TRÌNH XEM ---
-const Player = ({ src, poster, movieSlug, episodeSlug }) => {
+const Player = ({ src, poster, movieSlug, episodeSlug, movieName, thumbUrl }) => {
   const vRef = useRef();
   
   useEffect(() => {
@@ -46,7 +53,9 @@ const Player = ({ src, poster, movieSlug, episodeSlug }) => {
         progress[movieSlug] = {
           episodeSlug,
           currentTime: video.currentTime,
-          percentage: (video.currentTime / video.duration) * 100
+          percentage: (video.currentTime / video.duration) * 100,
+          name: movieName, 
+          thumb: thumbUrl 
         };
         localStorage.setItem('movieProgress', JSON.stringify(progress));
       }
@@ -67,7 +76,7 @@ const Player = ({ src, poster, movieSlug, episodeSlug }) => {
       video.removeEventListener('timeupdate', handleTimeUpdate);
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
     };
-  }, [src, movieSlug, episodeSlug]);
+  }, [src, movieSlug, episodeSlug, movieName, thumbUrl]);
 
   return <div className="relative w-full aspect-video bg-black shadow-2xl md:rounded-2xl overflow-hidden border border-white/5"><video ref={vRef} poster={poster} controls className="w-full h-full object-contain" /></div>;
 };
@@ -141,7 +150,7 @@ const SearchModal = ({ isOpen, onClose, setView }) => {
                <p className="text-[13px] text-gray-400 px-4 py-2 mb-2">Hiển thị {results.length} / {totalItems} kết quả cho "{query}"</p>
                {results.map(m => (
                  <div key={m.slug} onClick={() => { setView({type: "detail", slug: m.slug}); onClose(); window.scrollTo(0,0); }} className="flex gap-4 p-3 hover:bg-white/5 rounded-xl cursor-pointer transition border-b border-white/5 last:border-0 group">
-                   <img src={getImg(m.thumb_url)} className="w-14 h-20 md:w-16 md:h-24 object-cover rounded-lg shadow-md group-hover:shadow-lg transition" />
+                   <img src={getImg(m.thumb_url || m.poster_url)} className="w-14 h-20 md:w-16 md:h-24 object-cover rounded-lg shadow-md group-hover:shadow-lg transition" />
                    <div className="flex flex-col justify-center">
                      <h4 className="text-[15px] md:text-[16px] font-bold text-white mb-1.5 group-hover:text-white transition-colors line-clamp-1">{m.name}</h4>
                      <p className="text-[13px] text-gray-400 mb-2 line-clamp-1">{m.origin_name} • {m.year}</p>
@@ -161,8 +170,127 @@ const SearchModal = ({ isOpen, onClose, setView }) => {
   );
 };
 
-// --- 3. HEADER ---
-const Header = ({ setView, search, categories }) => {
+// --- 3. CÁC THÀNH PHẦN GIAO DIỆN (CARD, GRID) ---
+const MovieCard = ({ m, setView, progressData, isRow = false }) => {
+  const progData = progressData?.[m.slug];
+  const prog = progData?.percentage || 0;
+  
+  // Logic lấy ảnh: Kiểm tra tất cả thuộc tính có thể có
+  const thumbSrc = m.thumb_url || m.thumb || m.poster_url;
+
+  return (
+    <div className={`group cursor-pointer flex flex-col shrink-0 ${isRow ? 'w-40 md:w-60 lg:w-64' : ''}`} onClick={() => {setView({type:"detail",slug:m.slug}); window.scrollTo(0,0)}}>
+      <div className="relative overflow-hidden rounded-xl aspect-[2/3] bg-[#111] shadow-2xl transition-transform duration-500 group-hover:scale-105 border border-white/5">
+        <img src={getImg(thumbSrc)} className="w-full h-full object-cover" loading="lazy" alt={m.name} />
+        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-20">
+           <div className="w-14 h-14 rounded-full border-[2px] border-white flex items-center justify-center">
+             <Icon.Play className="text-white ml-1" size={28} fill="currentColor" />
+           </div>
+        </div>
+        <div className="absolute top-2 left-2 bg-[#E50914] text-white text-[10px] px-2 py-0.5 rounded font-black uppercase shadow-lg tracking-widest z-10">{m.quality || 'HD'}</div>
+        {prog > 0 && prog < 95 && (
+           <>
+              <div className="absolute bottom-0 left-0 w-full h-1/2 bg-gradient-to-t from-black/90 via-black/40 to-transparent z-10 pointer-events-none"></div>
+              <div className="absolute bottom-3 left-0 w-full flex justify-center items-center z-20 pointer-events-none px-2">
+                 <span className="text-[11px] md:text-[13px] font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] tracking-wider truncate">
+                   {progData.episodeSlug?.toUpperCase().replace('TAP-', 'TẬP ')?.replace('FULL', 'FULL')} • {formatTime(progData.currentTime)}
+                 </span>
+              </div>
+              <div className="absolute bottom-0 left-0 w-full h-1.5 bg-gray-500/80 z-20">
+                 <div className="h-full bg-[#E50914]" style={{ width: `${prog}%` }}></div>
+              </div>
+           </>
+        )}
+      </div>
+      <div className="mt-3 flex flex-col flex-1 px-1">
+        <h3 className="text-[13px] md:text-[14px] font-bold text-gray-200 line-clamp-1 group-hover:text-white transition-colors">{m.name}</h3>
+        <div className="flex justify-between items-center mt-1">
+          <p className="text-[10px] md:text-[11px] text-gray-500 font-medium">{m.year || '2025'} • {m.time || 'Cập nhật'}</p>
+          {m.tmdb?.vote_average ? (
+            <span className="flex items-center gap-1 text-[#f5c518] text-[10px] md:text-[11px] font-bold">
+              <Icon.Star fill="currentColor" size={10}/> {Number(m.tmdb.vote_average).toFixed(1)}
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// HÀNG PHIM LƯỚT NGANG
+const MovieSection = ({ title, slug, type = "the-loai", setView, progressData }) => {
+  const [movies, setMovies] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let url = slug === "phim-moi" ? `${API}/home` : `${API}/${type}/${slug}`;
+    fetch(url)
+      .then(r => r.json())
+      .then(j => {
+        setMovies(j?.data?.items || []);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [slug, type]);
+
+  if (loading || movies.length === 0) return null;
+
+  return (
+    <div className="mb-10 relative group/row">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg md:text-2xl font-black text-white uppercase tracking-tight flex items-center gap-3">
+          <span className="w-1.5 h-6 md:h-7 bg-[#E50914] rounded-full"></span> {title}
+        </h2>
+        <button 
+          onClick={() => setView({type: "list", slug, title, mode: type})} 
+          className="text-[#E50914] text-[10px] md:text-xs font-bold hover:underline opacity-0 group-hover/row:opacity-100 transition-opacity"
+        >
+          XEM TẤT CẢ
+        </button>
+      </div>
+      
+      <div className="flex gap-4 md:gap-6 overflow-x-auto scroll-smooth no-scrollbar pb-4">
+        {movies.map(m => (
+          <MovieCard key={m.slug} m={m} setView={setView} progressData={progressData} isRow={true} />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// HÀNG PHIM ĐANG XEM DỞ
+const ContinueWatching = ({ setView, progressData }) => {
+  const watchedSlugs = Object.keys(progressData).filter(key => progressData[key].percentage < 95);
+  if (watchedSlugs.length === 0) return null;
+
+  return (
+    <div className="mb-10">
+      <div className="flex items-center mb-4">
+        <h2 className="text-lg md:text-2xl font-black text-white uppercase tracking-tight flex items-center gap-3">
+          <span className="w-1.5 h-6 md:h-7 bg-[#E50914] rounded-full"></span> Tiếp tục xem
+        </h2>
+      </div>
+      <div className="flex gap-4 md:gap-6 overflow-x-auto no-scrollbar pb-4">
+        {watchedSlugs.reverse().map(slug => (
+          <MovieCard 
+            key={slug} 
+            m={{ 
+              slug, 
+              name: progressData[slug].name, 
+              thumb: progressData[slug].thumb 
+            }} 
+            setView={setView} 
+            progressData={progressData} 
+            isRow={true} 
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// --- 4. HEADER ---
+const Header = ({ setView, categories }) => {
   const [scrolled, setScrolled] = useState(false), [isSearchOpen, setIsSearchOpen] = useState(false);
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -205,7 +333,7 @@ const Header = ({ setView, search, categories }) => {
   );
 };
 
-// --- 4. BOTTOM NAV ---
+// --- 5. BOTTOM NAV ---
 const BottomNav = ({ setView, categories, currentView }) => {
   const [showCat, setShowCat] = useState(false);
   return (
@@ -233,7 +361,7 @@ const BottomNav = ({ setView, categories, currentView }) => {
   );
 };
 
-// --- 5. BANNER ---
+// --- 6. BANNER ---
 const Hero = () => (
   <div className="relative w-full h-[60vh] md:h-[80vh] flex items-center justify-center text-center">
     <div className="absolute inset-0">
@@ -255,8 +383,8 @@ const Hero = () => (
   </div>
 );
 
-// --- 6. DANH SÁCH PHIM ---
-const MovieGrid = ({ movies, setView, loading, title, isHome, onLoadMore, hasMore, loadingMore }) => {
+// --- 7. DANH SÁCH PHIM DẠNG GRID ---
+const MovieGrid = ({ movies, setView, loading, title, onLoadMore, hasMore, loadingMore }) => {
   const observer = useRef();
   const lastElementRef = useRef();
   const [progressData, setProgressData] = useState({});
@@ -273,7 +401,7 @@ const MovieGrid = ({ movies, setView, loading, title, isHome, onLoadMore, hasMor
   }, [loading, loadingMore, hasMore, onLoadMore]);
 
   return (
-    <div className={isHome ? "max-w-7xl mx-auto px-4 md:px-8 -mt-10 md:-mt-24 relative z-20 pb-10" : "max-w-7xl mx-auto px-4 md:px-8 pt-24 pb-10"}>
+    <div className="max-w-7xl mx-auto px-4 md:px-8 pt-24 pb-10">
       <h2 className="text-xl md:text-2xl font-black text-white mb-6 uppercase tracking-tight flex items-center gap-3">
         <span className="w-1.5 h-7 bg-[#E50914] rounded-full"></span> {title}
       </h2>
@@ -283,45 +411,7 @@ const MovieGrid = ({ movies, setView, loading, title, isHome, onLoadMore, hasMor
           {movies && movies.map((m, idx) => {
             if (!m) return null;
             const isLast = idx === movies.length - 1;
-            const progData = progressData[m.slug];
-            const prog = progData?.percentage || 0;
-            return (
-              <div ref={isLast ? lastElementRef : null} key={`${m.slug}-${idx}`} className="group cursor-pointer flex flex-col" onClick={() => {setView({type:"detail",slug:m.slug}); window.scrollTo(0,0)}}>
-                <div className="relative overflow-hidden rounded-xl aspect-[2/3] bg-[#111] shadow-2xl transition-transform duration-500 group-hover:scale-105 border border-white/5">
-                  <img src={getImg(m.thumb_url)} className="w-full h-full object-cover" loading="lazy" alt={m.name} />
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-20">
-                     <div className="w-14 h-14 rounded-full border-[2px] border-white flex items-center justify-center">
-                       <Icon.Play className="text-white ml-1" size={28} fill="currentColor" />
-                     </div>
-                  </div>
-                  <div className="absolute top-2 left-2 bg-[#E50914] text-white text-[10px] px-2 py-0.5 rounded font-black uppercase shadow-lg tracking-widest z-10">{m.quality || 'HD'}</div>
-                  {prog > 0 && prog < 95 && (
-                     <>
-                        <div className="absolute bottom-0 left-0 w-full h-1/2 bg-gradient-to-t from-black/90 via-black/40 to-transparent z-10 pointer-events-none"></div>
-                        <div className="absolute bottom-3 left-0 w-full flex justify-center items-center z-20 pointer-events-none">
-                           <span className="text-[13px] font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] tracking-wider">
-                             {progData.episodeSlug?.toUpperCase().replace('TAP-', 'TẬP ')?.replace('FULL', 'FULL')} • {formatTime(progData.currentTime)}
-                           </span>
-                        </div>
-                        <div className="absolute bottom-0 left-0 w-full h-1.5 bg-gray-500/80 z-20">
-                           <div className="h-full bg-[#E50914]" style={{ width: `${prog}%` }}></div>
-                        </div>
-                     </>
-                  )}
-                </div>
-                <div className="mt-3 flex flex-col flex-1">
-                  <h3 className="text-[14px] font-bold text-gray-200 line-clamp-1 group-hover:text-white transition-colors">{m.name}</h3>
-                  <div className="flex justify-between items-center mt-1">
-                    <p className="text-[11px] text-gray-500 font-medium">{m.year} • {m.time || 'Cập nhật'}</p>
-                    {m.tmdb?.vote_average ? (
-                      <span className="flex items-center gap-1 text-[#f5c518] text-[11px] font-bold">
-                        <Icon.Star fill="currentColor" size={10}/> {Number(m.tmdb.vote_average).toFixed(1)}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            )
+            return <div ref={isLast ? lastElementRef : null} key={`${m.slug}-${idx}`}><MovieCard m={m} setView={setView} progressData={progressData} /></div>;
           })}
         </div>
         {loadingMore && <div className="py-10 flex justify-center"><Icon.Loader2 className="animate-spin text-[#E50914]" size={32} /></div>}
@@ -330,7 +420,7 @@ const MovieGrid = ({ movies, setView, loading, title, isHome, onLoadMore, hasMor
   );
 };
 
-// --- 7. CHI TIẾT PHIM ---
+// --- 8. CHI TIẾT PHIM ---
 const MovieDetail = ({ slug, setView }) => {
   const [m, setM] = useState(null);
   const [error, setError] = useState(false);
@@ -346,38 +436,51 @@ const MovieDetail = ({ slug, setView }) => {
   if (!m) return <div className="h-screen flex justify-center items-center"><Icon.Loader2 className="animate-spin text-[#E50914]" size={40} /></div>;
   
   const i = m.item;
+  // Lấy ảnh bìa: API Ophim có thể trả về thumb_url hoặc poster_url
+  const posterPath = i?.thumb_url || i?.poster_url || i?.thumb;
+
   return (
     <div className="pb-10 animate-in fade-in duration-700">
-      <div className="relative h-[50vh] md:h-[70vh] w-full">
-        <img src={getImg(i?.poster_url)} className="w-full h-full object-cover" alt="" />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/80 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#050505] via-black/50 to-transparent hidden md:block" />
-        <div className="absolute bottom-0 w-full max-w-7xl mx-auto px-4 md:px-8 pb-10 flex flex-col md:flex-row gap-8 items-end md:items-stretch">
-          <img src={getImg(i?.thumb_url)} className="w-32 md:w-56 rounded-xl shadow-2xl border border-white/10 hidden md:block" alt="" />
-          <div className="flex-1">
-            <h1 className="text-3xl md:text-5xl font-black text-white mb-3 tracking-tighter leading-tight">{i?.name}</h1>
-            <p className="text-gray-400 text-sm md:text-lg mb-6">{i?.origin_name} ({i?.year})</p>
+      <div className="relative h-[60vh] md:h-[80vh] w-full">
+        <img src={getImg(i?.poster_url || i?.thumb_url)} className="absolute inset-0 w-full h-full object-cover" alt="" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/60 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#050505] via-black/40 to-transparent hidden md:block" />
+        
+        <div className="absolute bottom-0 w-full max-w-7xl mx-auto px-4 md:px-8 pb-10 flex flex-col md:flex-row gap-8 items-end md:items-stretch z-10">
+          {/* POSTER BÊN TRÁI - ĐÃ FIX KHÔNG CÒN TRỐNG */}
+          <div className="hidden md:block w-48 lg:w-64 shrink-0">
+            <img 
+              src={getImg(posterPath)} 
+              className="w-full aspect-[2/3] object-cover rounded-xl shadow-2xl border border-white/10" 
+              alt={i?.name} 
+              onError={(e) => { e.target.src = "https://images.unsplash.com/photo-1440404653325-ab127d49abc1?q=80&w=500"; }}
+            />
+          </div>
+          
+          <div className="flex-1 flex flex-col justify-end">
+            <h1 className="text-3xl md:text-5xl lg:text-6xl font-black text-white mb-3 tracking-tighter leading-tight drop-shadow-2xl">{i?.name}</h1>
+            <p className="text-gray-300 text-sm md:text-lg mb-6 drop-shadow-md">{i?.origin_name} ({i?.year})</p>
             <div className="flex flex-wrap gap-2 mb-8 text-xs font-bold">
               <span className="bg-[#E50914] px-3 py-1 rounded text-white">{i?.quality}</span>
               <span className="bg-white/10 border border-white/20 px-3 py-1 rounded text-white">{i?.episode_current}</span>
               <span className="bg-white/10 border border-white/20 px-3 py-1 rounded text-white">{i?.time}</span>
             </div>
-            <button onClick={() => {setView({type:"watch",slug:i?.slug,movieData:m}); window.scrollTo(0,0)}} className="w-full md:w-auto bg-[#E50914] hover:bg-red-700 text-white px-10 py-4 rounded-md font-black flex justify-center items-center gap-3 transition-transform transform hover:scale-105 shadow-xl shadow-red-600/20">
+            <button onClick={() => {setView({type:"watch",slug:i?.slug,movieData:m}); window.scrollTo(0,0)}} className="w-full md:w-auto bg-[#E50914] hover:bg-red-700 text-white px-10 py-4 rounded-md font-black flex justify-center items-center gap-3 transition-transform transform hover:scale-105 shadow-xl shadow-red-600/20 text-sm md:text-base uppercase tracking-widest">
               <Icon.Play size={20} fill="currentColor"/> BẮT ĐẦU PHÁT
             </button>
           </div>
         </div>
       </div>
       
-      <div className="max-w-7xl mx-auto px-4 md:px-8 mt-8 grid md:grid-cols-3 gap-10">
+      <div className="max-w-7xl mx-auto px-4 md:px-8 mt-12 grid md:grid-cols-3 gap-10">
          <div className="md:col-span-2">
-            <h3 className="text-lg font-bold mb-4 text-white uppercase tracking-widest border-l-2 border-[#E50914] pl-3">Nội dung</h3>
-            <div className="text-gray-400 text-sm leading-relaxed bg-[#111] p-6 rounded-2xl border border-white/5" dangerouslySetInnerHTML={{__html:i?.content}} />
+            <h3 className="text-lg font-bold mb-6 text-white uppercase tracking-widest border-l-4 border-[#E50914] pl-3">Nội dung phim</h3>
+            <div className="text-gray-400 text-sm md:text-base leading-relaxed bg-[#111] p-6 rounded-2xl border border-white/5" dangerouslySetInnerHTML={{__html:i?.content}} />
          </div>
-         <div className="bg-[#111] p-6 rounded-2xl border border-white/5 h-fit space-y-4 md:mt-11">
-            {[{l:"Quốc gia", v:i?.country?.map(c=>c.name).join(", ")}, {l:"Thể loại", v:i?.category?.map(c=>c.name).join(", ")}, {l:"Diễn viên", v:i?.actor?.slice(0,4).join(", ")}].map(x => (
+         <div className="bg-[#111] p-6 rounded-2xl border border-white/5 h-fit space-y-4 md:mt-12">
+            {[{l:"Quốc gia", v:i?.country?.map(c=>c.name).join(", ")}, {l:"Thể loại", v:i?.category?.map(c=>c.name).join(", ")}, {l:"Diễn viên", v:i?.actor?.slice(0,8).join(", ")}].map(x => (
               <div key={x.l} className="border-b border-white/5 pb-3 last:border-0 last:pb-0">
-                <p className="text-xs text-gray-500 mb-1">{x.l}</p>
+                <p className="text-xs text-gray-500 mb-1 font-bold uppercase tracking-wider">{x.l}</p>
                 <p className="text-sm font-semibold text-gray-200">{x.v || 'Đang cập nhật'}</p>
               </div>
             ))}
@@ -387,14 +490,15 @@ const MovieDetail = ({ slug, setView }) => {
   );
 };
 
-// --- 8. MÀN HÌNH XEM PHIM ---
+// --- 9. MÀN HÌNH XEM PHIM ---
 const Watch = ({ slug, movieData }) => {
   const [data, setData] = useState(movieData?.item || null), [ep, setEp] = useState(null);
   const [error, setError] = useState(false);
 
   useEffect(() => { 
-    if(movieData) {
-      setEp(movieData?.item?.episodes?.[0]?.server_data?.[0]);
+    if(movieData?.item) {
+      setData(movieData.item);
+      setEp(movieData.item.episodes?.[0]?.server_data?.[0]);
     } else {
       fetch(`${API}/phim/${slug}`)
         .then(r=>r.json())
@@ -411,7 +515,14 @@ const Watch = ({ slug, movieData }) => {
 
   return (
     <div className="pt-20 md:pt-28 pb-10 max-w-7xl mx-auto px-4 md:px-8 animate-in fade-in duration-500">
-      {ep && <Player src={ep.link_m3u8} poster={getImg(data?.poster_url)} movieSlug={slug} episodeSlug={ep.slug} />}
+      {ep && <Player 
+        src={ep.link_m3u8} 
+        poster={getImg(data?.poster_url || data?.thumb_url)} 
+        movieSlug={slug} 
+        episodeSlug={ep.slug} 
+        movieName={data?.name} 
+        thumbUrl={data?.thumb_url || data?.poster_url} 
+      />}
       <div className="mt-6 md:mt-10 bg-[#111] p-5 md:p-8 rounded-2xl border border-white/5 shadow-2xl">
         <h1 className="text-2xl font-black text-white mb-2">{data?.name}</h1>
         <p className="text-gray-400 text-sm mb-8">Đang phát: <span className="text-[#E50914] font-bold">{ep?.name}</span></p>
@@ -435,19 +546,22 @@ const Watch = ({ slug, movieData }) => {
 export default function App() {
   const [view, setView] = useState({type:"home"}), [movies, setMovies] = useState([]), [loading, setLoading] = useState(true), [cats, setCats] = useState([]);
   const [page, setPage] = useState(1), [hasMore, setHasMore] = useState(false), [loadingMore, setLoadingMore] = useState(false);
-  
+  const [progressData, setProgressData] = useState({});
+
   useEffect(() => { 
+    setProgressData(JSON.parse(localStorage.getItem('movieProgress') || '{}'));
     fetch(`${API}/the-loai`)
       .then(r=>r.json())
       .then(j=>setCats(j?.data?.items || []))
       .catch(() => setCats([])); 
-  }, []);
+  }, [view]);
   
   const fetchData = (pageNum, isNewView = false) => {
     if (isNewView) setLoading(true); else setLoadingMore(true);
-    let url = `${API}/home?page=${pageNum}`;
+    let url = "";
     if(view.type==="search") url = `${API}/tim-kiem?keyword=${view.keyword}&page=${pageNum}`;
-    if(view.type==="list") url = `${API}/${view.mode}/${view.slug}?page=${pageNum}`;
+    else if(view.type==="list") url = `${API}/${view.mode}/${view.slug}?page=${pageNum}`;
+    else return; 
     
     fetch(url)
       .then(r=>r.json())
@@ -462,23 +576,40 @@ export default function App() {
       .finally(() => { setLoading(false); setLoadingMore(false); });
   };
 
-  useEffect(() => { setPage(1); setMovies([]); fetchData(1, true); }, [view]);
+  useEffect(() => { 
+    if (view.type !== "home") {
+      setPage(1); setMovies([]); fetchData(1, true); 
+    }
+  }, [view]);
 
   const handleLoadMore = () => { if (!loadingMore && hasMore) { const nextPage = page + 1; setPage(nextPage); fetchData(nextPage, false); } };
 
   return (
-    <div className="bg-[#050505] min-h-screen text-white font-sans antialiased selection:bg-[#E50914] selection:text-white pb-16 md:pb-0">
-      <Header setView={setView} search={k => setView({type:"search",keyword:k})} categories={cats} />
+    <div className="bg-[#050505] min-h-screen text-white font-sans antialiased selection:bg-[#E50914] selection:text-white pb-16 md:pb-10">
+      <style>{`
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      `}</style>
+      <Header setView={setView} categories={cats} />
       
       {view.type==="home" && (
         <>
           <Hero />
-          <MovieGrid title="Thịnh Hành" movies={movies} loading={loading} setView={setView} isHome={true} onLoadMore={handleLoadMore} hasMore={hasMore} loadingMore={loadingMore} />
+          <div className="max-w-7xl mx-auto px-4 md:px-8 -mt-10 md:-mt-24 relative z-20 pb-20">
+             {/* Hàng Phim Đang Xem Dở - ĐÃ FIX POSTER VÀ HIỂN THỊ */}
+             <ContinueWatching setView={setView} progressData={progressData} />
+
+             {/* Các hàng phim lướt ngang */}
+             <MovieSection title="Phim Mới Cập Nhật" slug="phim-moi" setView={setView} progressData={progressData} />
+             <MovieSection title="Hành Động & Phiêu Lưu" slug="hanh-dong" setView={setView} progressData={progressData} />
+             <MovieSection title="Viễn Tưởng & Siêu Anh Hùng" slug="vien-tuong" setView={setView} progressData={progressData} />
+             <MovieSection title="Kinh Dị & Giật Gân" slug="kinh-di" setView={setView} progressData={progressData} />
+          </div>
         </>
       )}
       
-      {view.type==="search" && <MovieGrid title={`Tìm kiếm: ${view.keyword}`} movies={movies} loading={loading} setView={setView} isHome={false} onLoadMore={handleLoadMore} hasMore={hasMore} loadingMore={loadingMore} />}
-      {view.type==="list" && <MovieGrid title={view.title} movies={movies} loading={loading} setView={setView} isHome={false} onLoadMore={handleLoadMore} hasMore={hasMore} loadingMore={loadingMore} />}
+      {view.type==="search" && <MovieGrid title={`Tìm kiếm: ${view.keyword}`} movies={movies} loading={loading} setView={setView} onLoadMore={handleLoadMore} hasMore={hasMore} loadingMore={loadingMore} />}
+      {view.type==="list" && <MovieGrid title={view.title} movies={movies} loading={loading} setView={setView} onLoadMore={handleLoadMore} hasMore={hasMore} loadingMore={loadingMore} />}
       {view.type==="detail" && <MovieDetail slug={view.slug} setView={setView} />}
       {view.type==="watch" && <Watch slug={view.slug} movieData={view.movieData} />}
 

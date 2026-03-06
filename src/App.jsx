@@ -183,7 +183,6 @@ const MovieCard = ({ m, setView, progressData, isRow = false, onRemove = null, o
             else { setView({type:"detail",slug:m.slug}); window.scrollTo(0,0) }
          }}>
       
-      {/* Nút Xóa (X) - Chỉ hiện khi ở hàng Tiếp tục xem */}
       {onRemove && (
         <button 
           onClick={(e) => { e.stopPropagation(); onRemove(m.slug); }}
@@ -297,7 +296,6 @@ const ContinueWatching = ({ setView, progressData, onRemove }) => {
             isRow={true} 
             onRemove={onRemove}
             onClickOverride={() => {
-                // Nhảy thẳng vào màn hình xem phim
                 setView({type: "watch", slug});
                 window.scrollTo(0,0);
             }}
@@ -439,7 +437,7 @@ const MovieGrid = ({ movies, setView, loading, title, onLoadMore, hasMore, loadi
   );
 };
 
-// --- 8. CHI TIẾT PHIM ---
+// --- 8. CHI TIẾT PHIM (DÀN TRANG CHUẨN NETFLIX APP MOBILE) ---
 const MovieDetail = ({ slug, setView }) => {
   const [m, setM] = useState(null);
   const [error, setError] = useState(false);
@@ -459,21 +457,27 @@ const MovieDetail = ({ slug, setView }) => {
 
   return (
     <div className="pb-20 animate-in fade-in duration-700">
-      <div className="relative h-[65vh] md:h-[80vh] w-full overflow-hidden flex flex-col justify-end">
+      {/* SECTION 1: HERO - IMMERSIVE VIEW */}
+      <div className="relative h-[50vh] md:h-[80vh] w-full overflow-hidden flex flex-col justify-end">
+        {/* Big Backdrop Background */}
         <img src={getImg(i?.poster_url || i?.thumb_url)} className="absolute inset-0 w-full h-full object-cover opacity-60" alt="" />
         <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/80 to-transparent" />
         <div className="absolute inset-0 bg-gradient-to-r from-[#050505] via-black/20 to-transparent hidden md:block" />
         
-        <div className="relative z-10 w-full max-w-7xl mx-auto px-6 md:px-8 pb-8 flex flex-col md:flex-row gap-8 items-center md:items-end">
-          <div className="w-44 md:w-56 lg:w-64 shrink-0 shadow-[0_20px_50px_rgba(0,0,0,1)] transform md:hover:scale-105 transition-transform duration-500">
+        {/* Hero Content Wrapper */}
+        <div className="relative z-10 w-full max-w-7xl mx-auto px-6 md:px-8 pb-6 flex flex-col md:flex-row gap-6 items-center md:items-end">
+          {/* POSTER - High shadow & clean edges */}
+          <div className="w-40 md:w-56 lg:w-64 shrink-0 shadow-[0_20px_50px_rgba(0,0,0,1)] transform md:hover:scale-105 transition-transform duration-500">
             <img src={getImg(posterPath)} className="w-full aspect-[2/3] object-cover rounded-xl border border-white/5" alt={i?.name} />
           </div>
           
+          {/* MOVIE INFO */}
           <div className="flex-1 flex flex-col items-center md:items-start text-center md:text-left">
             <h1 className="text-2xl md:text-5xl lg:text-6xl font-black text-white mb-2 tracking-tight leading-tight drop-shadow-2xl line-clamp-2 md:line-clamp-none">
               {i?.name}
             </h1>
             
+            {/* Metadata Line */}
             <div className="flex flex-wrap justify-center md:justify-start items-center gap-2 mb-6 text-gray-400 text-[10px] md:text-sm font-bold tracking-wide">
               <span className="text-green-500">98% Match</span>
               <span>•</span>
@@ -484,38 +488,27 @@ const MovieDetail = ({ slug, setView }) => {
               <span>{i?.episode_current}</span>
             </div>
             
+            {/* Primary Action Button */}
             <button 
               onClick={() => {setView({type:"watch",slug:i?.slug,movieData:m}); window.scrollTo(0,0)}} 
               className="w-full md:w-fit md:min-w-[280px] bg-[#E50914] hover:bg-red-700 text-white px-10 py-3.5 rounded-full font-black flex justify-center items-center gap-3 transition-all transform active:scale-95 shadow-[0_8px_20px_rgba(229,9,20,0.4)] text-sm md:text-lg uppercase tracking-widest"
             >
               <Icon.Play size={20} fill="currentColor"/> BẮT ĐẦU PHÁT
             </button>
-            
-            <div className="flex gap-10 mt-8 opacity-70">
-                <div className="flex flex-col items-center gap-1 cursor-pointer hover:opacity-100 transition">
-                    <Icon.Plus size={20} className="text-white" />
-                    <span className="text-[10px] font-bold text-white">Danh sách</span>
-                </div>
-                <div className="flex flex-col items-center gap-1 cursor-pointer hover:opacity-100 transition">
-                    <Icon.ThumbsUp size={20} className="text-white" />
-                    <span className="text-[10px] font-bold text-white">Xếp hạng</span>
-                </div>
-                <div className="flex flex-col items-center gap-1 cursor-pointer hover:opacity-100 transition">
-                    <Icon.Share2 size={20} className="text-white" />
-                    <span className="text-[10px] font-bold text-white">Chia sẻ</span>
-                </div>
-            </div>
           </div>
         </div>
       </div>
       
+      {/* SECTION 2: CONTENT & METADATA */}
       <div className="max-w-7xl mx-auto px-6 md:px-8 mt-12 grid md:grid-cols-12 gap-8 lg:gap-14 items-start">
+         {/* SYNOPSIS */}
          <div className="md:col-span-8">
             <h3 className="text-sm font-black text-white/50 uppercase tracking-[0.2em] mb-4">Nội dung phim</h3>
             <div className="text-gray-200 text-[13px] md:text-base leading-relaxed font-medium" 
                  dangerouslySetInnerHTML={{__html:i?.content || "Thông tin đang được cập nhật..."}} />
          </div>
          
+         {/* DETAILS SIDEBAR */}
          <div className="md:col-span-4 space-y-8 md:pt-4">
             {[
               {l:"Quốc gia", v:i?.country?.map(c=>c.name).join(", ")}, 
@@ -650,13 +643,10 @@ export default function App() {
         <>
           <Hero />
           <div className="max-w-7xl mx-auto px-4 md:px-8 -mt-10 md:-mt-24 relative z-20 pb-20">
-             {/* 1. Hàng Phim Mới Cập Nhật */}
              <MovieSection title="Phim Mới Cập Nhật" slug="phim-moi" setView={setView} progressData={progressData} />
 
-             {/* 2. Hàng Phim Đang Xem Dở (Netflix Style) - ĐÃ CHUYỂN XUỐNG DƯỚI */}
              <ContinueWatching setView={setView} progressData={progressData} onRemove={removeProgress} />
 
-             {/* 3. Các hàng phim lướt ngang khác */}
              <MovieSection title="Hành Động & Phiêu Lưu" slug="hanh-dong" setView={setView} progressData={progressData} />
              <MovieSection title="Viễn Tưởng & Siêu Anh Hùng" slug="vien-tuong" setView={setView} progressData={progressData} />
              <MovieSection title="Kinh Dị & Giật Gân" slug="kinh-di" setView={setView} progressData={progressData} />

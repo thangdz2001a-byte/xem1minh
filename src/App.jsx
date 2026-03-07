@@ -178,11 +178,9 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
 
   useEffect(() => {
     if (!useIframe || !movieSlug || !ep?.slug) return;
-    
     const timer = setTimeout(() => {
       const progress = JSON.parse(localStorage.getItem("movieProgress") || "{}");
       const currentProg = progress[movieSlug];
-      
       progress[movieSlug] = {
         episodeSlug: ep.slug,
         currentTime: currentProg?.currentTime || 0,
@@ -194,7 +192,6 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
       };
       localStorage.setItem("movieProgress", JSON.stringify(progress));
     }, 5000); 
-
     return () => clearTimeout(timer);
   }, [useIframe, movieSlug, ep, movieName, originName, thumbUrl, movieYear]);
 
@@ -322,16 +319,15 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
     if (!document.fullscreenElement && !document.webkitFullscreenElement) {
       if (container.requestFullscreen) {
         container.requestFullscreen().catch(() => {});
-      } else if (container.webkitRequestFullscreen) { /* Safari */
+      } else if (container.webkitRequestFullscreen) {
         container.webkitRequestFullscreen();
       } else if (video && video.webkitEnterFullscreen) {
-        // Đặc quyền cho iOS Safari Mobile
         video.webkitEnterFullscreen();
       }
     } else {
       if (document.exitFullscreen) {
         document.exitFullscreen();
-      } else if (document.webkitExitFullscreen) { /* Safari */
+      } else if (document.webkitExitFullscreen) {
         document.webkitExitFullscreen();
       }
     }
@@ -1054,55 +1050,68 @@ function ContinueWatching({ navigate, progressData, onRemove }) {
   );
 }
 
-// COMPONENT DROPDOWN TÙY CHỈNH KÈM PHÂN TRANG (PAGINATION) DÀNH CHO HEADER CỰC ĐẸP
+// COMPONENT DROPDOWN TÙY CHỈNH KÈM PHÂN TRANG (Căn giữa toán học tuyệt đối dựa trên tâm chữ tiêu đề)
 const DropdownGrid = ({ label, items, navigate, mode }) => {
   const [page, setPage] = useState(0);
-  const cols = mode === "search" ? 4 : 3;
-  const itemsPerPage = mode === "search" ? 12 : 9; // Đảm bảo vừa gọn trên 3 hoặc 4 cột
+  const itemsPerPage = mode === "search" ? 12 : 9; 
   const totalPages = Math.ceil((items?.length || 0) / itemsPerPage);
   const currentItems = (items || []).slice(page * itemsPerPage, (page + 1) * itemsPerPage);
 
   return (
-    <div className="relative group cursor-pointer flex items-center gap-1 hover:text-white transition uppercase py-2" onMouseEnter={() => setPage(0)}>
-      {label} <Icon.ChevronDown size={14} strokeWidth={3} className="opacity-60 group-hover:rotate-180 transition-transform duration-300 transform-gpu" />
-      <div className="absolute hidden group-hover:block bg-[#111]/95 backdrop-blur-xl p-4 w-[360px] rounded-2xl top-full left-1/2 -translate-x-1/2 border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.9)] mt-0 z-50 transform-gpu cursor-default" onClick={e => e.stopPropagation()}>
-        <div className={`grid ${cols === 4 ? 'grid-cols-4' : 'grid-cols-3'} gap-2 text-center min-h-[110px] items-start`}>
-          {currentItems.map((c) => (
-            <button 
-               key={c.slug || c} 
-               onClick={(e) => { 
-                 e.stopPropagation(); 
-                 if (mode === 'search') navigate({ type: "search", keyword: c.toString() });
-                 else navigate({ type: "list", slug: c.slug, title: c.name, mode: mode }); 
-               }} 
-               className="py-2 px-1 text-[10px] lg:text-[11px] font-bold text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all uppercase tracking-tight truncate"
-            >
-              {c.name || c}
-            </button>
-          ))}
+    <div className="group cursor-pointer flex items-center h-full py-4 px-1 lg:px-2" onMouseEnter={() => setPage(0)}>
+      <div className="relative inline-flex items-center justify-center">
+        {/* Vùng chứa text để làm mỏ neo tuyệt đối. Chữ nằm thẳng với tâm bảng Dropdown */}
+        <span className="font-black tracking-widest uppercase hover:text-white transition whitespace-nowrap">
+          {label}
+        </span>
+
+        {/* Dropdown Container Căn GIỮA TUYỆT ĐỐI (left-1/2 -translate-x-1/2) so với chữ */}
+        <div className="absolute top-full left-1/2 -translate-x-1/2 pt-[22px] hidden group-hover:block z-50 cursor-default font-sans normal-case tracking-normal font-normal" onClick={e => e.stopPropagation()}>
+           <div className="bg-[#111]/98 backdrop-blur-xl p-5 w-[360px] rounded-2xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.9)] relative">
+              {/* Grid Content */}
+              <div className="grid grid-cols-3 gap-2 text-center min-h-[110px] items-start relative z-20">
+                {currentItems.map((c) => (
+                  <button 
+                     key={c.slug || c} 
+                     onClick={(e) => { 
+                       e.stopPropagation(); 
+                       if (mode === 'search') navigate({ type: "search", keyword: c.toString() });
+                       else navigate({ type: "list", slug: c.slug, title: c.name, mode: mode }); 
+                     }} 
+                     className="py-2 px-1 text-[10px] lg:text-[11px] font-bold text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all uppercase tracking-tight text-center w-full truncate"
+                  >
+                    {c.name || c}
+                  </button>
+                ))}
+              </div>
+              
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex justify-between items-center mt-3 pt-3 border-t border-white/10 relative z-20">
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setPage(p => Math.max(0, p - 1)); }}
+                    className={`p-1.5 rounded-full transition-colors ${page === 0 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white/10 text-white'}`}
+                  >
+                    <Icon.ChevronLeft size={16} />
+                  </button>
+                  <div className="flex gap-1.5">
+                    {Array.from({ length: totalPages }).map((_, i) => (
+                      <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all ${i === page ? 'bg-[#E50914] scale-125' : 'bg-white/20'}`} />
+                    ))}
+                  </div>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setPage(p => Math.min(totalPages - 1, p + 1)); }}
+                    className={`p-1.5 rounded-full transition-colors ${page === totalPages - 1 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white/10 text-white'}`}
+                  >
+                    <Icon.ChevronRight size={16} />
+                  </button>
+                </div>
+              )}
+           </div>
         </div>
-        {totalPages > 1 && (
-          <div className="flex justify-between items-center mt-2 pt-2 border-t border-white/10">
-            <button 
-              onClick={(e) => { e.stopPropagation(); setPage(p => Math.max(0, p - 1)); }}
-              className={`p-1 rounded-full transition-colors ${page === 0 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white/10 text-white'}`}
-            >
-              <Icon.ChevronLeft size={16} />
-            </button>
-            <div className="flex gap-1.5">
-              {Array.from({ length: totalPages }).map((_, i) => (
-                <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all ${i === page ? 'bg-[#E50914] scale-125' : 'bg-white/20'}`} />
-              ))}
-            </div>
-            <button 
-              onClick={(e) => { e.stopPropagation(); setPage(p => Math.min(totalPages - 1, p + 1)); }}
-              className={`p-1 rounded-full transition-colors ${page === totalPages - 1 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white/10 text-white'}`}
-            >
-              <Icon.ChevronRight size={16} />
-            </button>
-          </div>
-        )}
       </div>
+      {/* Mũi tên Chevron nằm ngoài để không đẩy lệch tâm của tiêu đề */}
+      <Icon.ChevronDown size={12} strokeWidth={3} className="ml-1.5 opacity-60 group-hover:rotate-180 transition-transform duration-300" />
     </div>
   );
 };
@@ -1130,11 +1139,12 @@ function Header({ navigate, categories, countries }) {
             POLITE
           </div>
 
-          <nav className="hidden md:flex flex-1 justify-center gap-4 lg:gap-8 text-[11px] lg:text-[12px] font-black tracking-widest text-gray-300 items-center whitespace-nowrap">
-            <button onClick={() => navigate({ type: "home" })} className="hover:text-white transition uppercase py-2">Trang Chủ</button>
-            
+          <nav className="hidden md:flex flex-1 justify-center text-[11px] lg:text-[12px] text-gray-300 items-center whitespace-nowrap">
+            <button onClick={() => navigate({ type: "home" })} className="font-black tracking-widest hover:text-white transition uppercase py-4 px-2 mr-2 lg:mr-4">Trang Chủ</button>
             <DropdownGrid label="Thể Loại" items={categories} navigate={navigate} mode="the-loai" />
+            <div className="w-2 lg:w-4" /> {/* Spacer */}
             <DropdownGrid label="Quốc Gia" items={countries} navigate={navigate} mode="quoc-gia" />
+            <div className="w-2 lg:w-4" /> {/* Spacer */}
             <DropdownGrid label="Năm Phát Hành" items={YEARS} navigate={navigate} mode="search" />
           </nav>
 
@@ -1330,7 +1340,7 @@ function MovieGrid({ movies, navigate, loading, title, onLoadMore, hasMore, load
   return (
     <div className="max-w-[1400px] mx-auto px-4 md:px-12 pt-20 md:pt-32 pb-10 min-h-screen transform-gpu">
       <h2 className="text-xl md:text-[28px] font-black text-white mb-8 uppercase tracking-tighter flex items-center gap-3">
-        <span className="w-[4px] h-6 md:h-9 bg-[#E50914] block" /> {title}
+        <span className="w-[4px] h-6 md:h-8 bg-[#E50914] block" /> {title}
       </h2>
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-4 sm:gap-6">
         {movies.map((m, idx) => <MovieCard key={`${m.slug}-${idx}`} m={m} navigate={navigate} progressData={progressData} />)}
@@ -1372,7 +1382,6 @@ function MovieDetail({ slug, navigate }) {
            return;
         } 
         
-        // Thuật toán Quét Dự phòng nếu 2 API chết cục bộ
         const searchSlug = slug.replace(/-/g, ' ');
         try {
            const searchRes = await fetch(`${API_NGUONC}/search?keyword=${encodeURIComponent(searchSlug)}`);
@@ -1806,7 +1815,7 @@ export default function App() {
     fetch(`${API}/the-loai`).then((r) => r.json()).then((j) => setCats(j?.data?.items || [])).catch(() => {});
     fetch(`${API}/quoc-gia`).then((r) => r.json()).then((j) => setCountries(j?.data?.items || [])).catch(() => {});
 
-    // SETUP PWA (Thêm vào Màn hình chính iOS / Android)
+    // SETUP PWA: Mã hóa SVG Icon sang Base64 để tránh lỗi trình duyệt
     const setupPWA = () => {
       const metaTags = [
         { name: 'apple-mobile-web-app-capable', content: 'yes' },
@@ -1822,8 +1831,9 @@ export default function App() {
         document.head.appendChild(meta);
       });
 
-      const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="black"/><text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-family="Arial" font-weight="900" font-style="italic" font-size="70" fill="%23E50914">P</text></svg>`;
-      const iconUrl = `data:image/svg+xml,${encodeURIComponent(svgIcon)}`;
+      // Mã màu đỏ chuẩn #E50914 (Logo sẽ không bị đen)
+      const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="#000000"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-family="Arial, sans-serif" font-weight="900" font-style="italic" font-size="65" fill="#E50914">P</text></svg>`;
+      const iconUrl = `data:image/svg+xml;base64,${btoa(svgIcon)}`;
       
       let appleIcon = document.createElement('link');
       appleIcon.rel = 'apple-touch-icon';
@@ -1860,6 +1870,7 @@ export default function App() {
     if (isNewView) { setLoading(true); setMovies([]); } 
     else { setLoadingMore(true); }
 
+    // THUẬT TOÁN TÌM PHIM CỦA DIỄN VIÊN (ĐÃ NÂNG CẤP CHẶN PHIM RÁC VÀ ÉP BUỘC TRÙNG TÊN VÀ NĂM)
     if (view.type === "actor") {
        try {
          const tmdbRes = await fetch(`https://api.themoviedb.org/3/person/${view.actorId}/combined_credits?api_key=${TMDB_API_KEY}&language=vi-VN`);
@@ -1875,20 +1886,27 @@ export default function App() {
             const releaseYear = (tmdbItem.release_date || tmdbItem.first_air_date || '').substring(0, 4);
             if (!titleQuery) return null;
             
+            const normalize = (s) => (s || "").toLowerCase().replace(/[:\-]/g, ' ').replace(/\s+/g, ' ').trim();
+            const qTitle = normalize(titleQuery);
+
             const checkMatch = (items) => {
                 if (!items || items.length === 0) return null;
-                const exactMatch = items.find(m => 
-                    m.name?.toLowerCase() === (tmdbItem.title || tmdbItem.name)?.toLowerCase() ||
-                    m.origin_name?.toLowerCase() === (tmdbItem.original_title || tmdbItem.original_name)?.toLowerCase() ||
-                    m.original_name?.toLowerCase() === (tmdbItem.original_title || tmdbItem.original_name)?.toLowerCase()
-                );
-                if (exactMatch) return exactMatch;
                 
-                if (releaseYear) {
-                    const yearMatch = items.find(m => m.year?.toString() === releaseYear);
-                    if (yearMatch) return yearMatch;
+                let exactMatch = items.find(m => 
+                    normalize(m.name) === qTitle || 
+                    normalize(m.origin_name || m.original_name) === qTitle
+                );
+
+                if (exactMatch) {
+                   if (releaseYear && exactMatch.year) {
+                       if (Math.abs(parseInt(exactMatch.year) - parseInt(releaseYear)) <= 1) return exactMatch;
+                       return null; 
+                   }
+                   return exactMatch; 
                 }
-                return items[0]; 
+                
+                // Trả về null nếu không khớp 100%, không lấy rác
+                return null; 
             };
 
             try {

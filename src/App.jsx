@@ -1051,7 +1051,12 @@ function ContinueWatching({ navigate, progressData, onRemove }) {
   );
 }
 
-// COMPONENT DROPDOWN TÙY CHỈNH KÈM PHÂN TRANG (Căn giữa TOÁN HỌC TUYỆT ĐỐI chuẩn 100%)
+// ============================================================
+// FIX: MỎ NEO TOÁN HỌC CHUẨN XÁC 100%
+// Lớp relative chỉ bao bọc ĐÚNG CHỮ "THỂ LOẠI". Bảng menu sẽ 
+// thả xuống và lấy tâm là tâm của chữ. Cột giữa của bảng sẽ 
+// thẳng hàng dọc 100% với chữ.
+// ============================================================
 const DropdownGrid = ({ label, items, navigate, mode }) => {
   const [page, setPage] = useState(0);
   const cols = mode === "search" ? 4 : 3;
@@ -1062,13 +1067,13 @@ const DropdownGrid = ({ label, items, navigate, mode }) => {
   return (
     <div className="group cursor-pointer flex items-center h-full py-4 px-1 lg:px-2" onMouseEnter={() => setPage(0)}>
       {/* Vùng mỏ neo RELATIVE CHỈ BỌC ĐÚNG CHỮ để Dropdown gióng tâm chính xác 100% */}
-      <div className="relative flex justify-center">
+      <div className="relative flex justify-center items-center">
         <span className="font-black tracking-widest uppercase hover:text-white transition whitespace-nowrap">
           {label}
         </span>
 
         {/* Dropdown Container Căn GIỮA TUYỆT ĐỐI so với tâm của chữ */}
-        <div className="absolute top-full left-1/2 -translate-x-1/2 pt-[22px] hidden group-hover:block z-50 cursor-default font-sans normal-case tracking-normal font-normal" onClick={e => e.stopPropagation()}>
+        <div className="absolute top-[100%] mt-[16px] left-1/2 -translate-x-1/2 hidden group-hover:block z-50 cursor-default font-sans normal-case tracking-normal font-normal" onClick={e => e.stopPropagation()}>
            <div className="bg-[#111] p-5 w-[380px] rounded-2xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.9)] relative">
               {/* Mũi tên chỉ lên đỉnh */}
               <div className="absolute -top-[6px] left-1/2 -translate-x-1/2 w-3 h-3 bg-[#111] border-t border-l border-white/10 rotate-45 rounded-tl-[2px] z-10"></div>
@@ -1114,8 +1119,10 @@ const DropdownGrid = ({ label, items, navigate, mode }) => {
               )}
            </div>
         </div>
+        {/* Vùng đệm vô hình để nối liền khoảng trống giữa chữ và bảng, giúp không bị mất hover */}
+        <div className="absolute top-[100%] left-1/2 -translate-x-1/2 w-full h-[16px] hidden group-hover:block z-40"></div>
       </div>
-      {/* Icon Mũi tên nằm ngoài thẻ mỏ neo để không làm lệch toạ độ tâm của chữ */}
+      {/* Icon Mũi tên nằm ngoài, không ảnh hưởng đến tọa độ left-1/2 của Dropdown */}
       <Icon.ChevronDown size={12} strokeWidth={3} className="ml-1.5 opacity-60 group-hover:rotate-180 transition-transform duration-300" />
     </div>
   );
@@ -1144,7 +1151,7 @@ function Header({ navigate, categories, countries }) {
             POLITE
           </div>
 
-          <nav className="hidden md:flex flex-1 justify-center text-[11px] lg:text-[12px] text-gray-300 items-center whitespace-nowrap gap-4 lg:gap-8">
+          <nav className="hidden md:flex items-center justify-center text-[11px] lg:text-[12px] text-gray-300 whitespace-nowrap gap-4 lg:gap-8">
             <button onClick={() => navigate({ type: "home" })} className="font-black tracking-widest hover:text-white transition uppercase py-4 px-2 mr-2 lg:mr-4">Trang Chủ</button>
             <DropdownGrid label="Thể Loại" items={categories} navigate={navigate} mode="the-loai" />
             <DropdownGrid label="Quốc Gia" items={countries} navigate={navigate} mode="quoc-gia" />
@@ -1510,7 +1517,7 @@ function MovieDetail({ slug, navigate }) {
            </h3>
            <div className="text-gray-400 leading-relaxed text-base md:text-lg font-medium" dangerouslySetInnerHTML={{ __html: typeof i?.content === 'string' ? i.content : "Đang cập nhật nội dung..." }} />
            
-           {/* DANH SÁCH DIỄN VIÊN (Click để lọc phim) */}
+           {/* DANH SÁCH DIỄN VIÊN */}
            {cast && cast.length > 0 && (
              <div className="mt-10 pt-8 border-t border-white/5">
                 <h4 className="text-sm font-black text-white uppercase mb-6 tracking-[0.2em] text-[#E50914]">Diễn viên</h4>
@@ -1826,6 +1833,7 @@ export default function App() {
     fetch(`${API}/the-loai`).then((r) => r.json()).then((j) => setCats(j?.data?.items || [])).catch(() => {});
     fetch(`${API}/quoc-gia`).then((r) => r.json()).then((j) => setCountries(j?.data?.items || [])).catch(() => {});
 
+    // MÃ TẠO MÀN HÌNH SPLASH SCREEN PWA + FIX LOGO BỊ ĐEN
     const setupPWA = () => {
       const metaTags = [
         { name: 'apple-mobile-web-app-capable', content: 'yes' },
@@ -1853,6 +1861,30 @@ export default function App() {
       standardIcon.rel = 'icon';
       standardIcon.href = iconUrl;
       document.head.appendChild(standardIcon);
+
+      // Tự động vẽ Splash Screen xịn xò để xóa sổ màn hình đen thui khi mở trên điện thoại
+      try {
+        const canvas = document.createElement('canvas');
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = window.screen.width * dpr;
+        canvas.height = window.screen.height * dpr;
+        const ctx = canvas.getContext('2d');
+
+        ctx.fillStyle = '#050505';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.font = `italic 900 ${canvas.width * 0.15}px Arial, sans-serif`;
+        ctx.fillStyle = '#E50914';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('POLITE', canvas.width / 2, canvas.height / 2);
+
+        const splashUrl = canvas.toDataURL('image/png');
+        let splashLink = document.createElement('link');
+        splashLink.rel = 'apple-touch-startup-image';
+        splashLink.href = splashUrl;
+        document.head.appendChild(splashLink);
+      } catch(e) {}
 
       const manifest = {
         name: "POLITE Phim",
@@ -1888,7 +1920,7 @@ export default function App() {
          const topMovies = (tmdbData.cast || [])
             .filter(m => (m.media_type === "movie" || m.media_type === "tv") && !m.character?.toLowerCase().includes("self") && !m.character?.toLowerCase().includes("voice") && !m.character?.toLowerCase().includes("uncredited"))
             .sort((a,b) => b.popularity - a.popularity)
-            .slice(0, 40); // Tăng lên 40 phim để bao quát hết sự nghiệp
+            .slice(0, 40); 
 
          const searchPromises = topMovies.map(async (tmdbItem) => {
             const titleQuery = tmdbItem.original_title || tmdbItem.original_name || tmdbItem.title || tmdbItem.name;
@@ -1940,8 +1972,14 @@ export default function App() {
          const results = await Promise.all(searchPromises);
          const validMovies = results.filter(Boolean);
          
+         const sortedMovies = validMovies.sort((a, b) => {
+           const aHas = (a.thumb_url || a.poster_url) ? 1 : 0;
+           const bHas = (b.thumb_url || b.poster_url) ? 1 : 0;
+           return bHas - aHas;
+         });
+
          const uniqueMap = new Map();
-         validMovies.forEach(m => {
+         sortedMovies.forEach(m => {
             const key = m.origin_name || m.original_name || m.slug;
             if(!uniqueMap.has(key)) uniqueMap.set(key, m);
          });
@@ -2065,7 +2103,7 @@ export default function App() {
           navigate={navigate}
           onLoadMore={() => { if (!loadingMore && hasMore) { setPage((p) => p + 1); fetchData(page + 1, false); } }} 
           hasMore={hasMore} 
-          loadingMore={loadingMore} 
+          loading_more={loadingMore} 
         />
       )}
       

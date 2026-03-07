@@ -9,7 +9,7 @@ const IMG = "https://img.ophim.live/uploads/movies";
 const TMDB_API_KEY = "0e620a51728a0fea887a8506831d8866";
 
 // Danh sách Năm tĩnh
-const YEARS = Array.from({ length: 15 }, (_, i) => new Date().getFullYear() - i);
+const YEARS = Array.from({ length: 20 }, (_, i) => new Date().getFullYear() - i);
 
 // --- UTILS ---
 function getImg(p) {
@@ -29,7 +29,6 @@ function formatTime(seconds) {
     : `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
-// HÀM BẢO VỆ CHỐNG CRASH MÀN HÌNH ĐEN (Xử lý mảng/chuỗi an toàn tuyệt đối)
 const safeJoin = (data) => {
   if (!data) return "Đang cập nhật";
   if (typeof data === 'string') return data;
@@ -62,7 +61,6 @@ async function fetchTMDB(name, originName, slug, year) {
     if (results.length === 0 && name) results = await search(name);
 
     if (results.length > 0) {
-       // Ưu tiên tìm phim khớp năm để phân biệt phim trùng tên
        if (year) {
           match = results.find(item => 
              item.media_type !== 'person' &&
@@ -147,6 +145,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
   const vRef = useRef(null);
   const containerRef = useRef(null);
   const hlsRef = useRef(null);
+  const lastSaveRef = useRef(0); 
   
   const m3u8Link = ep?.link_m3u8;
   const embedLink = ep?.link_embed;
@@ -174,6 +173,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
     setShowSettings(false);
     setIsIdle(false);
     setHlsError(false);
+    lastSaveRef.current = 0;
   }, [ep, m3u8Link, forceIframe]);
 
   useEffect(() => {
@@ -269,7 +269,8 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
 
     const handleTimeUpdate = () => {
       setCurrentTime(video.currentTime);
-      if (video.currentTime > 0 && video.duration > 0) {
+      if (video.currentTime > 0 && video.duration > 0 && Math.abs(video.currentTime - lastSaveRef.current) > 5) {
+        lastSaveRef.current = video.currentTime;
         const progress = JSON.parse(localStorage.getItem("movieProgress") || "{}");
         progress[movieSlug] = {
           episodeSlug: ep.slug,
@@ -315,11 +316,24 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
 
   const toggleFullscreen = (e) => {
     if (e) e.stopPropagation();
-    if (!containerRef.current) return;
-    if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen().catch(() => {});
+    const container = containerRef.current;
+    const video = vRef.current;
+
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+      if (container.requestFullscreen) {
+        container.requestFullscreen().catch(() => {});
+      } else if (container.webkitRequestFullscreen) { /* Safari */
+        container.webkitRequestFullscreen();
+      } else if (video && video.webkitEnterFullscreen) {
+        // Đặc quyền cho iOS Safari Mobile
+        video.webkitEnterFullscreen();
+      }
     } else {
-      document.exitFullscreen();
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      } else if (document.webkitExitFullscreen) { /* Safari */
+        document.webkitExitFullscreen();
+      }
     }
   };
 
@@ -382,9 +396,13 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
   }, [useIframe, hlsError, isPlaying, duration]);
 
   useEffect(() => {
-    const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
+    const handleFullscreenChange = () => setIsFullscreen(!!(document.fullscreenElement || document.webkitFullscreenElement));
     document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
+    return () => {
+       document.removeEventListener("fullscreenchange", handleFullscreenChange);
+       document.removeEventListener("webkitfullscreenchange", handleFullscreenChange);
+    };
   }, []);
 
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -393,7 +411,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
   return (
     <div 
       ref={containerRef} 
-      className={`relative w-full aspect-video bg-black shadow-2xl md:rounded-2xl overflow-hidden border border-white/5 group flex justify-center items-center ${isIdle && isPlaying ? "cursor-none" : "cursor-default"}`}
+      className={`relative w-full aspect-video bg-black shadow-2xl md:rounded-2xl overflow-hidden border border-white/5 group flex justify-center items-center transform-gpu ${isIdle && isPlaying ? "cursor-none" : "cursor-default"}`}
       onMouseMove={handleMouseMove}
       onMouseLeave={() => { if(isPlaying) setIsIdle(true); }}
       onClick={() => { if(showSettings) setShowSettings(false); }}
@@ -425,17 +443,17 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
             onClick={togglePlay}
           />
 
-          <div className={`absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/30 pointer-events-none transition-opacity duration-300 ${isIdle && isPlaying ? 'opacity-0' : 'opacity-100'}`} />
+          <div className={`absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/30 pointer-events-none transition-opacity duration-300 will-change-opacity transform-gpu ${isIdle && isPlaying ? 'opacity-0' : 'opacity-100'}`} />
 
           {!isPlaying && !hlsError && (
-            <button onClick={togglePlay} className="absolute inset-0 m-auto w-14 h-14 md:w-20 md:h-20 bg-[#E50914]/90 rounded-full flex justify-center items-center text-white z-20 hover:scale-110 transition-transform shadow-[0_0_30px_rgba(229,9,20,0.6)] backdrop-blur-md">
+            <button onClick={togglePlay} className="absolute inset-0 m-auto w-14 h-14 md:w-20 md:h-20 bg-[#E50914]/90 rounded-full flex justify-center items-center text-white z-20 hover:scale-110 transition-transform shadow-[0_0_30px_rgba(229,9,20,0.6)] backdrop-blur-md transform-gpu">
               <Icon.Play fill="currentColor" className="w-6 h-6 md:w-8 md:h-8 ml-1" />
             </button>
           )}
 
-          <div className={`absolute bottom-0 left-0 right-0 px-3 md:px-5 pb-3 md:pb-5 pt-12 z-30 transition-transform duration-500 flex flex-col justify-end ${isIdle && isPlaying ? 'translate-y-[120%]' : 'translate-y-0'}`}>
+          <div className={`absolute bottom-0 left-0 right-0 px-3 md:px-5 pb-3 md:pb-5 pt-12 z-30 transition-transform duration-500 transform-gpu flex flex-col justify-end ${isIdle && isPlaying ? 'translate-y-[120%]' : 'translate-y-0'}`}>
             
-            <div className="w-full flex items-center mb-2 md:mb-3 group/progress relative cursor-pointer" onClick={(e) => e.stopPropagation()}>
+            <div className="w-full flex items-center mb-2 md:mb-3 group/progress relative cursor-pointer will-change-transform" onClick={(e) => e.stopPropagation()}>
               <input
                 type="range"
                 min="0"
@@ -458,20 +476,20 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
               
               <div className="flex items-center gap-2 sm:gap-4">
                 
-                <button onClick={skipBackward} className="hover:text-[#E50914] transition-colors focus:outline-none p-1 md:p-0">
+                <button onClick={skipBackward} className="hover:text-[#E50914] transition-colors focus:outline-none p-1 md:p-0 transform-gpu hover:scale-110">
                   <Icon.RotateCcw className="w-4 h-4 md:w-5 md:h-5" />
                 </button>
                 
-                <button onClick={togglePlay} className="hover:text-[#E50914] transition-colors focus:outline-none p-1 md:p-0">
+                <button onClick={togglePlay} className="hover:text-[#E50914] transition-colors focus:outline-none p-1 md:p-0 transform-gpu hover:scale-110">
                   {isPlaying ? <Icon.Pause fill="currentColor" className="w-5 h-5 md:w-6 md:h-6" /> : <Icon.Play fill="currentColor" className="w-5 h-5 md:w-6 md:h-6" />}
                 </button>
 
-                <button onClick={skipForward} className="hover:text-[#E50914] transition-colors focus:outline-none p-1 md:p-0">
+                <button onClick={skipForward} className="hover:text-[#E50914] transition-colors focus:outline-none p-1 md:p-0 transform-gpu hover:scale-110">
                   <Icon.RotateCw className="w-4 h-4 md:w-5 md:h-5" />
                 </button>
                 
                 <div className="hidden md:flex group/vol items-center gap-2 relative ml-1">
-                  <button onClick={() => { if(vRef.current) vRef.current.muted = !vRef.current.muted; setIsMuted(!isMuted); }} className="focus:outline-none hover:text-[#E50914] transition-colors">
+                  <button onClick={() => { if(vRef.current) vRef.current.muted = !vRef.current.muted; setIsMuted(!isMuted); }} className="focus:outline-none hover:text-[#E50914] transition-colors transform-gpu hover:scale-110">
                     {isMuted || volume === 0 ? <Icon.VolumeX className="w-4 h-4 md:w-5 md:h-5" /> : <Icon.Volume2 className="w-4 h-4 md:w-5 md:h-5" />}
                   </button>
                   <input
@@ -503,11 +521,11 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
               <div className="flex items-center gap-3 sm:gap-4">
                 
                 <div className="relative">
-                  <button onClick={() => setShowSettings(!showSettings)} className="hover:text-[#E50914] transition-all duration-300 focus:outline-none p-1 flex items-center">
+                  <button onClick={() => setShowSettings(!showSettings)} className="hover:text-[#E50914] transition-all duration-300 focus:outline-none p-1 flex items-center transform-gpu hover:scale-110">
                     <Icon.Settings className={`w-4 h-4 md:w-5 md:h-5 ${showSettings ? "rotate-90 text-[#E50914]" : ""}`} />
                   </button>
                   {showSettings && levels.length > 0 && (
-                    <div className="absolute bottom-full right-0 mb-4 bg-[#111]/95 border border-white/10 rounded-xl overflow-hidden py-2 min-w-[100px] md:min-w-[120px] flex flex-col items-center backdrop-blur-xl z-50 shadow-[0_10px_40px_rgba(0,0,0,0.8)]">
+                    <div className="absolute bottom-full right-0 mb-4 bg-[#111]/95 border border-white/10 rounded-xl overflow-hidden py-2 min-w-[100px] md:min-w-[120px] flex flex-col items-center backdrop-blur-xl z-50 shadow-[0_10px_40px_rgba(0,0,0,0.8)] transform-gpu">
                       <span className="text-[9px] md:text-[10px] text-[#E50914] font-black uppercase tracking-[0.2em] mb-2 px-4 border-b border-white/10 pb-2 w-full text-center">Chất lượng</span>
                       <button onClick={(e) => switchQuality(-1, e)} className={`w-full px-4 py-2.5 text-[10px] md:text-xs font-bold hover:bg-white/10 transition-colors ${currentLevel === -1 ? 'text-[#E50914] bg-white/5' : 'text-gray-300'}`}>Tự động</button>
                       {levels.map((lvl, index) => (
@@ -519,7 +537,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
                   )}
                 </div>
 
-                <button onClick={toggleFullscreen} className="hover:text-[#E50914] transition-colors focus:outline-none p-1 flex items-center">
+                <button onClick={toggleFullscreen} className="hover:text-[#E50914] transition-colors focus:outline-none p-1 flex items-center transform-gpu hover:scale-110">
                   {isFullscreen ? <Icon.Minimize className="w-4 h-4 md:w-5 md:h-5" /> : <Icon.Maximize className="w-4 h-4 md:w-5 md:h-5" />}
                 </button>
               </div>
@@ -546,14 +564,14 @@ const SearchItem = memo(function SearchItem({ m, navigate, onClose }) {
       }}
       className="flex gap-4 p-4 hover:bg-white/5 rounded-xl cursor-pointer transition border-b border-white/5 last:border-0 group/card"
     >
-      <div className="w-16 md:w-20 shrink-0 aspect-[2/3] rounded-lg overflow-hidden bg-[#111] shadow-lg">
+      <div className="w-16 md:w-20 shrink-0 aspect-[2/3] rounded-lg overflow-hidden bg-[#111] shadow-lg transform-gpu">
         <SmartImage
           slug={m.slug}
           src={m.thumb_url || m.poster_url}
           originName={m.origin_name || m.original_name}
           name={m.name}
           year={m.year}
-          className="w-full h-full object-cover group-hover/card:scale-105 transition-transform duration-300"
+          className="w-full h-full object-cover group-hover/card:scale-105 transition-transform duration-300 transform-gpu will-change-transform"
           alt={m.name}
         />
       </div>
@@ -630,9 +648,9 @@ function SearchModal({ isOpen, onClose, navigate }) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-md flex justify-center pt-16 md:pt-24 px-4">
+    <div className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-md flex justify-center pt-16 md:pt-24 px-4 transition-opacity transform-gpu">
       <div className="absolute inset-0" onClick={onClose} />
-      <div className="relative w-full max-w-3xl bg-[#111] rounded-2xl border border-white/10 shadow-2xl flex flex-col max-h-[75vh] overflow-hidden">
+      <div className="relative w-full max-w-3xl bg-[#111] rounded-2xl border border-white/10 shadow-2xl flex flex-col max-h-[75vh] overflow-hidden transform-gpu">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -655,7 +673,7 @@ function SearchModal({ isOpen, onClose, navigate }) {
             TÌM
           </button>
         </form>
-        <div className="overflow-y-auto flex-1 p-2 no-scrollbar">
+        <div className="overflow-y-auto flex-1 p-2 no-scrollbar overscroll-contain">
           {loading ? (
             <div className="py-10 flex justify-center"><Icon.Loader2 className="animate-spin text-[#E50914]" size={30} /></div>
           ) : results.length > 0 ? (
@@ -686,30 +704,30 @@ const MovieCard = memo(function MovieCard({ m, navigate, progressData, isRow = f
 
   return (
     <div
-      className={`group/card cursor-pointer flex flex-col shrink-0 relative ${isRow ? "w-[120px] sm:w-[150px] md:w-52 lg:w-60 xl:w-64" : ""}`}
+      className={`group/card cursor-pointer flex flex-col shrink-0 relative ${isRow ? "w-[120px] sm:w-[150px] md:w-52 lg:w-60 xl:w-64 snap-start" : ""}`}
       onClick={() => {
         if (onClickOverride) onClickOverride();
         else if (m.slug) { navigate({ type: "detail", slug: m.slug }); window.scrollTo(0, 0); }
       }}
     >
       {onRemove && (
-        <button onClick={(e) => { e.stopPropagation(); onRemove(m.slug); }} className="absolute top-1.5 right-1.5 md:top-2 md:right-2 z-30 bg-black/60 hover:bg-[#E50914] text-white p-1 md:p-1.5 rounded-full backdrop-blur-md opacity-0 group-hover/card:opacity-100 transition-all border border-white/10">
+        <button onClick={(e) => { e.stopPropagation(); onRemove(m.slug); }} className="absolute top-1.5 right-1.5 md:top-2 md:right-2 z-30 bg-black/60 hover:bg-[#E50914] text-white p-1 md:p-1.5 rounded-full backdrop-blur-md opacity-0 group-hover/card:opacity-100 transition-all border border-white/10 transform-gpu">
           <Icon.X size={12} className="md:w-[14px] md:h-[14px]" strokeWidth={3} />
         </button>
       )}
       
-      <div className="relative overflow-hidden rounded-xl aspect-[2/3] bg-[#111] shadow-xl border border-white/5">
+      <div className="relative overflow-hidden rounded-xl aspect-[2/3] bg-[#111] shadow-xl border border-white/5 transform-gpu">
         <SmartImage 
           slug={m.slug}
           src={thumbSrc} 
           originName={m.origin_name || m.original_name} 
           name={m.name} 
           year={m.year}
-          className="w-full h-full object-cover transition-all duration-500 group-hover/card:scale-110 group-hover/card:opacity-80" 
+          className="w-full h-full object-cover transition-transform duration-500 group-hover/card:scale-110 transform-gpu will-change-transform" 
           alt={m.name} 
         />
         
-        <div className="absolute inset-0 bg-white/5 opacity-0 group-hover/card:opacity-100 transition-opacity z-20 pointer-events-none" />
+        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/card:opacity-100 transition-opacity duration-500 z-20 pointer-events-none will-change-opacity" />
         
         <div className="absolute top-1.5 left-1.5 md:top-2 md:left-2 bg-[#E50914] text-white text-[8px] md:text-[10px] px-1.5 md:px-2 py-0.5 rounded font-black uppercase shadow-lg tracking-widest z-10">
           {m.quality || "HD"}
@@ -799,7 +817,7 @@ function TrendingSection({ navigate, progressData }) {
   };
 
   if (loading) return (
-    <div className="mb-8 md:mb-12 relative group/section">
+    <div className="mb-8 md:mb-12 relative group/section transform-gpu">
        <div className="flex items-center gap-4 mb-3 md:mb-4 px-1">
           <h2 className="text-[15px] sm:text-lg md:text-2xl font-black text-white uppercase tracking-tighter flex items-center gap-2 md:gap-3">
             <span className="w-[4px] h-6 md:h-8 bg-[#E50914] block" /> Phim Trending 🔥
@@ -811,20 +829,20 @@ function TrendingSection({ navigate, progressData }) {
   if (movies.length === 0) return null;
 
   return (
-    <div className="mb-8 md:mb-12 relative group/section">
+    <div className="mb-8 md:mb-12 relative group/section transform-gpu">
       <div className="flex items-center justify-between mb-3 md:mb-4 px-1">
         <h2 className="text-[15px] sm:text-lg md:text-2xl font-black text-white uppercase tracking-tighter flex items-center gap-2 md:gap-3">
           <span className="w-[4px] h-6 md:h-8 bg-[#E50914] block" /> Phim Trending 🔥
         </h2>
       </div>
       <div className="relative">
-        <button onClick={() => scroll("left")} className="absolute left-0 top-[40%] -translate-y-1/2 z-[40] bg-black/60 hover:bg-black/90 text-white p-2 md:p-3 rounded-r-2xl backdrop-blur-md opacity-0 group-hover/section:opacity-100 transition-all hidden md:flex items-center shadow-2xl">
+        <button onClick={() => scroll("left")} className="absolute left-0 top-[40%] -translate-y-1/2 z-[40] bg-black/60 hover:bg-black/90 text-white p-2 md:p-3 rounded-r-2xl backdrop-blur-md opacity-0 group-hover/section:opacity-100 transition-all hidden md:flex items-center shadow-2xl transform-gpu">
           <Icon.ChevronLeft size={30} className="md:w-9 md:h-9" />
         </button>
-        <div ref={scrollRef} className="flex gap-3 sm:gap-4 md:gap-6 overflow-x-auto scroll-smooth no-scrollbar pb-4 px-1 md:px-2">
+        <div ref={scrollRef} className="flex gap-3 sm:gap-4 md:gap-6 overflow-x-auto scroll-smooth no-scrollbar pb-4 px-1 md:px-2 snap-x snap-mandatory overscroll-x-contain will-change-scroll">
           {movies.map((m) => <MovieCard key={m.slug} m={m} navigate={navigate} progressData={progressData} isRow={true} />)}
         </div>
-        <button onClick={() => scroll("right")} className="absolute right-0 top-[40%] -translate-y-1/2 z-[40] bg-black/60 hover:bg-black/90 text-white p-2 md:p-3 rounded-l-2xl backdrop-blur-md opacity-0 group-hover/section:opacity-100 transition-all hidden md:flex items-center shadow-2xl">
+        <button onClick={() => scroll("right")} className="absolute right-0 top-[40%] -translate-y-1/2 z-[40] bg-black/60 hover:bg-black/90 text-white p-2 md:p-3 rounded-l-2xl backdrop-blur-md opacity-0 group-hover/section:opacity-100 transition-all hidden md:flex items-center shadow-2xl transform-gpu">
           <Icon.ChevronRight size={30} className="md:w-9 md:h-9" />
         </button>
       </div>
@@ -877,7 +895,6 @@ function MovieSection({ title, slug, type = "the-loai", navigate, progressData }
 
         const tmdbResults = await Promise.all(tmdbPromises);
         
-        // Khắc phục lỗi phim biến mất ngẫu nhiên: Sort thay vì Filter
         const sortedMovies = tmdbResults.sort((a, b) => {
            const aHas = (a.tmdbData?.backdrop_path || a.tmdbData?.poster_path) ? 1 : 0;
            const bHas = (b.tmdbData?.backdrop_path || b.tmdbData?.poster_path) ? 1 : 0;
@@ -905,7 +922,7 @@ function MovieSection({ title, slug, type = "the-loai", navigate, progressData }
   };
 
   if (loading) return (
-    <div className="mb-8 md:mb-12 relative group/section">
+    <div className="mb-8 md:mb-12 relative group/section transform-gpu">
        <div className="flex items-center gap-4 mb-3 md:mb-4 px-1">
           <h2 className="text-[15px] sm:text-lg md:text-2xl font-black text-white uppercase tracking-tighter flex items-center gap-2 md:gap-3">
             <span className="w-[4px] h-6 md:h-8 bg-[#E50914] block" /> {title}
@@ -917,7 +934,7 @@ function MovieSection({ title, slug, type = "the-loai", navigate, progressData }
   if (movies.length === 0) return null;
 
   return (
-    <div className="mb-8 md:mb-12 relative group/section">
+    <div className="mb-8 md:mb-12 relative group/section transform-gpu">
       <div className="flex items-center justify-between mb-3 md:mb-4 px-1">
         <h2 className="text-[15px] sm:text-lg md:text-2xl font-black text-white uppercase tracking-tighter flex items-center gap-2 md:gap-3">
           <span className="w-[4px] h-6 md:h-8 bg-[#E50914] block" /> {title}
@@ -925,13 +942,13 @@ function MovieSection({ title, slug, type = "the-loai", navigate, progressData }
         <button onClick={() => navigate({ type: "list", slug, title, mode: type })} className="text-[#E50914] text-[9px] sm:text-[10px] md:text-xs font-black hover:underline opacity-100 md:opacity-0 group-hover/section:opacity-100 transition-opacity uppercase tracking-widest">Xem tất cả</button>
       </div>
       <div className="relative">
-        <button onClick={() => scroll("left")} className="absolute left-0 top-[40%] -translate-y-1/2 z-[40] bg-black/60 hover:bg-black/90 text-white p-2 md:p-3 rounded-r-2xl backdrop-blur-md opacity-0 group-hover/section:opacity-100 transition-all hidden md:flex items-center shadow-2xl">
+        <button onClick={() => scroll("left")} className="absolute left-0 top-[40%] -translate-y-1/2 z-[40] bg-black/60 hover:bg-black/90 text-white p-2 md:p-3 rounded-r-2xl backdrop-blur-md opacity-0 group-hover/section:opacity-100 transition-all hidden md:flex items-center shadow-2xl transform-gpu">
           <Icon.ChevronLeft size={30} className="md:w-9 md:h-9" />
         </button>
-        <div ref={scrollRef} className="flex gap-3 sm:gap-4 md:gap-6 overflow-x-auto scroll-smooth no-scrollbar pb-4 px-1 md:px-2">
+        <div ref={scrollRef} className="flex gap-3 sm:gap-4 md:gap-6 overflow-x-auto scroll-smooth no-scrollbar pb-4 px-1 md:px-2 snap-x snap-mandatory overscroll-x-contain will-change-scroll">
           {movies.map((m) => <MovieCard key={m.slug} m={m} navigate={navigate} progressData={progressData} isRow={true} />)}
         </div>
-        <button onClick={() => scroll("right")} className="absolute right-0 top-[40%] -translate-y-1/2 z-[40] bg-black/60 hover:bg-black/90 text-white p-2 md:p-3 rounded-l-2xl backdrop-blur-md opacity-0 group-hover/section:opacity-100 transition-all hidden md:flex items-center shadow-2xl">
+        <button onClick={() => scroll("right")} className="absolute right-0 top-[40%] -translate-y-1/2 z-[40] bg-black/60 hover:bg-black/90 text-white p-2 md:p-3 rounded-l-2xl backdrop-blur-md opacity-0 group-hover/section:opacity-100 transition-all hidden md:flex items-center shadow-2xl transform-gpu">
           <Icon.ChevronRight size={30} className="md:w-9 md:h-9" />
         </button>
       </div>
@@ -991,17 +1008,17 @@ function ContinueWatching({ navigate, progressData, onRemove }) {
   };
 
   return (
-    <div className="mb-8 md:mb-12 animate-in slide-in-from-left duration-500 group/section">
+    <div className="mb-8 md:mb-12 animate-in slide-in-from-left duration-500 group/section transform-gpu">
       <div className="flex items-center mb-3 md:mb-4 px-1">
         <h2 className="text-[15px] sm:text-lg md:text-2xl font-black text-white uppercase tracking-tighter flex items-center gap-2 md:gap-3">
           <span className="w-[4px] h-6 md:h-8 bg-[#E50914] block" /> Tiếp tục xem
         </h2>
       </div>
       <div className="relative">
-        <button onClick={() => scroll("left")} className="absolute left-0 top-[40%] -translate-y-1/2 z-[40] bg-black/60 hover:bg-black/90 text-white p-2 md:p-3 rounded-r-2xl backdrop-blur-md opacity-0 group-hover/section:opacity-100 transition-all hidden md:flex items-center shadow-2xl">
+        <button onClick={() => scroll("left")} className="absolute left-0 top-[40%] -translate-y-1/2 z-[40] bg-black/60 hover:bg-black/90 text-white p-2 md:p-3 rounded-r-2xl backdrop-blur-md opacity-0 group-hover/section:opacity-100 transition-all hidden md:flex items-center shadow-2xl transform-gpu">
           <Icon.ChevronLeft size={30} className="md:w-9 md:h-9" />
         </button>
-        <div ref={scrollRef} className="flex gap-3 sm:gap-4 md:gap-6 overflow-x-auto scroll-smooth no-scrollbar pb-4 px-1 md:px-2">
+        <div ref={scrollRef} className="flex gap-3 sm:gap-4 md:gap-6 overflow-x-auto scroll-smooth no-scrollbar pb-4 px-1 md:px-2 snap-x snap-mandatory overscroll-x-contain will-change-scroll">
           {watchedSlugs.reverse().map((slug) => {
             const prog = progressData[slug];
             const fetched = fetchedData[slug];
@@ -1029,7 +1046,7 @@ function ContinueWatching({ navigate, progressData, onRemove }) {
             );
           })}
         </div>
-        <button onClick={() => scroll("right")} className="absolute right-0 top-[40%] -translate-y-1/2 z-[40] bg-black/60 hover:bg-black/90 text-white p-2 md:p-3 rounded-l-2xl backdrop-blur-md opacity-0 group-hover/section:opacity-100 transition-all hidden md:flex items-center shadow-2xl">
+        <button onClick={() => scroll("right")} className="absolute right-0 top-[40%] -translate-y-1/2 z-[40] bg-black/60 hover:bg-black/90 text-white p-2 md:p-3 rounded-l-2xl backdrop-blur-md opacity-0 group-hover/section:opacity-100 transition-all hidden md:flex items-center shadow-2xl transform-gpu">
           <Icon.ChevronRight size={30} className="md:w-9 md:h-9" />
         </button>
       </div>
@@ -1037,19 +1054,73 @@ function ContinueWatching({ navigate, progressData, onRemove }) {
   );
 }
 
+// COMPONENT DROPDOWN TÙY CHỈNH KÈM PHÂN TRANG (PAGINATION) DÀNH CHO HEADER CỰC ĐẸP
+const DropdownGrid = ({ label, items, navigate, mode }) => {
+  const [page, setPage] = useState(0);
+  const cols = mode === "search" ? 4 : 3;
+  const itemsPerPage = mode === "search" ? 12 : 9; // Đảm bảo vừa gọn trên 3 hoặc 4 cột
+  const totalPages = Math.ceil((items?.length || 0) / itemsPerPage);
+  const currentItems = (items || []).slice(page * itemsPerPage, (page + 1) * itemsPerPage);
+
+  return (
+    <div className="relative group cursor-pointer flex items-center gap-1 hover:text-white transition uppercase py-2" onMouseEnter={() => setPage(0)}>
+      {label} <Icon.ChevronDown size={14} strokeWidth={3} className="opacity-60 group-hover:rotate-180 transition-transform duration-300 transform-gpu" />
+      <div className="absolute hidden group-hover:block bg-[#111]/95 backdrop-blur-xl p-4 w-[360px] rounded-2xl top-full left-1/2 -translate-x-1/2 border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.9)] mt-0 z-50 transform-gpu cursor-default" onClick={e => e.stopPropagation()}>
+        <div className={`grid ${cols === 4 ? 'grid-cols-4' : 'grid-cols-3'} gap-2 text-center min-h-[110px] items-start`}>
+          {currentItems.map((c) => (
+            <button 
+               key={c.slug || c} 
+               onClick={(e) => { 
+                 e.stopPropagation(); 
+                 if (mode === 'search') navigate({ type: "search", keyword: c.toString() });
+                 else navigate({ type: "list", slug: c.slug, title: c.name, mode: mode }); 
+               }} 
+               className="py-2 px-1 text-[10px] lg:text-[11px] font-bold text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all uppercase tracking-tight truncate"
+            >
+              {c.name || c}
+            </button>
+          ))}
+        </div>
+        {totalPages > 1 && (
+          <div className="flex justify-between items-center mt-2 pt-2 border-t border-white/10">
+            <button 
+              onClick={(e) => { e.stopPropagation(); setPage(p => Math.max(0, p - 1)); }}
+              className={`p-1 rounded-full transition-colors ${page === 0 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white/10 text-white'}`}
+            >
+              <Icon.ChevronLeft size={16} />
+            </button>
+            <div className="flex gap-1.5">
+              {Array.from({ length: totalPages }).map((_, i) => (
+                <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all ${i === page ? 'bg-[#E50914] scale-125' : 'bg-white/20'}`} />
+              ))}
+            </div>
+            <button 
+              onClick={(e) => { e.stopPropagation(); setPage(p => Math.min(totalPages - 1, p + 1)); }}
+              className={`p-1 rounded-full transition-colors ${page === totalPages - 1 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white/10 text-white'}`}
+            >
+              <Icon.ChevronRight size={16} />
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 function Header({ navigate, categories, countries }) {
   const [scrolled, setScrolled] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener("scroll", handleScroll);
+    window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
   return (
     <>
       <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} navigate={navigate} />
-      <header className={`fixed top-0 w-full z-[100] transition-all duration-300 ${scrolled ? "bg-[#050505]/95 backdrop-blur-md border-b border-white/5 py-2 md:py-3 shadow-2xl" : "bg-gradient-to-b from-black/90 via-black/40 to-transparent py-4 md:py-5"}`}>
+      <header className={`fixed top-0 w-full z-[100] transition-all duration-300 transform-gpu ${scrolled ? "bg-[#050505]/95 backdrop-blur-md border-b border-white/5 py-2 md:py-3 shadow-2xl" : "bg-gradient-to-b from-black/90 via-black/40 to-transparent py-4 md:py-5"}`}>
         <div className="max-w-[1400px] mx-auto px-4 md:px-12 flex justify-between items-center gap-4">
           
           <div 
@@ -1060,46 +1131,15 @@ function Header({ navigate, categories, countries }) {
           </div>
 
           <nav className="hidden md:flex flex-1 justify-center gap-4 lg:gap-8 text-[11px] lg:text-[12px] font-black tracking-widest text-gray-300 items-center whitespace-nowrap">
-            <button onClick={() => navigate({ type: "home" })} className="hover:text-white transition uppercase">Trang Chủ</button>
+            <button onClick={() => navigate({ type: "home" })} className="hover:text-white transition uppercase py-2">Trang Chủ</button>
             
-            {/* DROPDOWN CĂN GIỮA HOÀN HẢO */}
-            <div className="relative group cursor-pointer flex items-center gap-1 hover:text-white transition uppercase py-2">
-              Thể Loại <Icon.ChevronDown size={14} className="opacity-60 group-hover:rotate-180 transition-transform duration-300" />
-              <div className="absolute hidden group-hover:block bg-[#111]/95 backdrop-blur-xl p-5 w-[360px] rounded-2xl top-full left-1/2 -translate-x-1/2 border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.9)] mt-0 z-50">
-                <div className="grid grid-cols-3 gap-2">
-                  {categories && categories.map((c) => (
-                    <button key={c.slug} onClick={() => navigate({ type: "list", slug: c.slug, title: c.name, mode: "the-loai" })} className="text-center py-2 px-1 text-[10px] lg:text-[11px] font-bold text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all uppercase tracking-tight truncate">{c.name}</button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="relative group cursor-pointer flex items-center gap-1 hover:text-white transition uppercase py-2">
-              Quốc Gia <Icon.ChevronDown size={14} className="opacity-60 group-hover:rotate-180 transition-transform duration-300" />
-              <div className="absolute hidden group-hover:block bg-[#111]/95 backdrop-blur-xl p-5 w-[360px] rounded-2xl top-full left-1/2 -translate-x-1/2 border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.9)] mt-0 z-50">
-                <div className="grid grid-cols-3 gap-2">
-                  {countries && countries.map((c) => (
-                    <button key={c.slug} onClick={() => navigate({ type: "list", slug: c.slug, title: c.name, mode: "quoc-gia" })} className="text-center py-2 px-1 text-[10px] lg:text-[11px] font-bold text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all uppercase tracking-tight truncate">{c.name}</button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="relative group cursor-pointer flex items-center gap-1 hover:text-white transition uppercase py-2">
-              Năm Phát Hành <Icon.ChevronDown size={14} className="opacity-60 group-hover:rotate-180 transition-transform duration-300" />
-              <div className="absolute hidden group-hover:block bg-[#111]/95 backdrop-blur-xl p-5 w-[360px] rounded-2xl top-full left-1/2 -translate-x-1/2 border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.9)] mt-0 z-50">
-                <div className="grid grid-cols-4 gap-2">
-                  {YEARS.map((y) => (
-                    <button key={y} onClick={() => navigate({ type: "search", keyword: y.toString() })} className="text-center py-2 px-1 text-[10px] lg:text-[11px] font-bold text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all uppercase tracking-tight truncate">{y}</button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
+            <DropdownGrid label="Thể Loại" items={categories} navigate={navigate} mode="the-loai" />
+            <DropdownGrid label="Quốc Gia" items={countries} navigate={navigate} mode="quoc-gia" />
+            <DropdownGrid label="Năm Phát Hành" items={YEARS} navigate={navigate} mode="search" />
           </nav>
 
           <div className="flex items-center gap-3 md:gap-5 shrink-0">
-            <div onClick={() => setIsSearchOpen(true)} className="hidden lg:flex relative group cursor-pointer">
+            <div onClick={() => setIsSearchOpen(true)} className="hidden lg:flex relative group cursor-pointer transform-gpu">
               <div className="bg-black/40 border border-white/10 px-4 py-2 pl-10 rounded-full w-48 lg:w-72 text-xs lg:text-sm text-gray-400 group-hover:bg-black/60 transition-all backdrop-blur-md flex items-center">Tìm kiếm phim...</div>
               <Icon.Search className="absolute left-3.5 top-2 lg:top-2.5 text-gray-400 group-hover:text-white transition" size={16} />
             </div>
@@ -1121,11 +1161,11 @@ function BottomNav({ navigate, categories, countries, currentView }) {
 
   return (
     <>
-      <div className={`md:hidden fixed inset-0 bg-black/90 z-[110] backdrop-blur-sm transition-opacity duration-300 ${menuType ? "opacity-100" : "opacity-0 pointer-events-none"}`} onClick={() => setMenuType(null)}>
-        <div className={`absolute bottom-0 w-full bg-[#111] rounded-t-3xl p-6 transition-transform duration-500 delay-100 ${menuType ? "translate-y-0" : "translate-y-full"}`} onClick={(e) => e.stopPropagation()}>
+      <div className={`md:hidden fixed inset-0 bg-black/90 z-[110] backdrop-blur-sm transition-opacity duration-300 transform-gpu ${menuType ? "opacity-100" : "opacity-0 pointer-events-none"}`} onClick={() => setMenuType(null)}>
+        <div className={`absolute bottom-0 w-full bg-[#111] rounded-t-3xl p-6 transition-transform duration-500 delay-100 transform-gpu ${menuType ? "translate-y-0" : "translate-y-full"}`} onClick={(e) => e.stopPropagation()}>
           <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mb-6" />
           <h3 className="text-lg font-black text-white mb-6 uppercase tracking-widest text-center">{menuTitle || "Chọn Năm"}</h3>
-          <div className="grid grid-cols-2 gap-3 overflow-y-auto max-h-[50vh] pb-8">
+          <div className="grid grid-cols-2 gap-3 overflow-y-auto max-h-[50vh] pb-8 overscroll-contain">
             {menuType === 'year' ? (
                YEARS.map((y) => (
                  <button key={y} onClick={() => { navigate({ type: "search", keyword: y.toString() }); setMenuType(null); }} className="bg-white/5 py-3 rounded-xl text-xs text-gray-300 font-bold active:bg-[#E50914] transition uppercase tracking-tight">{y}</button>
@@ -1138,7 +1178,7 @@ function BottomNav({ navigate, categories, countries, currentView }) {
           </div>
         </div>
       </div>
-      <div className="md:hidden fixed bottom-0 w-full bg-[#0a0a0a]/95 backdrop-blur-xl border-t border-white/5 pb-safe z-[100]">
+      <div className="md:hidden fixed bottom-0 w-full bg-[#0a0a0a]/95 backdrop-blur-xl border-t border-white/5 pb-safe z-[100] transform-gpu">
         <div className="flex justify-around items-center p-2.5">
           {[{ id: "home", icon: Icon.Home, label: "Trang chủ" }, { id: "cat", icon: Icon.LayoutGrid, label: "Thể loại" }, { id: "country", icon: Icon.Globe, label: "Quốc gia" }, { id: "year", icon: Icon.Calendar, label: "Năm" }].map((item) => (
             <button key={item.id} onClick={() => item.id === "home" ? navigate({ type: "home" }) : setMenuType(item.id)} className={`flex flex-col items-center gap-1 transition-colors ${currentView === item.id || (item.id === "home" && currentView === "home") ? "text-[#E50914]" : "text-gray-500"}`}>
@@ -1160,10 +1200,10 @@ const HeroSlide = memo(function HeroSlide({ movie, isActive, navigate }) {
     : getImg(movie?.poster_url || movie?.thumb_url);
 
   return (
-    <div className={`absolute inset-0 w-full h-full transition-opacity duration-1000 ease-in-out ${isActive ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}>
+    <div className={`absolute inset-0 w-full h-full transition-opacity duration-1000 ease-in-out transform-gpu will-change-opacity ${isActive ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}>
       <img 
         src={backdropUrl} 
-        className={`w-full h-full object-cover object-top md:object-center ${!isBackdropValid ? 'blur-md scale-105' : ''}`} 
+        className={`w-full h-full object-cover object-top md:object-center transform-gpu ${!isBackdropValid ? 'blur-md scale-105' : ''}`} 
         style={{ opacity: 0.7 }}
         alt={movie?.name} 
       />
@@ -1200,7 +1240,7 @@ const HeroSlide = memo(function HeroSlide({ movie, isActive, navigate }) {
                 {tmdbData.overview}
               </p>
             )}
-            <button onClick={() => { navigate({ type: "detail", slug: movie?.slug }); window.scrollTo(0, 0); }} className="w-fit bg-[#E50914] hover:bg-red-700 text-white px-8 py-3.5 md:px-12 md:py-4.5 rounded-full font-black flex items-center gap-2 md:gap-3 transition-all transform hover:scale-105 active:scale-95 shadow-[0_8px_25px_rgba(229,9,20,0.6)] uppercase tracking-[0.2em] text-[10px] sm:text-xs md:text-sm !font-sans">
+            <button onClick={() => { navigate({ type: "detail", slug: movie?.slug }); window.scrollTo(0, 0); }} className="w-fit bg-[#E50914] hover:bg-red-700 text-white px-8 py-3.5 md:px-12 md:py-4.5 rounded-full font-black flex items-center gap-2 md:gap-3 transition-transform transform-gpu hover:scale-105 active:scale-95 shadow-[0_8px_25px_rgba(229,9,20,0.6)] uppercase tracking-[0.2em] text-[10px] sm:text-xs md:text-sm !font-sans">
               <Icon.Play size={16} fill="currentColor" /> XEM NGAY
             </button>
           </div>
@@ -1262,11 +1302,11 @@ function Hero({ navigate }) {
   if (bannerMovies.length === 0) return null;
 
   return (
-    <div className="relative w-full h-[70vh] sm:h-[85vh] md:h-[95vh] lg:h-[100vh] max-h-[900px] bg-[#050505] overflow-hidden">
+    <div className="relative w-full h-[70vh] sm:h-[85vh] md:h-[95vh] lg:h-[100vh] max-h-[900px] bg-[#050505] overflow-hidden transform-gpu">
       {bannerMovies.map((movie, index) => <HeroSlide key={movie.slug} movie={movie} isActive={index === currentIndex} navigate={navigate} />)}
       <div className="absolute bottom-4 sm:bottom-6 md:bottom-8 left-0 w-full flex justify-center items-center gap-2.5 z-20">
         {bannerMovies.map((_, i) => (
-          <button key={i} onClick={() => setCurrentIndex(i)} className={`h-[4px] transition-all duration-500 rounded-full ${i === currentIndex ? "w-10 bg-[#E50914]" : "w-5 bg-gray-600 hover:bg-gray-400"}`} />
+          <button key={i} onClick={() => setCurrentIndex(i)} className={`h-[4px] transition-all duration-500 rounded-full transform-gpu ${i === currentIndex ? "w-10 bg-[#E50914]" : "w-5 bg-gray-600 hover:bg-gray-400"}`} />
         ))}
       </div>
     </div>
@@ -1288,7 +1328,7 @@ function MovieGrid({ movies, navigate, loading, title, onLoadMore, hasMore, load
   }, [loading, loadingMore, hasMore, onLoadMore]);
 
   return (
-    <div className="max-w-[1400px] mx-auto px-4 md:px-12 pt-20 md:pt-32 pb-10 min-h-screen">
+    <div className="max-w-[1400px] mx-auto px-4 md:px-12 pt-20 md:pt-32 pb-10 min-h-screen transform-gpu">
       <h2 className="text-xl md:text-[28px] font-black text-white mb-8 uppercase tracking-tighter flex items-center gap-3">
         <span className="w-[4px] h-6 md:h-9 bg-[#E50914] block" /> {title}
       </h2>
@@ -1328,8 +1368,14 @@ function MovieDetail({ slug, navigate }) {
         
         if (finalItem) {
            setM({ item: finalItem });
-        } else {
-           const searchRes = await fetch(`${API_NGUONC}/search?keyword=${slug.replace(/-/g, ' ')}`);
+           setLoadingPage(false);
+           return;
+        } 
+        
+        // Thuật toán Quét Dự phòng nếu 2 API chết cục bộ
+        const searchSlug = slug.replace(/-/g, ' ');
+        try {
+           const searchRes = await fetch(`${API_NGUONC}/search?keyword=${encodeURIComponent(searchSlug)}`);
            const searchJ = await searchRes.json();
            const match = searchJ?.items?.[0] || searchJ?.data?.items?.[0];
            if (match && match.slug) {
@@ -1340,15 +1386,30 @@ function MovieDetail({ slug, navigate }) {
                  return;
               }
            }
-           setError(true);
-        }
+        } catch(e) {}
+        
+        try {
+           const searchResO = await fetch(`${API}/tim-kiem?keyword=${encodeURIComponent(searchSlug)}`);
+           const searchJO = await searchResO.json();
+           const matchO = searchJO?.data?.items?.[0];
+           if (matchO && matchO.slug) {
+               const resO2 = await fetch(`${API}/phim/${matchO.slug}`).then(r => r.json());
+               if (resO2?.data?.item) {
+                   setM({ item: resO2.data.item });
+                   setLoadingPage(false);
+                   return;
+               }
+           }
+        } catch(e) {}
+
+        setError(true);
       } catch (e) {
         if (e.name !== 'AbortError') setError(true);
       } finally {
         setLoadingPage(false);
       }
     };
-    fetchDetail();
+    if (slug) fetchDetail();
     return () => controller.abort();
   }, [slug]);
 
@@ -1370,7 +1431,7 @@ function MovieDetail({ slug, navigate }) {
 
   if (loadingPage) return <div className="h-screen flex justify-center items-center bg-[#050505]"><Icon.Loader2 className="animate-spin text-[#E50914]" size={40} /></div>;
   
-  if (error || !m) return (
+  if (error || !m || !i) return (
      <div className="h-screen flex flex-col justify-center items-center bg-[#050505] text-white">
         <Icon.AlertTriangle className="text-[#E50914] mb-4" size={48}/>
         <h2 className="text-xl font-bold">Lỗi tải phim!</h2>
@@ -1385,8 +1446,8 @@ function MovieDetail({ slug, navigate }) {
 
   return (
     <div className="pb-20 animate-in fade-in duration-700 bg-[#050505]">
-      <div className="relative min-h-[70vh] md:h-[95vh] max-h-[900px] w-full overflow-hidden flex flex-col justify-end">
-        <img src={backdropUrl} className="absolute inset-0 w-full h-full object-cover object-top opacity-40" alt="" />
+      <div className="relative min-h-[70vh] md:h-[95vh] max-h-[900px] w-full overflow-hidden flex flex-col justify-end transform-gpu">
+        <img src={backdropUrl} className="absolute inset-0 w-full h-full object-cover object-top opacity-40 transform-gpu" alt="" />
         
         <div 
           className="absolute inset-0 pointer-events-none z-10"
@@ -1400,7 +1461,7 @@ function MovieDetail({ slug, navigate }) {
         />
         
         <div className="relative max-w-[1400px] mx-auto w-full px-4 md:px-12 pb-16 flex flex-col md:flex-row gap-10 items-center md:items-end text-center md:text-left z-20">
-          <div className="w-44 md:w-72 shrink-0 shadow-[0_20px_50px_rgba(0,0,0,0.8)] rounded-2xl overflow-hidden border border-white/10">
+          <div className="w-44 md:w-72 shrink-0 shadow-[0_20px_50px_rgba(0,0,0,0.8)] rounded-2xl overflow-hidden border border-white/10 transform-gpu">
             <SmartImage slug={i?.slug} year={i?.year} src={i?.thumb_url || i?.poster_url} name={i?.name} originName={i?.origin_name || i?.original_name} className="w-full h-full object-cover" />
           </div>
           <div className="flex-1">
@@ -1414,7 +1475,7 @@ function MovieDetail({ slug, navigate }) {
             </div>
             <button 
               onClick={() => { navigate({ type: "watch", slug: i?.slug, movieData: m }); window.scrollTo(0, 0); }} 
-              className="bg-[#E50914] hover:bg-red-700 text-white px-10 py-4 md:px-14 md:py-5 rounded-full font-black flex items-center gap-3 transition-all shadow-[0_10px_30px_rgba(229,9,20,0.5)] uppercase tracking-widest text-sm mx-auto md:mx-0 !font-sans"
+              className="bg-[#E50914] hover:bg-red-700 text-white px-10 py-4 md:px-14 md:py-5 rounded-full font-black flex items-center gap-3 transition-transform transform-gpu hover:scale-105 active:scale-95 shadow-[0_10px_30px_rgba(229,9,20,0.5)] uppercase tracking-widest text-sm mx-auto md:mx-0 !font-sans"
             >
               <Icon.Play fill="currentColor" /> BẮT ĐẦU XEM
             </button>
@@ -1429,21 +1490,23 @@ function MovieDetail({ slug, navigate }) {
            </h3>
            <div className="text-gray-400 leading-relaxed text-base md:text-lg font-medium" dangerouslySetInnerHTML={{ __html: typeof i?.content === 'string' ? i.content : "Đang cập nhật nội dung..." }} />
            
+           {/* DANH SÁCH DIỄN VIÊN (Click để lọc phim) */}
            {cast && cast.length > 0 && (
              <div className="mt-10 pt-8 border-t border-white/5">
                 <h4 className="text-sm font-black text-white uppercase mb-6 tracking-[0.2em] text-[#E50914]">Diễn viên</h4>
-                <div className="flex gap-4 md:gap-6 overflow-x-auto scroll-smooth no-scrollbar pb-4">
+                <div className="flex gap-4 md:gap-6 overflow-x-auto scroll-smooth no-scrollbar pb-4 overscroll-x-contain">
                   {cast.map((actor, idx) => (
                     <div 
                       key={idx} 
                       onClick={() => { navigate({ type: "actor", actorId: actor.id, actorName: actor.name }); window.scrollTo(0,0); }} 
                       className="cursor-pointer shrink-0 text-center w-[72px] md:w-[88px] group"
                     >
-                      <div className="w-16 h-16 md:w-[80px] md:h-[80px] mx-auto rounded-full overflow-hidden bg-[#222] mb-3 md:mb-4 border border-white/10 group-hover:border-[#E50914] group-hover:scale-105 transition-all shadow-lg flex items-center justify-center">
+                      <div className="w-16 h-16 md:w-[80px] md:h-[80px] mx-auto rounded-full overflow-hidden bg-[#222] mb-3 md:mb-4 border border-white/10 group-hover:border-[#E50914] group-hover:scale-105 transition-transform transform-gpu shadow-lg flex items-center justify-center">
                          <img 
                             src={actor.profile_path ? `https://image.tmdb.org/t/p/w200${actor.profile_path}` : 'https://ui-avatars.com/api/?name=' + encodeURIComponent(actor.name) + '&background=111&color=fff'} 
                             alt={actor.name} 
                             className="w-full h-full object-cover" 
+                            loading="lazy"
                          />
                       </div>
                       <p className="text-[10px] md:text-[11px] text-gray-400 group-hover:text-white font-bold leading-snug line-clamp-2 uppercase tracking-tight">{actor.name}</p>
@@ -1581,6 +1644,9 @@ function Watch({ slug, movieData }) {
         <Icon.AlertTriangle className="text-[#E50914] mb-4" size={48}/>
         <h2 className="text-xl font-bold">Lỗi tải phim!</h2>
         <p className="text-gray-400 mt-2">Dữ liệu phim có thể đã bị xóa hoặc máy chủ đang quá tải.</p>
+        <button onClick={() => navigate({type: 'home'})} className="mt-6 bg-[#E50914] hover:bg-red-700 transition-colors px-6 py-2.5 rounded-full font-bold uppercase text-xs tracking-widest">
+           Về Trang Chủ
+        </button>
      </div>
   );
 
@@ -1686,7 +1752,7 @@ function Watch({ slug, movieData }) {
                                 setEp(e);
                                 window.scrollTo({ top: 0, behavior: 'smooth' });
                              }}
-                             className={`py-3 md:py-4 text-[11px] md:text-sm rounded-lg border transition-all font-black uppercase tracking-tighter flex items-center justify-center ${isActive ? "bg-[#E50914] border-[#E50914] text-white shadow-[0_4px_15px_rgba(229,9,20,0.4)] scale-105 z-10" : "bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:text-white hover:border-white/20"}`}
+                             className={`py-3 md:py-4 text-[11px] md:text-sm rounded-lg border transition-all font-black uppercase tracking-tighter flex items-center justify-center ${isActive ? "bg-[#E50914] border-[#E50914] text-white shadow-[0_4px_15px_rgba(229,9,20,0.4)] scale-105 z-10 transform-gpu" : "bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:text-white hover:border-white/20"}`}
                           >
                              {e.name?.replace(/tập\s*/i, '').replace(/['"]/g, '').trim()}
                           </button>
@@ -1701,7 +1767,6 @@ function Watch({ slug, movieData }) {
   );
 }
 
-// --- APP CHÍNH ---
 export default function App() {
   const [view, setView] = useState({ type: "home" });
   const [movies, setMovies] = useState([]);
@@ -1741,13 +1806,52 @@ export default function App() {
     fetch(`${API}/the-loai`).then((r) => r.json()).then((j) => setCats(j?.data?.items || [])).catch(() => {});
     fetch(`${API}/quoc-gia`).then((r) => r.json()).then((j) => setCountries(j?.data?.items || [])).catch(() => {});
 
-    const updateFavicon = () => {
-      const link = document.querySelector("link[rel~='icon']") || document.createElement('link');
-      link.rel = 'icon';
-      link.href = `data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22black%22/><text x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22central%22 text-anchor=%22middle%22 font-family=%22Arial%22 font-weight=%22900%22 font-style=%22italic%22 font-size=%2270%22 fill=%22%23E50914%22>P</text></svg>`;
-      document.getElementsByTagName('head')[0].appendChild(link);
+    // SETUP PWA (Thêm vào Màn hình chính iOS / Android)
+    const setupPWA = () => {
+      const metaTags = [
+        { name: 'apple-mobile-web-app-capable', content: 'yes' },
+        { name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' },
+        { name: 'apple-mobile-web-app-title', content: 'POLITE' },
+        { name: 'theme-color', content: '#050505' },
+        { name: 'mobile-web-app-capable', content: 'yes' }
+      ];
+      metaTags.forEach(({ name, content }) => {
+        let meta = document.createElement('meta');
+        meta.name = name;
+        meta.content = content;
+        document.head.appendChild(meta);
+      });
+
+      const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="black"/><text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-family="Arial" font-weight="900" font-style="italic" font-size="70" fill="%23E50914">P</text></svg>`;
+      const iconUrl = `data:image/svg+xml,${encodeURIComponent(svgIcon)}`;
+      
+      let appleIcon = document.createElement('link');
+      appleIcon.rel = 'apple-touch-icon';
+      appleIcon.href = iconUrl;
+      document.head.appendChild(appleIcon);
+
+      let standardIcon = document.createElement('link');
+      standardIcon.rel = 'icon';
+      standardIcon.href = iconUrl;
+      document.head.appendChild(standardIcon);
+
+      const manifest = {
+        name: "POLITE Phim",
+        short_name: "POLITE",
+        start_url: ".",
+        display: "standalone",
+        background_color: "#050505",
+        theme_color: "#050505",
+        icons: [{ src: iconUrl, sizes: "512x512", type: "image/svg+xml" }]
+      };
+      const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+      const manifestUrl = URL.createObjectURL(blob);
+      let manifestLink = document.createElement('link');
+      manifestLink.rel = 'manifest';
+      manifestLink.href = manifestUrl;
+      document.head.appendChild(manifestLink);
     };
-    updateFavicon();
+    setupPWA();
 
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
@@ -1885,6 +1989,8 @@ export default function App() {
       
       <style>{`
         * { font-family: 'Inter', sans-serif !important; font-style: normal !important; }
+        html { scroll-behavior: smooth; }
+        body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         @keyframes custom-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

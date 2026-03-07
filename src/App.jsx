@@ -61,7 +61,6 @@ async function fetchTMDB(name, originName, slug, year) {
     if (results.length === 0 && name) results = await search(name);
 
     if (results.length > 0) {
-       // Ưu tiên tìm đúng phim bằng cách KHỚP NĂM SẢN XUẤT (Dung sai 1 năm)
        if (year) {
           match = results.find(item => {
              if (item.media_type === 'person' || (!item.poster_path && !item.backdrop_path)) return false;
@@ -113,21 +112,12 @@ function useTMDBData(name, originName, slug, year) {
 
 // --- CÁC COMPONENT ---
 
-function SmartImage({ src, alt, originName, name, className, type = "poster", slug, year }) {
-  const { data, loading } = useTMDBData(name, originName, slug, year);
-
+function SmartImage({ src, alt, className }) {
   let finalSrc = src ? getImg(src) : "https://images.unsplash.com/photo-1440404653325-ab127d49abc1?q=80&w=500";
   
-  if (data) {
-    const tmdbPath = type === "backdrop" ? data.backdrop_path : data.poster_path;
-    if (tmdbPath) {
-      finalSrc = `https://image.tmdb.org/t/p/${type === "backdrop" ? "original" : "w500"}${tmdbPath}`;
-    }
-  }
-
   return (
     <img
-      src={loading ? "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 2 3'%3E%3C/svg%3E" : finalSrc}
+      src={finalSrc}
       alt={alt}
       className={className}
       loading="lazy"
@@ -135,7 +125,7 @@ function SmartImage({ src, alt, originName, name, className, type = "poster", sl
       onError={(e) => {
         if (!e.target.dataset.error) {
           e.target.dataset.error = true;
-          e.target.src = src ? getImg(src) : "https://images.unsplash.com/photo-1440404653325-ab127d49abc1?q=80&w=500";
+          e.target.src = "https://images.unsplash.com/photo-1440404653325-ab127d49abc1?q=80&w=500";
         }
       }}
     />
@@ -320,9 +310,9 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
     if (!document.fullscreenElement && !document.webkitFullscreenElement) {
       if (container.requestFullscreen) {
         container.requestFullscreen().catch(() => {});
-      } else if (container.webkitRequestFullscreen) { /* Safari PC */
+      } else if (container.webkitRequestFullscreen) {
         container.webkitRequestFullscreen();
-      } else if (video && video.webkitEnterFullscreen) { /* Đặc quyền Mobile Safari iOS */
+      } else if (video && video.webkitEnterFullscreen) {
         video.webkitEnterFullscreen();
       }
     } else {
@@ -547,9 +537,6 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
 }
 
 const SearchItem = memo(function SearchItem({ m, navigate, onClose }) {
-  const { data: tmdbData } = useTMDBData(m.name, m.origin_name || m.original_name, m.slug, m.year);
-  const voteAverage = tmdbData?.vote_average || m.tmdb?.vote_average;
-
   return (
     <div
       onClick={() => {
@@ -563,11 +550,7 @@ const SearchItem = memo(function SearchItem({ m, navigate, onClose }) {
     >
       <div className="w-16 md:w-20 shrink-0 aspect-[2/3] rounded-lg overflow-hidden bg-[#111] shadow-lg transform-gpu">
         <SmartImage
-          slug={m.slug}
           src={m.thumb_url || m.poster_url}
-          originName={m.origin_name || m.original_name}
-          name={m.name}
-          year={m.year}
           className="w-full h-full object-cover group-hover/card:scale-105 transition-transform duration-300 transform-gpu will-change-transform"
           alt={m.name}
         />
@@ -579,11 +562,11 @@ const SearchItem = memo(function SearchItem({ m, navigate, onClose }) {
           <span className="text-gray-300">{m.quality || "HD"}</span>
           <span>•</span>
           <span>{m.episode_current || "Đang cập nhật"}</span>
-          {voteAverage ? (
+          {m.tmdb?.vote_average ? (
             <>
               <span>•</span>
               <span className="flex items-center gap-1 text-[#f5c518] font-bold">
-                <Icon.Star fill="currentColor" size={12} /> {Number(voteAverage).toFixed(1)}
+                <Icon.Star fill="currentColor" size={12} /> {Number(m.tmdb.vote_average).toFixed(1)}
               </span>
             </>
           ) : null}
@@ -695,9 +678,10 @@ function SearchModal({ isOpen, onClose, navigate }) {
 const MovieCard = memo(function MovieCard({ m, navigate, progressData, isRow = false, onRemove = null, onClickOverride = null }) {
   const progData = progressData?.[m.slug];
   const prog = progData?.percentage || 0;
+  // Ưu tiên thumb_url trước để lấy poster dọc chuẩn
   const thumbSrc = m.thumb_url || m.thumb || m.poster_url;
-  const { data: tmdbData } = useTMDBData(m.name, m.origin_name || m.original_name, m.slug, m.year);
-  const voteAverage = tmdbData?.vote_average || m.tmdb?.vote_average;
+  
+  const voteAverage = m.tmdb?.vote_average;
 
   return (
     <div
@@ -715,11 +699,7 @@ const MovieCard = memo(function MovieCard({ m, navigate, progressData, isRow = f
       
       <div className="relative overflow-hidden rounded-xl aspect-[2/3] bg-[#111] shadow-xl border border-white/5 transform-gpu">
         <SmartImage 
-          slug={m.slug}
           src={thumbSrc} 
-          originName={m.origin_name || m.original_name} 
-          name={m.name} 
-          year={m.year}
           className="w-full h-full object-cover transition-transform duration-500 group-hover/card:scale-110 transform-gpu will-change-transform" 
           alt={m.name} 
         />
@@ -729,6 +709,15 @@ const MovieCard = memo(function MovieCard({ m, navigate, progressData, isRow = f
         <div className="absolute top-1.5 left-1.5 md:top-2 md:left-2 bg-[#E50914] text-white text-[8px] md:text-[10px] px-1.5 md:px-2 py-0.5 rounded font-black uppercase shadow-lg tracking-widest z-10">
           {m.quality || "HD"}
         </div>
+
+        {/* Cập nhật style cho episode_current ở phía dưới giống Ophim */}
+        {!prog && m.episode_current && (
+          <div className="absolute bottom-0 left-0 w-full p-2 flex justify-start items-end bg-gradient-to-t from-black/90 via-black/40 to-transparent z-10 pointer-events-none">
+            <span className="bg-[#111]/80 backdrop-blur-sm text-gray-200 text-[9px] md:text-[11px] px-2 py-1 rounded font-bold shadow-md border border-white/10">
+              {m.episode_current}
+            </span>
+          </div>
+        )}
         
         {prog > 0 && prog < 99 && (
           <>
@@ -765,44 +754,38 @@ function TrendingSection({ navigate, progressData }) {
   const [loading, setLoading] = useState(true);
   const scrollRef = useRef(null);
 
+  // Lấy dữ liệu 100% từ Ophim thay vì TMDB
   useEffect(() => {
-    const fetchTrendingFromTMDB = async () => {
+    const fetchTrendingFromOphim = async () => {
       try {
-        const tmdbRes = await fetch(`https://api.themoviedb.org/3/trending/all/week?api_key=${TMDB_API_KEY}&language=vi-VN`);
-        const tmdbJson = await tmdbRes.json();
-        const tmdbItems = tmdbJson.results || [];
+        const [resPhimBo, resPhimLe] = await Promise.allSettled([
+           fetch(`${API}/danh-sach/phim-bo?page=1`),
+           fetch(`${API}/danh-sach/phim-le?page=1`)
+        ]);
 
-        const searchPromises = tmdbItems.slice(0, 20).map(async (item) => {
-          const titleQuery = item.title || item.name || item.original_title || item.original_name;
-          if (!titleQuery) return null;
-          
-          try {
-            const nguoncRes = await fetch(`${API_NGUONC}/search?keyword=${encodeURIComponent(titleQuery)}`);
-            const nguoncJson = await nguoncRes.json();
-            const nguoncItems = nguoncJson?.items || nguoncJson?.data?.items;
-            if (nguoncItems && nguoncItems.length > 0) return nguoncItems[0];
+        let combined = [];
+        if (resPhimBo.status === 'fulfilled') {
+           const j = await resPhimBo.value.json();
+           if(j?.data?.items) combined = [...combined, ...j.data.items.slice(0, 10)];
+        }
+        if (resPhimLe.status === 'fulfilled') {
+           const j = await resPhimLe.value.json();
+           if(j?.data?.items) combined = [...combined, ...j.data.items.slice(0, 10)];
+        }
 
-            const ophimRes = await fetch(`${API}/tim-kiem?keyword=${encodeURIComponent(titleQuery)}`);
-            const ophimJson = await ophimRes.json();
-            if (ophimJson?.data?.items?.length > 0) return ophimJson.data.items[0];
-
-          } catch (e) { return null; }
-          return null;
-        });
-
-        const searchResults = await Promise.all(searchPromises);
-        const validMovies = searchResults.filter(Boolean);
+        // Randomize the items to make it look organic
+        combined = combined.sort(() => 0.5 - Math.random());
         
-        const uniqueMovies = Array.from(new Map(validMovies.map(m => [m.slug, m])).values());
+        const uniqueMovies = Array.from(new Map(combined.map(m => [m.slug, m])).values());
         setMovies(uniqueMovies);
       } catch (error) {
-        console.error("Lỗi fetch trending TMDB:", error);
+        console.error("Lỗi fetch trending:", error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchTrendingFromTMDB();
+    fetchTrendingFromOphim();
   }, []);
 
   const scroll = (direction) => {
@@ -817,7 +800,7 @@ function TrendingSection({ navigate, progressData }) {
     <div className="mb-8 md:mb-12 relative group/section transform-gpu">
        <div className="flex items-center gap-4 mb-3 md:mb-4 px-1">
           <h2 className="text-[15px] sm:text-lg md:text-2xl font-black text-white uppercase tracking-tighter flex items-center gap-2 md:gap-3">
-            <span className="w-[4px] h-6 md:h-8 bg-[#E50914] block" /> Phim Trending 🔥
+            <span className="w-[4px] h-6 md:h-8 bg-[#E50914] block" /> Phim Thịnh Hành 🔥
           </h2>
           <Icon.Loader2 className="animate-spin text-[#E50914]" size={20} />
        </div>
@@ -829,7 +812,7 @@ function TrendingSection({ navigate, progressData }) {
     <div className="mb-8 md:mb-12 relative group/section transform-gpu">
       <div className="flex items-center justify-between mb-3 md:mb-4 px-1">
         <h2 className="text-[15px] sm:text-lg md:text-2xl font-black text-white uppercase tracking-tighter flex items-center gap-2 md:gap-3">
-          <span className="w-[4px] h-6 md:h-8 bg-[#E50914] block" /> Phim Trending 🔥
+          <span className="w-[4px] h-6 md:h-8 bg-[#E50914] block" /> Phim Thịnh Hành 🔥
         </h2>
       </div>
       <div className="relative">
@@ -883,22 +866,8 @@ function MovieSection({ title, slug, type = "the-loai", navigate, progressData }
 
         const uniqueMap = new Map();
         combinedItems.forEach(m => uniqueMap.set(m.slug, m));
-        const uniqueItems = Array.from(uniqueMap.values());
-
-        const tmdbPromises = uniqueItems.map(async (m) => {
-          const tmdb = await fetchTMDB(m.name, m.origin_name || m.original_name, m.slug, m.year);
-          return { ...m, tmdbData: tmdb };
-        });
-
-        const tmdbResults = await Promise.all(tmdbPromises);
         
-        const sortedMovies = tmdbResults.sort((a, b) => {
-           const aHas = (a.tmdbData?.backdrop_path || a.tmdbData?.poster_path) ? 1 : 0;
-           const bHas = (b.tmdbData?.backdrop_path || b.tmdbData?.poster_path) ? 1 : 0;
-           return bHas - aHas;
-        });
-        
-        setMovies(sortedMovies);
+        setMovies(Array.from(uniqueMap.values()));
       } catch (error) {
         if (error.name !== 'AbortError') console.error("Lỗi fetch section:", error);
       } finally {
@@ -1051,79 +1020,89 @@ function ContinueWatching({ navigate, progressData, onRemove }) {
   );
 }
 
-// ============================================================
-// FIX: MỎ NEO TOÁN HỌC CHUẨN XÁC 100%
-// Lớp relative chỉ bao bọc ĐÚNG CHỮ "THỂ LOẠI". Bảng menu sẽ 
-// thả xuống và lấy tâm là tâm của chữ. Cột giữa của bảng sẽ 
-// thẳng hàng dọc 100% với chữ.
-// ============================================================
+// --- FIX LỖI CĂN CHỈNH MENU (DROPDOWN GRID) ---
 const DropdownGrid = ({ label, items, navigate, mode }) => {
   const [page, setPage] = useState(0);
   const cols = mode === "search" ? 4 : 3;
-  const itemsPerPage = mode === "search" ? 12 : 9; 
+  const itemsPerPage = mode === "search" ? 12 : 9;
   const totalPages = Math.ceil((items?.length || 0) / itemsPerPage);
   const currentItems = (items || []).slice(page * itemsPerPage, (page + 1) * itemsPerPage);
 
+  // TÍNH TOÁN VỊ TRÍ ĐỂ CHỮ THẲNG HÀNG VỚI CỘT GIỮA
+  let wrapperClass = "left-1/2 -translate-x-[65%]"; // Kéo box sang trái 65% để cột 2 vừa vặn nằm dưới chữ
+  let arrowClass = "left-[65%]";
+  let boxWidth = "w-[380px]";
+
+  // Điều chỉnh riêng cho "Quốc gia" và "Năm" để không bị tràn màn hình
+  if (mode === "search") {
+    wrapperClass = "left-1/2 -translate-x-[80%]"; // "Năm Phát Hành" nằm sát lề phải, phải dịch về trái nhiều hơn
+    arrowClass = "left-[80%]";
+    boxWidth = "w-[420px]";
+  } else if (mode === "quoc-gia") {
+    wrapperClass = "left-1/2 -translate-x-[70%]";
+    arrowClass = "left-[70%]";
+  }
+
   return (
-    <div className="group cursor-pointer flex items-center h-full py-4 px-1 lg:px-2" onMouseEnter={() => setPage(0)}>
-      {/* Vùng mỏ neo RELATIVE CHỈ BỌC ĐÚNG CHỮ để Dropdown gióng tâm chính xác 100% */}
-      <div className="relative flex justify-center items-center">
-        <span className="font-black tracking-widest uppercase hover:text-white transition whitespace-nowrap">
-          {label}
-        </span>
+    <div
+      className="group cursor-pointer relative flex items-center h-full py-4 px-1 lg:px-2"
+      onMouseEnter={() => setPage(0)}
+    >
+      <span className="font-black tracking-widest uppercase hover:text-white transition whitespace-nowrap">
+        {label}
+      </span>
+      <Icon.ChevronDown
+        size={12}
+        strokeWidth={3}
+        className="ml-1.5 opacity-60 group-hover:rotate-180 transition-transform duration-300"
+      />
 
-        {/* Dropdown Container Căn GIỮA TUYỆT ĐỐI so với tâm của chữ */}
-        <div className="absolute top-[100%] mt-[16px] left-1/2 -translate-x-1/2 hidden group-hover:block z-50 cursor-default font-sans normal-case tracking-normal font-normal" onClick={e => e.stopPropagation()}>
-           <div className="bg-[#111] p-5 w-[380px] rounded-2xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.9)] relative">
-              {/* Mũi tên chỉ lên đỉnh */}
-              <div className="absolute -top-[6px] left-1/2 -translate-x-1/2 w-3 h-3 bg-[#111] border-t border-l border-white/10 rotate-45 rounded-tl-[2px] z-10"></div>
+      <div
+        className={`absolute top-full pt-[22px] hidden group-hover:block z-50 cursor-default font-sans normal-case tracking-normal font-normal ${wrapperClass}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className={`bg-[#111] p-5 rounded-[20px] border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.9)] relative ${boxWidth}`}>
+          <div className={`absolute -top-[6px] -translate-x-1/2 w-3 h-3 bg-[#111] border-t border-l border-white/10 rotate-45 rounded-tl-[2px] z-10 ${arrowClass}`} />
 
-              {/* Grid Content */}
-              <div className={`grid ${cols === 4 ? 'grid-cols-4' : 'grid-cols-3'} gap-2 text-center min-h-[110px] items-start relative z-20`}>
-                {currentItems.map((c) => (
-                  <button 
-                     key={c.slug || c} 
-                     onClick={(e) => { 
-                       e.stopPropagation(); 
-                       if (mode === 'search') navigate({ type: "search", keyword: c.toString() });
-                       else navigate({ type: "list", slug: c.slug, title: c.name, mode: mode }); 
-                     }} 
-                     className="py-2.5 px-1 text-[11px] font-bold text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all uppercase tracking-tight text-center w-full truncate"
-                  >
-                    {c.name || c}
-                  </button>
+          <div className={`grid ${cols === 4 ? "grid-cols-4" : "grid-cols-3"} gap-2 text-center min-h-[110px] items-start relative z-20`}>
+            {currentItems.map((c) => (
+              <button
+                key={c.slug || c}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (mode === "search") navigate({ type: "search", keyword: c.toString() });
+                  else navigate({ type: "list", slug: c.slug, title: c.name, mode: mode });
+                }}
+                className="py-2.5 px-1 text-[11px] font-bold text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all uppercase tracking-tight text-center w-full truncate"
+              >
+                {c.name || c}
+              </button>
+            ))}
+          </div>
+
+          {totalPages > 1 && (
+            <div className="flex justify-between items-center mt-3 pt-3 border-t border-white/10 relative z-20">
+              <button
+                onClick={(e) => { e.stopPropagation(); setPage((p) => Math.max(0, p - 1)); }}
+                className={`p-1.5 rounded-full transition-colors ${page === 0 ? "opacity-30 cursor-not-allowed" : "hover:bg-white/10 text-white"}`}
+              >
+                <Icon.ChevronLeft size={16} />
+              </button>
+              <div className="flex gap-1.5">
+                {Array.from({ length: totalPages }).map((_, i) => (
+                  <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all ${i === page ? "bg-[#E50914] scale-125" : "bg-white/20"}`} />
                 ))}
               </div>
-              
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="flex justify-between items-center mt-3 pt-3 border-t border-white/10 relative z-20">
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); setPage(p => Math.max(0, p - 1)); }}
-                    className={`p-1.5 rounded-full transition-colors ${page === 0 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white/10 text-white'}`}
-                  >
-                    <Icon.ChevronLeft size={16} />
-                  </button>
-                  <div className="flex gap-1.5">
-                    {Array.from({ length: totalPages }).map((_, i) => (
-                      <div key={i} className={`w-1.5 h-1.5 rounded-full transition-all ${i === page ? 'bg-[#E50914] scale-125' : 'bg-white/20'}`} />
-                    ))}
-                  </div>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); setPage(p => Math.min(totalPages - 1, p + 1)); }}
-                    className={`p-1.5 rounded-full transition-colors ${page === totalPages - 1 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-white/10 text-white'}`}
-                  >
-                    <Icon.ChevronRight size={16} />
-                  </button>
-                </div>
-              )}
-           </div>
+              <button
+                onClick={(e) => { e.stopPropagation(); setPage((p) => Math.min(totalPages - 1, p + 1)); }}
+                className={`p-1.5 rounded-full transition-colors ${page === totalPages - 1 ? "opacity-30 cursor-not-allowed" : "hover:bg-white/10 text-white"}`}
+              >
+                <Icon.ChevronRight size={16} />
+              </button>
+            </div>
+          )}
         </div>
-        {/* Vùng đệm vô hình để nối liền khoảng trống giữa chữ và bảng, giúp không bị mất hover */}
-        <div className="absolute top-[100%] left-1/2 -translate-x-1/2 w-full h-[16px] hidden group-hover:block z-40"></div>
       </div>
-      {/* Icon Mũi tên nằm ngoài, không ảnh hưởng đến tọa độ left-1/2 của Dropdown */}
-      <Icon.ChevronDown size={12} strokeWidth={3} className="ml-1.5 opacity-60 group-hover:rotate-180 transition-transform duration-300" />
     </div>
   );
 };
@@ -1142,17 +1121,17 @@ function Header({ navigate, categories, countries }) {
     <>
       <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} navigate={navigate} />
       <header className={`fixed top-0 w-full z-[100] transition-all duration-300 transform-gpu ${scrolled ? "bg-[#050505]/95 backdrop-blur-md border-b border-white/5 py-2 md:py-3 shadow-2xl" : "bg-transparent py-4 md:py-5"}`}>
-        <div className="max-w-[1400px] mx-auto px-4 md:px-12 flex justify-between items-center gap-4">
+        <div className="max-w-[1440px] mx-auto px-4 md:px-12 flex justify-between items-center gap-4">
           
           <div 
-            className="text-[#E50914] font-black text-2xl md:text-3xl tracking-widest cursor-pointer drop-shadow-md select-none shrink-0" 
+            className="text-[#E50914] font-[900] text-2xl md:text-[32px] tracking-widest cursor-pointer drop-shadow-md select-none shrink-0" 
             onClick={() => { navigate({ type: "home" }); window.scrollTo(0, 0); }}
           >
             POLITE
           </div>
 
-          <nav className="hidden md:flex items-center justify-center text-[11px] lg:text-[12px] text-gray-300 whitespace-nowrap gap-4 lg:gap-8">
-            <button onClick={() => navigate({ type: "home" })} className="font-black tracking-widest hover:text-white transition uppercase py-4 px-2 mr-2 lg:mr-4">Trang Chủ</button>
+          <nav className="hidden md:flex items-center justify-center text-[11px] lg:text-[13px] text-gray-300 whitespace-nowrap gap-2 lg:gap-6">
+            <button onClick={() => navigate({ type: "home" })} className="font-black tracking-widest hover:text-white transition uppercase py-4 px-2">Trang Chủ</button>
             <DropdownGrid label="Thể Loại" items={categories} navigate={navigate} mode="the-loai" />
             <DropdownGrid label="Quốc Gia" items={countries} navigate={navigate} mode="quoc-gia" />
             <DropdownGrid label="Năm Phát Hành" items={YEARS} navigate={navigate} mode="search" />
@@ -1212,68 +1191,20 @@ function BottomNav({ navigate, categories, countries, currentView }) {
   );
 }
 
-const HeroSlide = memo(function HeroSlide({ movie, isActive, navigate }) {
-  const tmdbData = movie.tmdbData;
-  const isBackdropValid = tmdbData && tmdbData.backdrop_path;
-  const backdropUrl = isBackdropValid 
-    ? `https://image.tmdb.org/t/p/original${tmdbData.backdrop_path}` 
-    : getImg(movie?.poster_url || movie?.thumb_url);
-
-  return (
-    <div className={`absolute inset-0 w-full h-full transition-opacity duration-1000 ease-in-out transform-gpu will-change-opacity ${isActive ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'}`}>
-      <img 
-        src={backdropUrl} 
-        className={`w-full h-full object-cover object-top md:object-center transform-gpu ${!isBackdropValid ? 'blur-md scale-105' : ''}`} 
-        style={{ opacity: 0.7 }}
-        alt={movie?.name} 
-      />
-      
-      <div 
-        className="absolute inset-0 pointer-events-none z-10"
-        style={{
-          background: `
-            linear-gradient(to top, #050505 0%, #050505 5%, rgba(5,5,5,0.8) 25%, transparent 70%),
-            linear-gradient(to right, #050505 0%, rgba(5,5,5,0.8) 15%, transparent 40%),
-            linear-gradient(to left, #050505 0%, rgba(5,5,5,0.8) 15%, transparent 40%)
-          `
-        }}
-      />
-      
-      <div className="absolute inset-0 z-20 w-full flex justify-center pointer-events-none">
-        <div className="max-w-[1400px] w-full px-4 md:px-12 h-full flex flex-col justify-end pb-16 md:pb-24 pointer-events-auto">
-          <div className="max-w-3xl w-full flex flex-col items-start text-left animate-in fade-in slide-in-from-bottom-8 duration-700">
-            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-white mb-2 md:mb-4 uppercase tracking-tighter leading-[1.1] drop-shadow-[0_10px_30px_rgba(0,0,0,0.9)] w-full line-clamp-2 !font-sans italic-none">
-              {movie?.name}
-            </h1>
-            <p className="text-[#f5c518] text-[10px] sm:text-xs md:text-sm font-black mb-3 md:mb-5 drop-shadow-md line-clamp-1 w-full uppercase tracking-[0.2em] !font-sans">
-              {movie?.origin_name || movie?.original_name}
-            </p>
-            <div className="flex flex-wrap items-center justify-start gap-1.5 md:gap-3 text-[10px] sm:text-xs md:text-sm font-black text-gray-300 mb-4 md:mb-6 w-full tracking-widest !font-sans">
-              <span className="text-[#E50914]">{movie?.year || "2024"}</span>
-              <span className="text-gray-600">|</span>
-              <span className="flex items-center gap-1 text-[#f5c518]"><Icon.Star fill="currentColor" size={14} className="mb-0.5" /> {tmdbData?.vote_average ? Number(tmdbData.vote_average).toFixed(1) : "10.0"}</span>
-              <span className="text-gray-600">|</span>
-              <span className="border-2 border-white/60 px-2 py-0.5 rounded text-white bg-white/5 uppercase font-black">{movie?.quality || "HD"}</span>
-            </div>
-            {tmdbData?.overview && (
-              <p className="text-gray-300/90 text-xs md:text-sm leading-relaxed mb-6 md:mb-8 max-w-xl font-medium drop-shadow-lg line-clamp-3">
-                {tmdbData.overview}
-              </p>
-            )}
-            <button onClick={() => { navigate({ type: "detail", slug: movie?.slug }); window.scrollTo(0, 0); }} className="w-fit bg-[#E50914] hover:bg-red-700 text-white px-8 py-3.5 md:px-12 md:py-4.5 rounded-full font-black flex items-center gap-2 md:gap-3 transition-transform transform-gpu hover:scale-105 active:scale-95 shadow-[0_8px_25px_rgba(229,9,20,0.6)] uppercase tracking-[0.2em] text-[10px] sm:text-xs md:text-sm !font-sans">
-              <Icon.Play size={16} fill="currentColor" /> XEM NGAY
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-});
-
+// LÀM LẠI HERO: SỬA LỖI TEXT CHẮN POSTER VÀ TỐI ƯU UX CLICK
 function Hero({ navigate }) {
   const [bannerMovies, setBannerMovies] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+  const [hoveredPosterIndex, setHoveredPosterIndex] = useState(null);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    handleResize(); 
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     const fetchBannerData = async () => {
@@ -1295,39 +1226,160 @@ function Hero({ navigate }) {
         }
 
         if (combinedItems.length === 0) { setLoading(false); return; }
-        
+
         const uniqueMovies = Array.from(new Map(combinedItems.map(m => [m.slug, m])).values());
-        const candidates = uniqueMovies.slice(0, 30); 
-        
-        const tmdbResults = await Promise.all(candidates.map(async (m) => {
-          const tmdb = await fetchTMDB(m.name, m.origin_name || m.original_name, m.slug, m.year);
-          return { ...m, tmdbData: tmdb };
-        }));
-        
-        const validBackdrops = tmdbResults.filter(m => m.tmdbData && m.tmdbData.backdrop_path);
-        
-        setBannerMovies(validBackdrops.length > 0 ? validBackdrops.slice(0, 5) : tmdbResults.slice(0, 5));
+        const candidates = uniqueMovies.slice(0, 5); 
+
+        setBannerMovies(candidates);
+        setCurrentIndex(Math.floor(candidates.length / 2)); 
+
       } catch (error) { console.error(error); } finally { setLoading(false); }
     };
     fetchBannerData();
   }, []);
 
+  // TỐI ƯU UX: Reset lại bộ đếm 6 giây mỗi khi người dùng chủ động đổi phim (thay đổi currentIndex)
   useEffect(() => {
-    if (bannerMovies.length <= 1) return;
-    const timer = setInterval(() => { setCurrentIndex((prev) => (prev + 1) % bannerMovies.length); }, 5000); 
+    if (bannerMovies.length === 0) return;
+    const timer = setInterval(() => {
+      setCurrentIndex((prevIndex) => (prevIndex + 1) % bannerMovies.length);
+    }, 6000); 
     return () => clearInterval(timer);
-  }, [bannerMovies.length]);
+  }, [bannerMovies.length, currentIndex]);
 
   if (loading) return <div className="w-full h-[70vh] sm:h-[80vh] md:h-[95vh] lg:h-[100vh] flex justify-center items-center bg-[#050505]"><Icon.Loader2 className="animate-spin text-[#E50914]" size={36} /></div>;
   if (bannerMovies.length === 0) return null;
 
+  const currentMovie = bannerMovies[currentIndex];
+
   return (
-    <div className="relative w-full h-[70vh] sm:h-[85vh] md:h-[95vh] lg:h-[100vh] max-h-[900px] bg-[#050505] overflow-hidden transform-gpu">
-      {bannerMovies.map((movie, index) => <HeroSlide key={movie.slug} movie={movie} isActive={index === currentIndex} navigate={navigate} />)}
-      <div className="absolute bottom-4 sm:bottom-6 md:bottom-8 left-0 w-full flex justify-center items-center gap-2.5 z-20">
-        {bannerMovies.map((_, i) => (
-          <button key={i} onClick={() => setCurrentIndex(i)} className={`h-[4px] transition-all duration-500 rounded-full transform-gpu ${i === currentIndex ? "w-10 bg-[#E50914]" : "w-5 bg-gray-600 hover:bg-gray-400"}`} />
-        ))}
+    <div 
+      className="relative w-full h-[85vh] md:h-[100vh] max-h-[900px] min-h-[600px] bg-[#050505] overflow-hidden flex flex-col items-center justify-center transform-gpu pt-10" 
+      style={{ perspective: '1200px' }} 
+    >
+      <div className="absolute inset-0 z-0 pointer-events-none">
+        <img
+          src={getImg(currentMovie?.poster_url || currentMovie?.thumb_url)}
+          className="w-full h-full object-cover blur-[40px] opacity-40 scale-125 transform-gpu transition-all duration-1000 will-change-transform"
+          alt=""
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/70 to-transparent" />
+      </div>
+
+      <div 
+        className="relative z-10 w-full max-w-[1440px] h-full flex flex-col justify-center items-center pointer-events-none mt-16 md:mt-24"
+      >
+        <div className="relative w-full h-[45vh] md:h-[55vh] flex justify-center items-center transform-style-3d pointer-events-auto">
+           {bannerMovies.map((movie, index) => {
+              const offset = index - currentIndex; 
+              let continuousOffset = offset;
+              const N = bannerMovies.length;
+              if (offset > Math.floor(N / 2)) {
+                continuousOffset -= N;
+              } else if (offset < -Math.floor((N - 1) / 2)) {
+                continuousOffset += N;
+              }
+              
+              const absOffset = Math.abs(continuousOffset);
+              const sign = Math.sign(continuousOffset);
+              const isHidden = absOffset > 2;
+
+              const translateMultiplier = isMobile ? 85 : 90; 
+              const translateX = continuousOffset * translateMultiplier; 
+              
+              const translateZ = absOffset === 0 ? (isMobile ? 30 : 50) : -absOffset * (isMobile ? 80 : 120);
+              const rotateY = sign * (isMobile ? -15 : -20);
+              const scale = absOffset === 0 ? (isMobile ? 1.05 : 1.15) : (isMobile ? 0.85 : 0.85); 
+              const zIndex = 30 - absOffset;
+
+              const isHovered = hoveredPosterIndex === index;
+              const isCenter = absOffset === 0;
+              const isBright = isHovered || (hoveredPosterIndex === null && isCenter);
+              
+              return (
+                 <div
+                   key={movie.slug + index}
+                   onMouseEnter={() => setHoveredPosterIndex(index)}
+                   onMouseLeave={() => setHoveredPosterIndex(null)}
+                   className="absolute w-[150px] sm:w-[190px] md:w-[240px] lg:w-[280px] aspect-[2/3] rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.6)] cursor-pointer will-change-transform smooth-transition"
+                   style={{
+                     transform: `translate3d(${translateX}%, 0, ${translateZ}px) rotateY(${absOffset === 0 ? 0 : rotateY}deg) scale(${scale})`,
+                     zIndex,
+                     opacity: isHidden ? 0 : 1, 
+                     pointerEvents: isHidden ? 'none' : 'auto'
+                   }}
+                   onClick={() => {
+                      if (absOffset === 0) {
+                         navigate({ type: "detail", slug: movie.slug });
+                         window.scrollTo(0, 0);
+                      } else {
+                         setCurrentIndex(index);
+                      }
+                   }}
+                 >
+                    <img
+                       src={getImg(movie.thumb_url || movie.poster_url)}
+                       className="w-full h-full object-cover"
+                       alt={movie.name}
+                    />
+                    
+                    <div 
+                      className="absolute inset-0 bg-black pointer-events-none smooth-transition"
+                      style={{ opacity: isBright ? 0 : 0.6 }}
+                    />
+
+                    <div className="absolute top-2 left-2 md:top-3 md:left-3 bg-[#E50914] text-white text-[10px] md:text-xs px-2 py-0.5 rounded font-black uppercase z-10 shadow-md">
+                      HD
+                    </div>
+                 </div>
+              );
+           })}
+        </div>
+
+        {/* FIX 1: Đổi margin âm thành margin dương (mt-6) để đẩy text xuống, không che lấp click poster */}
+        <div className="w-full max-w-4xl text-center mt-6 md:mt-8 px-4 z-[40] transition-all duration-500 pointer-events-auto relative">
+           
+           {/* FIX 2: Hạ kích thước font xuống 40px (hoặc 42px) cho vừa vặn, không bị khổng lồ */}
+           <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-[42px] font-[900] text-white uppercase tracking-tighter line-clamp-2 mb-2 drop-shadow-[0_4px_10px_rgba(0,0,0,0.8)] !font-sans leading-tight">
+             {currentMovie?.name}
+           </h1>
+           
+           <p className="text-[#f5c518] text-[10px] md:text-sm font-black mb-3 md:mb-4 drop-shadow-md uppercase tracking-[0.2em] !font-sans">
+              {currentMovie?.origin_name || currentMovie?.original_name}
+           </p>
+           
+           <div className="flex justify-center items-center gap-2 md:gap-3 text-[10px] md:text-xs font-black text-gray-300 mb-6 uppercase tracking-widest drop-shadow-md">
+             <span className="text-[#E50914]">{currentMovie?.year || "2024"}</span>
+             <span className="text-gray-500">|</span>
+             <span className="bg-[#E50914] px-1.5 py-0.5 rounded text-white">{currentMovie?.quality || "HD"}</span>
+             {currentMovie?.episode_current && (
+               <>
+                 <span className="text-gray-500">|</span>
+                 <span className="text-gray-200">{currentMovie?.episode_current}</span>
+               </>
+             )}
+           </div>
+           
+           <button
+              onClick={() => { navigate({ type: "detail", slug: currentMovie?.slug }); window.scrollTo(0,0); }}
+              className="bg-[#E50914] hover:bg-red-700 text-white px-8 py-3 md:px-10 md:py-3.5 rounded-full font-black flex items-center gap-2 mx-auto transition-transform hover:scale-105 shadow-[0_8px_25px_rgba(229,9,20,0.6)] uppercase tracking-widest text-[10px] md:text-xs"
+           >
+              <Icon.Play size={16} fill="currentColor" /> XEM NGAY
+           </button>
+           
+           <div className="flex justify-center items-center gap-1.5 md:gap-2 mt-6 md:mt-8 pointer-events-auto">
+             {bannerMovies.map((_, idx) => (
+               <button
+                 key={idx}
+                 onClick={() => setCurrentIndex(idx)}
+                 className={`h-1.5 md:h-1.5 rounded-full transition-all duration-500 ease-out ${
+                   currentIndex === idx ? "w-8 md:w-10 bg-white shadow-[0_0_10px_rgba(255,255,255,0.8)]" : "w-3 md:w-4 bg-white/30 hover:bg-white/60"
+                 }`}
+                 aria-label={`Đi tới phim ${idx + 1}`}
+               />
+             ))}
+           </div>
+        </div>
       </div>
     </div>
   );
@@ -1373,8 +1425,6 @@ function MovieDetail({ slug, navigate }) {
       setLoadingPage(true);
       setError(false);
       try {
-        
-        // 1. GỌI API LẤY CHI TIẾT CỦA CẢ OPHIM VÀ NGUONC (BẢO VỆ CHỐNG TREO)
         const fetchWithTimeout = (url) => Promise.race([
           fetch(url, { signal: controller.signal }).then(r => r.json()),
           new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
@@ -1399,7 +1449,6 @@ function MovieDetail({ slug, navigate }) {
            return;
         } 
         
-        // 2. NẾU BỊ ĐỔI SLUG NGẦM, CHẠY TÌM KIẾM DỰ PHÒNG
         const searchSlug = slug.replace(/-/g, ' ');
         try {
            const searchRes = await fetch(`${API_NGUONC}/search?keyword=${encodeURIComponent(searchSlug)}`);
@@ -1416,7 +1465,7 @@ function MovieDetail({ slug, navigate }) {
         } catch(e) {}
         
         try {
-           const searchResO = await fetch(`${API}/tim-kiem?keyword=${encodeURIComponent(searchSlug)}`);
+           const searchResO = await fetch(`${API_NGUONC}/tim-kiem?keyword=${encodeURIComponent(searchSlug)}`);
            const searchJO = await searchResO.json();
            const matchO = searchJO?.data?.items?.[0];
            if (matchO && matchO.slug) {
@@ -1441,6 +1490,7 @@ function MovieDetail({ slug, navigate }) {
   }, [slug]);
 
   const i = m?.item;
+  
   const { data: tmdbData } = useTMDBData(i?.name, i?.origin_name || i?.original_name, i?.slug, i?.year);
   const voteAverage = tmdbData?.vote_average || i?.tmdb?.vote_average;
 
@@ -1469,12 +1519,12 @@ function MovieDetail({ slug, navigate }) {
      </div>
   );
 
-  const backdropUrl = tmdbData?.backdrop_path ? `https://image.tmdb.org/t/p/original${tmdbData.backdrop_path}` : getImg(i?.poster_url || i?.thumb_url);
+  const backdropUrl = getImg(i?.poster_url || i?.thumb_url);
 
   return (
     <div className="pb-20 animate-in fade-in duration-700 bg-[#050505]">
       <div className="relative min-h-[70vh] md:h-[95vh] max-h-[900px] w-full overflow-hidden flex flex-col justify-end transform-gpu">
-        <img src={backdropUrl} className="absolute inset-0 w-full h-full object-cover object-top opacity-40 transform-gpu" alt="" />
+        <img src={backdropUrl} className="absolute inset-0 w-full h-full object-cover object-top opacity-40 blur-xl scale-125 transform-gpu" alt="" />
         
         <div 
           className="absolute inset-0 pointer-events-none z-10"
@@ -1489,7 +1539,7 @@ function MovieDetail({ slug, navigate }) {
         
         <div className="relative max-w-[1400px] mx-auto w-full px-4 md:px-12 pb-16 flex flex-col md:flex-row gap-10 items-center md:items-end text-center md:text-left z-20">
           <div className="w-44 md:w-72 shrink-0 shadow-[0_20px_50px_rgba(0,0,0,0.8)] rounded-2xl overflow-hidden border border-white/10 transform-gpu">
-            <SmartImage slug={i?.slug} year={i?.year} src={i?.thumb_url || i?.poster_url} name={i?.name} originName={i?.origin_name || i?.original_name} className="w-full h-full object-cover" />
+            <SmartImage src={i?.thumb_url || i?.poster_url} className="w-full h-full object-cover" />
           </div>
           <div className="flex-1">
             <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-white mb-4 uppercase tracking-tighter leading-none !font-sans">{i?.name}</h1>
@@ -1517,7 +1567,6 @@ function MovieDetail({ slug, navigate }) {
            </h3>
            <div className="text-gray-400 leading-relaxed text-base md:text-lg font-medium" dangerouslySetInnerHTML={{ __html: typeof i?.content === 'string' ? i.content : "Đang cập nhật nội dung..." }} />
            
-           {/* DANH SÁCH DIỄN VIÊN */}
            {cast && cast.length > 0 && (
              <div className="mt-10 pt-8 border-t border-white/5">
                 <h4 className="text-sm font-black text-white uppercase mb-6 tracking-[0.2em] text-[#E50914]">Diễn viên</h4>
@@ -1833,7 +1882,7 @@ export default function App() {
     fetch(`${API}/the-loai`).then((r) => r.json()).then((j) => setCats(j?.data?.items || [])).catch(() => {});
     fetch(`${API}/quoc-gia`).then((r) => r.json()).then((j) => setCountries(j?.data?.items || [])).catch(() => {});
 
-    // MÃ TẠO MÀN HÌNH SPLASH SCREEN PWA + FIX LOGO BỊ ĐEN
+    // SETUP PWA
     const setupPWA = () => {
       const metaTags = [
         { name: 'apple-mobile-web-app-capable', content: 'yes' },
@@ -1862,30 +1911,6 @@ export default function App() {
       standardIcon.href = iconUrl;
       document.head.appendChild(standardIcon);
 
-      // Tự động vẽ Splash Screen xịn xò để xóa sổ màn hình đen thui khi mở trên điện thoại
-      try {
-        const canvas = document.createElement('canvas');
-        const dpr = window.devicePixelRatio || 1;
-        canvas.width = window.screen.width * dpr;
-        canvas.height = window.screen.height * dpr;
-        const ctx = canvas.getContext('2d');
-
-        ctx.fillStyle = '#050505';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        ctx.font = `italic 900 ${canvas.width * 0.15}px Arial, sans-serif`;
-        ctx.fillStyle = '#E50914';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('POLITE', canvas.width / 2, canvas.height / 2);
-
-        const splashUrl = canvas.toDataURL('image/png');
-        let splashLink = document.createElement('link');
-        splashLink.rel = 'apple-touch-startup-image';
-        splashLink.href = splashUrl;
-        document.head.appendChild(splashLink);
-      } catch(e) {}
-
       const manifest = {
         name: "POLITE Phim",
         short_name: "POLITE",
@@ -1911,7 +1936,6 @@ export default function App() {
     if (isNewView) { setLoading(true); setMovies([]); } 
     else { setLoadingMore(true); }
 
-    // THUẬT TOÁN TÌM PHIM CỦA DIỄN VIÊN ĐÃ ĐƯỢC MỞ RỘNG (Khắc phục mất phim Thor/Siêu anh hùng)
     if (view.type === "actor") {
        try {
          const tmdbRes = await fetch(`https://api.themoviedb.org/3/person/${view.actorId}/combined_credits?api_key=${TMDB_API_KEY}&language=vi-VN`);
@@ -1933,16 +1957,8 @@ export default function App() {
 
             const checkMatch = (items) => {
                 if (!items || items.length === 0) return null;
-                
-                // Ưu tiên 1: Khớp chính xác tên gốc tiếng Anh (Cực chuẩn cho phim Âu Mỹ)
                 let match = items.find(m => normalize(m.origin_name || m.original_name) === qOrig);
-
-                // Ưu tiên 2: Khớp chính xác tên tiếng Việt
-                if (!match) {
-                    match = items.find(m => normalize(m.name) === qLocal);
-                }
-                
-                // Ưu tiên 3: Tên tương đối (Chứa từ khóa), nhưng bắt buộc phải khớp NĂM SẢN XUẤT (Dung sai 1 năm)
+                if (!match) match = items.find(m => normalize(m.name) === qLocal);
                 if (!match && qOrig.length > 3) {
                     match = items.find(m => {
                         const mOrig = normalize(m.origin_name || m.original_name);
@@ -1951,7 +1967,6 @@ export default function App() {
                         return isSimilarName && isSameYear;
                     });
                 }
-                
                 return match || null; 
             };
 
@@ -1972,14 +1987,8 @@ export default function App() {
          const results = await Promise.all(searchPromises);
          const validMovies = results.filter(Boolean);
          
-         const sortedMovies = validMovies.sort((a, b) => {
-           const aHas = (a.thumb_url || a.poster_url) ? 1 : 0;
-           const bHas = (b.thumb_url || b.poster_url) ? 1 : 0;
-           return bHas - aHas;
-         });
-
          const uniqueMap = new Map();
-         sortedMovies.forEach(m => {
+         validMovies.forEach(m => {
             const key = m.origin_name || m.original_name || m.slug;
             if(!uniqueMap.has(key)) uniqueMap.set(key, m);
          });
@@ -2061,6 +2070,14 @@ export default function App() {
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         @keyframes custom-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .animate-spin { animation: custom-spin 1s linear infinite !important; }
+        
+        /* Hiệu ứng Coverflow */
+        .transform-style-3d { transform-style: preserve-3d; }
+        
+        /* Cấu hình transition siêu mượt 120fps */
+        .smooth-transition {
+          transition: transform 0.9s cubic-bezier(0.23, 1, 0.32, 1), opacity 0.9s cubic-bezier(0.23, 1, 0.32, 1);
+        }
         
         .custom-range { -webkit-appearance: none; outline: none; border-radius: 4px; }
         .custom-range::-webkit-slider-thumb { -webkit-appearance: none; height: 14px; width: 14px; border-radius: 50%; background: #E50914; cursor: pointer; box-shadow: 0 0 5px rgba(0,0,0,0.5); }

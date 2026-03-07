@@ -38,7 +38,38 @@ const safeJoin = (data) => {
   return "Đang cập nhật";
 };
 
-// --- HỆ THỐNG CACHE TMDB ---
+// Hàm chuẩn hóa chuỗi để loại bỏ trùng lặp chính xác hơn
+const normalizeString = (s) => (s || "").toLowerCase().replace(/[:\-]/g, ' ').replace(/\s+/g, ' ').trim();
+
+// Hàm gộp phim trùng lặp thông minh (Quét theo Tên Gốc, Tên Việt và Slug)
+const mergeDuplicateMovies = (items) => {
+  const merged = [];
+  (items || []).forEach(item => {
+      if (!item || item.episode_current?.toLowerCase().includes("trailer")) return;
+      
+      const normOrigin = normalizeString(item.origin_name || item.original_name);
+      const normName = normalizeString(item.name);
+      
+      const exists = merged.find(m => {
+          const mNormOrigin = normalizeString(m.origin_name || m.original_name);
+          const mNormName = normalizeString(m.name);
+          
+          const matchOrigin = normOrigin && mNormOrigin && normOrigin === mNormOrigin;
+          const matchName = normName && mNormName && normName === mNormName;
+          const matchSlug = item.slug === m.slug;
+          
+          return matchOrigin || matchName || matchSlug;
+      });
+      
+      if (!exists) {
+          merged.push(item);
+      }
+  });
+  return merged;
+};
+
+
+// --- HỆ THỐNG CACHE VÀ RÀ SOÁT TMDB CHỈ DÀNH CHO TRANG CHI TIẾT (Diễn viên) ---
 const tmdbCache = new Map();
 
 async function fetchTMDB(name, originName, slug, year) {
@@ -132,7 +163,7 @@ function SmartImage({ src, alt, className }) {
   );
 }
 
-function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieYear, forceIframe }) {
+function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieYear, forceIframe, serverSource, serverRawName }) {
   const vRef = useRef(null);
   const containerRef = useRef(null);
   const hlsRef = useRef(null);
@@ -154,11 +185,11 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
   const [levels, setLevels] = useState([]);
   const [currentLevel, setCurrentLevel] = useState(-1);
   
-  const [useIframe, setUseIframe] = useState(forceIframe || !m3u8Link || m3u8Link.trim() === "");
+  // FIX: Loại bỏ useState cho useIframe để tránh rendering trễ 1 nhịp gây kẹt Player
+  const useIframe = forceIframe || !m3u8Link || m3u8Link.trim() === "";
   const idleTimeoutRef = useRef(null);
 
   useEffect(() => {
-    setUseIframe(forceIframe || !m3u8Link || m3u8Link.trim() === "");
     setIsPlaying(false);
     setCurrentTime(0);
     setShowSettings(false);
@@ -179,13 +210,16 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
         name: movieName,
         origin_name: originName, 
         thumb: thumbUrl,
-        year: movieYear 
+        year: movieYear,
+        serverSource: serverSource, // Lưu lại máy chủ (Ophim/NguonC)
+        serverRawName: serverRawName // Lưu lại nhóm Vietsub/Lồng tiếng
       };
       localStorage.setItem("movieProgress", JSON.stringify(progress));
     }, 5000); 
     return () => clearTimeout(timer);
-  }, [useIframe, movieSlug, ep, movieName, originName, thumbUrl, movieYear]);
+  }, [useIframe, movieSlug, ep, movieName, originName, thumbUrl, movieYear, serverSource, serverRawName]);
 
+  // FIX TỐC ĐỘ TẢI HLS VÀ LỖI CLICK KHÔNG CHẠY
   useEffect(() => {
     if (useIframe || !vRef.current || !m3u8Link) return; 
     
@@ -196,18 +230,14 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
       if (v.canPlayType("application/vnd.apple.mpegurl")) {
         v.src = m3u8Link;
       } else if (window.Hls) {
-        hls = new window.Hls({
-           maxBufferLength: 30,
-           maxMaxBufferLength: 600,
-        });
+        hls = new window.Hls(); 
         hlsRef.current = hls;
         hls.loadSource(m3u8Link);
         hls.attachMedia(v);
         
-        hls.on(window.Hls.Events.MANIFEST_PARSED, (event, data) => {
+        hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
           setLevels(hls.levels);
           setCurrentLevel(hls.currentLevel);
-          v.play().catch(() => {});
         });
 
         hls.on(window.Hls.Events.LEVEL_SWITCHED, (event, data) => {
@@ -234,11 +264,15 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
       }
     };
 
+    // Kiểm tra chống load script 2 lần do React Strict Mode
     if (!window.Hls) {
-      const s = document.createElement("script");
-      s.src = "https://cdn.jsdelivr.net/npm/hls.js@latest";
-      s.onload = loadVideo;
-      document.body.appendChild(s);
+      let existingScript = document.querySelector('script[src="https://cdn.jsdelivr.net/npm/hls.js@latest"]');
+      if (!existingScript) {
+        existingScript = document.createElement("script");
+        existingScript.src = "https://cdn.jsdelivr.net/npm/hls.js@latest";
+        document.body.appendChild(existingScript);
+      }
+      existingScript.addEventListener('load', loadVideo);
     } else {
       loadVideo();
     }
@@ -267,7 +301,9 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
           name: movieName,
           origin_name: originName, 
           thumb: thumbUrl,
-          year: movieYear 
+          year: movieYear,
+          serverSource: serverSource, // Lưu lại máy chủ (Ophim/NguonC)
+          serverRawName: serverRawName // Lưu lại nhóm Vietsub/Lồng tiếng
         };
         localStorage.setItem("movieProgress", JSON.stringify(progress));
       }
@@ -282,24 +318,44 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
       }
     };
 
+    const handlePlayState = () => setIsPlaying(true);
+    const handlePauseState = () => setIsPlaying(false);
+
     video.addEventListener("timeupdate", handleTimeUpdate);
     video.addEventListener("loadedmetadata", handleLoadedMetadata);
-    video.addEventListener("play", () => setIsPlaying(true));
-    video.addEventListener("pause", () => setIsPlaying(false));
+    video.addEventListener("play", handlePlayState);
+    video.addEventListener("playing", handlePlayState); 
+    video.addEventListener("pause", handlePauseState);
+    video.addEventListener("waiting", handlePauseState);
     
     return () => {
       video.removeEventListener("timeupdate", handleTimeUpdate);
       video.removeEventListener("loadedmetadata", handleLoadedMetadata);
-      video.removeEventListener("play", () => setIsPlaying(true));
-      video.removeEventListener("pause", () => setIsPlaying(false));
+      video.removeEventListener("play", handlePlayState);
+      video.removeEventListener("playing", handlePlayState);
+      video.removeEventListener("pause", handlePauseState);
+      video.removeEventListener("waiting", handlePauseState);
     };
-  }, [ep, hlsError, useIframe, movieSlug, movieName, originName, thumbUrl, movieYear]);
+  }, [ep, hlsError, useIframe, movieSlug, movieName, originName, thumbUrl, movieYear, serverSource, serverRawName]);
 
   const togglePlay = (e) => {
     if (e) e.stopPropagation();
     if (!vRef.current || hlsError) return;
-    if (vRef.current.paused) vRef.current.play();
-    else vRef.current.pause();
+    
+    if (vRef.current.paused) {
+      const playPromise = vRef.current.play();
+      if (playPromise !== undefined) {
+          playPromise.then(() => {
+              setIsPlaying(true);
+          }).catch(error => {
+              console.log("Autoplay prevented or stream not ready.");
+              setIsPlaying(false);
+          });
+      }
+    } else {
+      vRef.current.pause();
+      setIsPlaying(false);
+    }
   };
 
   const toggleFullscreen = (e) => {
@@ -445,11 +501,13 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
                 type="range"
                 min="0"
                 max={duration || 100}
+                step="0.1" 
                 value={currentTime}
                 onChange={(e) => { 
                   if (vRef.current) {
-                    vRef.current.currentTime = e.target.value; 
-                    setCurrentTime(e.target.value); 
+                    const val = parseFloat(e.target.value);
+                    vRef.current.currentTime = val; 
+                    setCurrentTime(val); 
                   }
                 }}
                 className="custom-range w-full h-1 md:h-1.5 transition-all relative z-10"
@@ -487,11 +545,12 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
                     value={isMuted ? 0 : volume}
                     onChange={(e) => { 
                       if(vRef.current) {
-                        vRef.current.volume = e.target.value; 
-                        vRef.current.muted = e.target.value === "0";
+                        const vVal = parseFloat(e.target.value);
+                        vRef.current.volume = vVal; 
+                        vRef.current.muted = vVal === 0;
                       }
-                      setVolume(e.target.value);
-                      if(e.target.value > 0) setIsMuted(false);
+                      setVolume(parseFloat(e.target.value));
+                      if(parseFloat(e.target.value) > 0) setIsMuted(false);
                     }}
                     className="custom-range w-0 overflow-hidden group-hover/vol:w-20 transition-all duration-300 h-1 md:h-1.5"
                     style={{
@@ -611,11 +670,9 @@ function SearchModal({ isOpen, onClose, navigate }) {
           const nguoncItems = nguoncJson?.items || nguoncJson?.data?.items || [];
           combinedItems = [...combinedItems, ...nguoncItems];
         }
-
-        const uniqueMap = new Map();
-        combinedItems.forEach(m => uniqueMap.set(m.slug, m));
         
-        setResults(Array.from(uniqueMap.values()));
+        // Sử dụng hàm gộp thông minh
+        setResults(mergeDuplicateMovies(combinedItems));
       } catch (error) {
         if (error.name !== 'AbortError') console.error("Lỗi tìm kiếm:", error);
       } finally {
@@ -747,145 +804,6 @@ const MovieCard = memo(function MovieCard({ m, navigate, progressData, isRow = f
   );
 });
 
-// COMPONENT MỚI: TỰ ĐỘNG MAP TMDB SANG OPHIM/NGUONC THEO TÊN + NĂM (CÓ LAZY LOAD ĐỂ MƯỢT TRANG)
-function TMDBMatchedSection({ title, tmdbUrl, slug, type = "the-loai", navigate, progressData }) {
-  const [movies, setMovies] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [hasFetched, setHasFetched] = useState(false);
-  const sectionRef = useRef(null);
-  const scrollRef = useRef(null);
-
-  // Lazy load: Chỉ fetch khi cuộn tới gần section này để tránh giật lag lúc mới mở web
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && !hasFetched && !loading) {
-          fetchData();
-        }
-      },
-      { rootMargin: "300px" } 
-    );
-    if (sectionRef.current) observer.observe(sectionRef.current);
-    return () => { if (sectionRef.current) observer.unobserve(sectionRef.current); };
-  }, [hasFetched, loading]);
-
-  const fetchData = async () => {
-    setLoading(true);
-    setHasFetched(true);
-    try {
-      const tmdbRes = await fetch(tmdbUrl);
-      const tmdbJson = await tmdbRes.json();
-      const tmdbItems = tmdbJson.results || [];
-
-      const normalize = (s) => (s || "").toLowerCase().replace(/[:\-]/g, ' ').replace(/\s+/g, ' ').trim();
-      const matched = [];
-      const uniqueMap = new Map();
-
-      // Lấy top 20 phim từ TMDB để dò tìm bên API gốc
-      const topItems = tmdbItems.slice(0, 20);
-
-      const searchPromises = topItems.map(async (tmdbItem) => {
-        const titleQuery = tmdbItem.original_title || tmdbItem.original_name || tmdbItem.title || tmdbItem.name;
-        // RÀ SOÁT NĂM SẢN XUẤT 
-        const releaseYear = (tmdbItem.release_date || tmdbItem.first_air_date || '').substring(0, 4);
-        if (!titleQuery) return null;
-
-        const qOrig = normalize(tmdbItem.original_title || tmdbItem.original_name);
-        const qLocal = normalize(tmdbItem.title || tmdbItem.name);
-
-        const checkMatch = (items) => {
-            if (!items || items.length === 0) return null;
-            // 1. Khớp chính xác tên gốc
-            let match = items.find(m => normalize(m.origin_name || m.original_name) === qOrig);
-            // 2. Khớp chính xác tên Việt hóa
-            if (!match) match = items.find(m => normalize(m.name) === qLocal);
-            // 3. Khớp tương đối TÊN VÀ NĂM SẢN XUẤT (Cho phép lệch 1 năm)
-            if (!match && qOrig.length > 3) {
-                match = items.find(m => {
-                    const mOrig = normalize(m.origin_name || m.original_name);
-                    const isSimilarName = mOrig.includes(qOrig) || qOrig.includes(mOrig) || normalize(m.name).includes(qLocal);
-                    const isSameYear = releaseYear && m.year && Math.abs(parseInt(m.year) - parseInt(releaseYear)) <= 1;
-                    return isSimilarName && isSameYear;
-                });
-            }
-            return match || null;
-        };
-
-        try {
-           const [resN, resO] = await Promise.allSettled([
-              fetch(`${API_NGUONC}/search?keyword=${encodeURIComponent(titleQuery)}`).then(r => r.json()),
-              fetch(`${API}/tim-kiem?keyword=${encodeURIComponent(titleQuery)}`).then(r => r.json())
-           ]);
-
-           let matchResult = null;
-           if (resN.status === 'fulfilled') matchResult = checkMatch(resN.value?.items || resN.value?.data?.items);
-           if (!matchResult && resO.status === 'fulfilled') matchResult = checkMatch(resO.value?.data?.items);
-
-           return matchResult;
-        } catch(e) { return null; }
-      });
-
-      const results = await Promise.all(searchPromises);
-      const validMovies = results.filter(Boolean);
-
-      validMovies.forEach(m => {
-         const key = m.slug;
-         if(!uniqueMap.has(key)) uniqueMap.set(key, m);
-      });
-
-      setMovies(Array.from(uniqueMap.values()).slice(0, 15)); 
-    } catch (e) {
-      console.error("Lỗi fetch TMDB matched section:", e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const scroll = (direction) => {
-    if (scrollRef.current) {
-      const { scrollLeft, clientWidth } = scrollRef.current;
-      const scrollTo = direction === "left" ? scrollLeft - clientWidth * 0.8 : scrollLeft + clientWidth * 0.8;
-      scrollRef.current.scrollTo({ left: scrollTo, behavior: "smooth" });
-    }
-  };
-
-  return (
-    <div ref={sectionRef} className="mb-8 md:mb-12 relative group/section transform-gpu min-h-[250px]">
-       <div className="flex items-center justify-between mb-3 md:mb-4 px-1">
-         <h2 className="text-[15px] sm:text-lg md:text-2xl font-black text-white uppercase tracking-tighter flex items-center gap-2 md:gap-3">
-            <span className="w-[4px] h-6 md:h-8 bg-[#E50914] block" /> {title}
-         </h2>
-         {loading && <Icon.Loader2 className="animate-spin text-[#E50914] ml-4" size={20} />}
-         {!loading && slug && movies.length > 0 && (
-             <button onClick={() => navigate({ type: "list", slug, title, mode: type })} className="text-[#E50914] text-[9px] sm:text-[10px] md:text-xs font-black hover:underline opacity-100 md:opacity-0 group-hover/section:opacity-100 transition-opacity uppercase tracking-widest">Xem tất cả</button>
-         )}
-       </div>
-
-       {!hasFetched || loading ? (
-         <div className="flex gap-4 overflow-hidden px-1">
-            {Array.from({length: 6}).map((_, i) => (
-               <div key={i} className="w-[120px] sm:w-[150px] md:w-52 lg:w-60 xl:w-64 shrink-0 aspect-[2/3] bg-white/5 rounded-xl animate-pulse" />
-            ))}
-         </div>
-       ) : movies.length > 0 ? (
-         <div className="relative">
-            <button onClick={() => scroll("left")} className="absolute left-0 top-[40%] -translate-y-1/2 z-[40] bg-black/60 hover:bg-black/90 text-white p-2 md:p-3 rounded-r-2xl backdrop-blur-md opacity-0 group-hover/section:opacity-100 transition-all hidden md:flex items-center shadow-2xl transform-gpu">
-              <Icon.ChevronLeft size={30} className="md:w-9 md:h-9" />
-            </button>
-            <div ref={scrollRef} className="flex gap-3 sm:gap-4 md:gap-6 overflow-x-auto scroll-smooth no-scrollbar pb-4 px-1 md:px-2 snap-x snap-mandatory overscroll-x-contain will-change-scroll">
-              {movies.map((m) => <MovieCard key={m.slug} m={m} navigate={navigate} progressData={progressData} isRow={true} />)}
-            </div>
-            <button onClick={() => scroll("right")} className="absolute right-0 top-[40%] -translate-y-1/2 z-[40] bg-black/60 hover:bg-black/90 text-white p-2 md:p-3 rounded-l-2xl backdrop-blur-md opacity-0 group-hover/section:opacity-100 transition-all hidden md:flex items-center shadow-2xl transform-gpu">
-              <Icon.ChevronRight size={30} className="md:w-9 md:h-9" />
-            </button>
-         </div>
-       ) : (
-         <div className="text-gray-500 text-sm italic px-2">Hệ thống đang đồng bộ phim với chuẩn quốc tế, vui lòng quay lại sau.</div>
-       )}
-    </div>
-  );
-}
-
 function MovieSection({ title, slug, type = "the-loai", navigate, progressData }) {
   const [movies, setMovies] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -894,36 +812,25 @@ function MovieSection({ title, slug, type = "the-loai", navigate, progressData }
   useEffect(() => {
     const controller = new AbortController();
     
-    const fetchAndFilterMovies = async () => {
+    const fetchMovies = async () => {
       try {
         setLoading(true);
         let combinedItems = [];
 
-        try {
-          const nguoncUrl = type === 'danh-sach' 
-            ? `${API_NGUONC}/phim-moi-cap-nhat` 
-            : `${API_NGUONC}/${type === 'quoc-gia' ? 'quoc-gia' : 'the-loai'}/${slug}`;
-          const resN = await fetch(nguoncUrl, { signal: controller.signal });
-          const jN = await resN.json();
-          if (jN?.items) combinedItems = [...combinedItems, ...jN.items];
-          else if (jN?.data?.items) combinedItems = [...combinedItems, ...jN.data.items];
-        } catch (e) {}
-
-        try {
-          const resO = await fetch(`${API}/${type}/${slug}`, { signal: controller.signal });
-          const jO = await resO.json();
-          if (jO?.data?.items) combinedItems = [...combinedItems, ...jO.data.items];
-        } catch (e) {}
+        // Lấy độc quyền nguồn Ophim cho các Section ở trang chủ để tránh giật lag
+        const resO = await fetch(`${API}/${type}/${slug}`, { signal: controller.signal });
+        const jO = await resO.json();
+        
+        if (jO?.data?.items) {
+           combinedItems = [...jO.data.items];
+        }
 
         if (combinedItems.length === 0) {
           setLoading(false);
           return;
         }
-
-        const uniqueMap = new Map();
-        combinedItems.forEach(m => uniqueMap.set(m.slug, m));
         
-        setMovies(Array.from(uniqueMap.values()));
+        setMovies(mergeDuplicateMovies(combinedItems));
       } catch (error) {
         if (error.name !== 'AbortError') console.error("Lỗi fetch section:", error);
       } finally {
@@ -931,7 +838,7 @@ function MovieSection({ title, slug, type = "the-loai", navigate, progressData }
       }
     };
 
-    fetchAndFilterMovies();
+    fetchMovies();
     return () => controller.abort();
   }, [slug, type]);
 
@@ -1099,7 +1006,7 @@ const DropdownGrid = ({ label, items, navigate, mode }) => {
   const totalPages = Math.ceil((items?.length || 0) / itemsPerPage);
   const currentItems = (items || []).slice(page * itemsPerPage, (page + 1) * itemsPerPage);
 
-  // TÍNH TOÁN VỊ TRÍ CHUẨN: Đồng bộ căn giữa tâm cho Thể loại, Quốc gia VÀ Năm
+  // TÍNH TOÁN VỊ TRÍ CHUẨN: Đồng bộ căn giữa tâm
   const boxWidth = mode === "search" ? "w-[400px]" : "w-[340px]"; 
 
   return (
@@ -1262,14 +1169,13 @@ function BottomNav({ navigate, categories, countries, currentView }) {
   );
 }
 
-// CẬP NHẬT HIỆU ỨNG HERO CAROUSEL PHẲNG
+// LẤY DỮ LIỆU TỪ OPHIM THAY VÌ TMDB
 function Hero({ navigate }) {
   const [bannerMovies, setBannerMovies] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
 
-  // States để xử lý vuốt (swipe)
   const [touchStartX, setTouchStartX] = useState(0);
   const [touchEndX, setTouchEndX] = useState(0);
 
@@ -1283,30 +1189,26 @@ function Hero({ navigate }) {
   useEffect(() => {
     const fetchBannerData = async () => {
       try {
-        const [ophimRes, nguoncRes] = await Promise.allSettled([
-          fetch(`${API}/danh-sach/phim-moi-cap-nhat`),
-          fetch(`${API_NGUONC}/phim-moi-cap-nhat`)
-        ]);
+        // Ưu tiên nạp dữ liệu từ Ophim
+        const res = await fetch(`${API}/danh-sach/phim-moi-cap-nhat`);
+        const json = await res.json();
+        const items = (json?.data?.items || [])
+            .filter(m => !m.episode_current?.toLowerCase().includes("trailer"))
+            .slice(0, 7);
 
-        let combinedItems = [];
-        if (ophimRes.status === 'fulfilled') {
-          const j = await ophimRes.value.json();
-          if(j?.data?.items) combinedItems = [...combinedItems, ...j.data.items];
+        if (items.length > 0) {
+            setBannerMovies(mergeDuplicateMovies(items));
+            setCurrentIndex(Math.floor(items.length / 2)); 
+        } else {
+           // Fallback NguonC
+           const fbRes = await fetch(`${API_NGUONC}/phim-moi-cap-nhat`);
+           const fbJson = await fbRes.json();
+           const fbItems = (fbJson.items || fbJson.data?.items || [])
+              .filter(m => !m.episode_current?.toLowerCase().includes("trailer"))
+              .slice(0, 7);
+           setBannerMovies(mergeDuplicateMovies(fbItems));
+           setCurrentIndex(Math.floor(fbItems.length / 2));
         }
-        if (nguoncRes.status === 'fulfilled') {
-           const jN = await nguoncRes.value.json();
-           if(jN?.items) combinedItems = [...combinedItems, ...jN.items];
-           else if(jN?.data?.items) combinedItems = [...combinedItems, ...jN.data.items];
-        }
-
-        if (combinedItems.length === 0) { setLoading(false); return; }
-
-        const uniqueMovies = Array.from(new Map(combinedItems.map(m => [m.slug, m])).values());
-        // THAY ĐỔI 1: Tăng số lượng phim hiển thị lên 7 thay vì 5
-        const candidates = uniqueMovies.slice(0, 7); 
-
-        setBannerMovies(candidates);
-        setCurrentIndex(Math.floor(candidates.length / 2)); 
 
       } catch (error) { console.error(error); } finally { setLoading(false); }
     };
@@ -1317,11 +1219,10 @@ function Hero({ navigate }) {
     if (bannerMovies.length === 0) return;
     const timer = setInterval(() => {
       setCurrentIndex((prevIndex) => (prevIndex + 1) % bannerMovies.length);
-    }, 3500); // THAY ĐỔI 2: Thời gian chờ còn 4.5s
+    }, 4500); 
     return () => clearInterval(timer);
   }, [bannerMovies.length, currentIndex]);
 
-  // Handler xử lý vuốt cho mobile
   const handleTouchStart = (e) => setTouchStartX(e.targetTouches[0].clientX);
   const handleTouchMove = (e) => setTouchEndX(e.targetTouches[0].clientX);
   const handleTouchEnd = () => {
@@ -1367,7 +1268,6 @@ function Hero({ navigate }) {
           onTouchEnd={handleTouchEnd}
         >
            {bannerMovies.map((movie, index) => {
-              // TÍNH TOÁN HIỆU ỨNG VÒNG TRÒN
               let offset = index - currentIndex;
               const N = bannerMovies.length;
               if (offset > Math.floor(N / 2)) {
@@ -1379,7 +1279,6 @@ function Hero({ navigate }) {
               const absOffset = Math.abs(offset);
               const direction = offset < 0 ? -1 : 1;
 
-              // THAY ĐỔI 3: Bổ sung tọa độ số 3 để support 7 item trên carousel
               const positionConfigDesktop = {
                  0: { translateX: 0, scale: 1.15, zIndex: 10, brightness: 1, opacity: 1 },
                  1: { translateX: 220, scale: 0.9, zIndex: 5, brightness: 0.35, opacity: 1 },
@@ -1444,7 +1343,7 @@ function Hero({ navigate }) {
            </p>
            
            <div className="flex justify-center items-center gap-2 md:gap-3 text-[10px] md:text-xs font-black text-gray-300 mb-6 uppercase tracking-widest drop-shadow-md">
-             <span className="text-[#E50914]">{currentMovie?.year || "2024"}</span>
+             <span className="text-[#E50914]">{currentMovie?.year || "2025"}</span>
              <span className="text-gray-500">|</span>
              <span className="bg-[#E50914] px-1.5 py-0.5 rounded text-white">{currentMovie?.quality || "HD"}</span>
              {currentMovie?.episode_current && (
@@ -1509,21 +1408,17 @@ function MovieGrid({ movies, navigate, loading, title, onLoadMore, hasMore, load
 }
 
 function MovieDetail({ slug, movieData, navigate }) {
-  // Lấy sẵn dữ liệu từ Poster ấn vào, hiển thị NGAY LẬP TỨC mà không cần đợi API
   const [m, setM] = useState(() => movieData ? { item: movieData } : null);
   const [cast, setCast] = useState([]); 
-  // Chỉ block màn hình (vòng quay đỏ) nếu người dùng gõ URL trực tiếp và hoàn toàn không có dữ liệu khởi tạo
   const [loadingPage, setLoadingPage] = useState(!movieData);
   const [error, setError] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
     const fetchDetail = async () => {
-      // Nếu không có dữ liệu gì (người dùng F5), mới hiện loading chặn trang
       if (!m) setLoadingPage(true);
       setError(false);
       try {
-        // Tải ngầm API mà không block UI
         const pOphim = fetch(`${API}/phim/${slug}`, { signal: controller.signal })
             .then(r => r.json())
             .then(j => { if (j?.data?.item) return j.data.item; throw new Error('Ophim no data'); });
@@ -1533,15 +1428,12 @@ function MovieDetail({ slug, movieData, navigate }) {
             .then(j => { if (j?.movie || j?.item) return j.movie || j.item; throw new Error('Nguonc no data'); });
 
         try {
-            // Lấy dữ liệu đầy đủ từ nguồn phản hồi nhanh nhất (Tốc độ x2)
             const fastestItem = await Promise.any([pOphim, pNguonc]);
-            // Nối dữ liệu đầy đủ (bao gồm Tập phim, Diễn viên, Cốt truyện) vào dữ liệu Poster khởi tạo
             setM(prev => ({ item: { ...(prev?.item || {}), ...fastestItem } }));
             setLoadingPage(false);
             return; 
         } catch(e) {}
         
-        // --- Dự phòng nếu cả 2 API trên lỗi (Phim khó tìm) ---
         const searchSlug = slug.replace(/-/g, ' ');
         try {
            const searchRes = await fetch(`${API_NGUONC}/search?keyword=${encodeURIComponent(searchSlug)}`);
@@ -1630,7 +1522,7 @@ function MovieDetail({ slug, movieData, navigate }) {
           }}
         />
         
-        <div className="relative max-w-[1400px] mx-auto w-full px-4 md:px-12 pb-16 flex flex-col md:flex-row gap-10 items-center md:items-end text-center md:text-left z-20">
+        <div className="relative max-w-[1440px] mx-auto w-full px-4 md:px-12 pb-16 flex flex-col md:flex-row gap-10 items-center md:items-end text-center md:text-left z-20">
           <div className="w-44 md:w-72 shrink-0 shadow-[0_20px_50px_rgba(0,0,0,0.8)] rounded-2xl overflow-hidden border border-white/10 transform-gpu">
             <SmartImage src={i?.thumb_url || i?.poster_url} className="w-full h-full object-cover" />
           </div>
@@ -1644,7 +1536,6 @@ function MovieDetail({ slug, movieData, navigate }) {
               <span className="border-2 border-gray-600 px-2 py-0.5 rounded text-xs">{i?.episode_current}</span>
             </div>
             <button 
-              // Bắt đầu xem cũng chuyển mượt mà ngay tắp lự!
               onClick={() => { navigate({ type: "watch", slug: i?.slug, movieData: m }); window.scrollTo(0, 0); }} 
               className="bg-[#E50914] hover:bg-red-700 text-white px-10 py-4 md:px-14 md:py-5 rounded-full font-black flex items-center gap-3 transition-transform transform-gpu hover:scale-105 active:scale-95 shadow-[0_10px_30px_rgba(229,9,20,0.5)] uppercase tracking-widest text-sm mx-auto md:mx-0 !font-sans"
             >
@@ -1664,7 +1555,6 @@ function MovieDetail({ slug, movieData, navigate }) {
              {i?.content ? (
                 <div dangerouslySetInnerHTML={{ __html: typeof i.content === 'string' ? i.content : "Đang cập nhật nội dung..." }} />
              ) : (
-                // Nếu content chưa fetch xong (load ngầm), hiện khung loading lấp lánh (Skeleton UI)
                 <div className="animate-pulse flex flex-col gap-3">
                     <div className="h-4 bg-white/10 rounded w-full"></div>
                     <div className="h-4 bg-white/10 rounded w-5/6"></div>
@@ -1714,119 +1604,208 @@ function MovieDetail({ slug, movieData, navigate }) {
 }
 
 function Watch({ slug, movieData }) {
-  const [data, setData] = useState(movieData?.item || null);
+  const [data, setData] = useState(movieData?.item || movieData || null);
   const [ep, setEp] = useState(null);
   const [serverList, setServerList] = useState([]);
   
   const [activeServerIdx, setActiveServerIdx] = useState(0);
   const [activeTabIdx, setActiveTabIdx] = useState(0);
   
-  // Trang Play Video cũng load 0 giây, không chờ đợi
   const [loadingPage, setLoadingPage] = useState(!data);
   const [loadingPlayer, setLoadingPlayer] = useState(true);
   const [error, setError] = useState(false);
 
+  const currentActiveIdentity = useRef(null);
+  const hasSetEp = useRef(false);
+
+  // --- LOGIC MAP MÁY CHỦ THÔNG MINH ---
   useEffect(() => {
-    const fetchDualSources = async () => {
-      let ophimItem = movieData?.item;
-      let nguoncItem = null;
-      if (!ophimItem) setLoadingPage(true);
-      setLoadingPlayer(true);
-      setError(false);
+    let currentServers = [];
+    let isOphimDone = false;
+    let isNguoncDone = false;
+    let restored = false;
 
-      try {
-        const [resO, resN] = await Promise.allSettled([
-          !ophimItem ? fetch(`${API}/phim/${slug}`).then(r => r.json()) : Promise.resolve({ data: { item: ophimItem } }),
-          fetch(`${API_NGUONC_DETAIL}/${slug}`).then(r => r.json())
-        ]);
+    // Đọc lịch sử xem phim ngay từ đầu
+    const savedProgress = JSON.parse(localStorage.getItem("movieProgress") || "{}")[slug];
 
-        if (resO.status === 'fulfilled' && resO.value?.data?.item) ophimItem = resO.value.data.item;
-        if (resN.status === 'fulfilled' && (resN.value?.movie || resN.value?.item)) nguoncItem = resN.value.movie || resN.value.item;
+    if (!data) setLoadingPage(true);
+    setLoadingPlayer(true);
+    setError(false);
 
-        if (!nguoncItem && (ophimItem?.name || ophimItem?.origin_name)) {
-            const searchRes = await fetch(`${API_NGUONC}/search?keyword=${encodeURIComponent(ophimItem.origin_name || ophimItem.name)}`);
-            const searchJ = await searchRes.json();
-            let match = searchJ?.items?.[0] || searchJ?.data?.items?.[0]; 
-            
-            if (!match && ophimItem.name) {
-              const searchRes2 = await fetch(`${API_NGUONC}/search?keyword=${encodeURIComponent(ophimItem.name)}`);
-              const searchJ2 = await searchRes2.json();
-              match = searchJ2?.items?.[0] || searchJ2?.data?.items?.[0]; 
-            }
+    const searchOriginName = movieData?.item?.origin_name || movieData?.item?.original_name || movieData?.origin_name || movieData?.original_name;
+    const searchLocalName = movieData?.item?.name || movieData?.name;
+    const backupSearchName = searchOriginName || searchLocalName || slug.replace(/-/g, ' ');
 
-            if (match && match.slug) {
-              const detailRes = await fetch(`${API_NGUONC_DETAIL}/${match.slug}`);
-              const detailJ = await detailRes.json();
-              nguoncItem = detailJ?.movie || detailJ?.item || detailJ?.data?.item;
-            }
-        }
+    const updateServers = (newServers, itemData) => {
+      let hasNew = false;
+      newServers.forEach(ns => {
+          if (!currentServers.some(s => s.source === ns.source && s.rawName === ns.rawName)) {
+              currentServers.push(ns);
+              hasNew = true;
+          }
+      });
 
-        let combinedServers = [];
-        let serverIndexCount = 1;
-        
-        if (ophimItem?.episodes) {
-          ophimItem.episodes.forEach((server) => {
-            const eps = server.server_data || [];
-            if (eps.length > 0) {
-              combinedServers.push({
-                sourceName: `Máy Chủ ${serverIndexCount++}`,
-                isIframe: false, 
-                server_data: eps.map(e => ({
-                  name: e.name,
-                  slug: e.slug,
-                  link_m3u8: e.link_m3u8 || "",
-                  link_embed: e.link_embed || ""
-                }))
-              });
-            }
+      // Chỉ cập nhật nếu có Máy Chủ mới HOẶC nếu cả 2 nguồn đã load xong (để xử lý fallback)
+      if (hasNew || (isOphimDone && isNguoncDone)) {
+          currentServers.sort((a, b) => {
+              if (a.source !== b.source) return a.source === 'ophim' ? -1 : 1;
+              return a.rawName.localeCompare(b.rawName);
           });
-        }
 
-        if (nguoncItem?.episodes) {
-          nguoncItem.episodes.forEach((server) => {
-            const eps = server.server_data || server.items || [];
-            if (eps.length > 0) {
-              combinedServers.push({
-                sourceName: `Máy Chủ ${serverIndexCount++}`,
-                isIframe: true,
-                server_data: eps.map(e => ({
-                  name: e.name,
-                  slug: e.slug,
-                  link_m3u8: e.link_m3u8 || e.m3u8_url || e.m3u8 || e.hls_link || "", 
-                  link_embed: e.link_embed || e.embed_url || e.embed || ""
-                }))
-              });
-            }
+          currentServers.forEach((s, idx) => {
+              s.sourceName = `Máy Chủ ${idx + 1}${s.rawName ? ` - ${s.rawName}` : ''}`;
           });
-        }
 
-        const finalData = ophimItem || nguoncItem;
-        
-        if (!finalData) {
-           setError(true);
-        } else {
-           setData(finalData);
-           setServerList(combinedServers);
-           if (combinedServers.length > 0 && combinedServers[0].server_data?.length > 0) {
-             setEp(combinedServers[0].server_data[0]);
-             setActiveServerIdx(0);
-             setActiveTabIdx(0);
-           }
-        }
-      } catch(e) {
-          setError(true);
-      } finally {
-          setLoadingPage(false);
-          setLoadingPlayer(false);
+          setServerList([...currentServers]);
+          
+          // Ưu tiên nạp đúng Máy Chủ và Tập phim đã lưu
+          if (!restored && savedProgress?.serverSource) {
+              const foundIdx = currentServers.findIndex(s => s.source === savedProgress.serverSource && s.rawName === savedProgress.serverRawName);
+              if (foundIdx !== -1) {
+                  // Đã tìm thấy Máy chủ theo lịch sử
+                  setActiveServerIdx(foundIdx);
+                  currentActiveIdentity.current = { source: savedProgress.serverSource, rawName: savedProgress.serverRawName };
+                  restored = true;
+                  hasSetEp.current = true;
+                  
+                  const matchEp = currentServers[foundIdx].server_data.find(e => e.slug === savedProgress.episodeSlug);
+                  if (matchEp) {
+                      const epIndex = currentServers[foundIdx].server_data.findIndex(e => e.slug === savedProgress.episodeSlug);
+                      setActiveTabIdx(Math.floor(epIndex / 50));
+                  }
+                  setEp(matchEp || currentServers[foundIdx].server_data[0]);
+              } else if (isOphimDone && isNguoncDone && currentServers.length > 0) {
+                  // Cả 2 đều load xong nhưng ko tìm thấy => nạp mặc định
+                  currentActiveIdentity.current = { source: currentServers[0].source, rawName: currentServers[0].rawName };
+                  setActiveServerIdx(0);
+                  setEp(currentServers[0].server_data[0]);
+                  restored = true;
+                  hasSetEp.current = true;
+              }
+          } else if (!hasSetEp.current || (!restored && currentActiveIdentity.current?.source !== 'ophim' && currentServers[0].source === 'ophim')) {
+              // KHÔNG CÓ LỊCH SỬ.
+              // LUÔN ƯU TIÊN MÁY CHỦ 1 (OPHIM). 
+              // Nếu NguonC load trước và bị set tạm, khi Ophim load xong sẽ ĐÈ lại và tự chuyển sang Ophim.
+              currentActiveIdentity.current = { source: currentServers[0].source, rawName: currentServers[0].rawName };
+              setActiveServerIdx(0);
+              
+              setEp(prevEp => {
+                 const matchingEp = prevEp ? currentServers[0].server_data.find(e => e.name === prevEp.name) : null;
+                 return matchingEp || currentServers[0].server_data[0];
+              });
+              hasSetEp.current = true;
+          } else if (hasSetEp.current && currentActiveIdentity.current && currentServers.length > 0) {
+              // Giữ đúng Index Máy Chủ ngay cả khi luồng đến sau và thay đổi vị trí Mảng
+              const newIdx = currentServers.findIndex(s => s.source === currentActiveIdentity.current.source && s.rawName === currentActiveIdentity.current.rawName);
+              if (newIdx !== -1) {
+                  setActiveServerIdx(newIdx);
+              }
+          }
+          
+          if (!data && itemData) setData(itemData);
+          
+          if (hasSetEp.current) {
+              setLoadingPage(false);
+              setLoadingPlayer(false);
+          }
       }
     };
 
-    fetchDualSources();
+    const fetchOphim = async () => {
+        let ophimItem = null;
+        let extractedServers = [];
+        try {
+            const res = await fetch(`${API}/phim/${slug}`).then(r => r.json());
+            ophimItem = res?.data?.item;
+            
+            if (!ophimItem && backupSearchName) {
+                const searchRes = await fetch(`${API}/tim-kiem?keyword=${encodeURIComponent(backupSearchName)}`).then(r => r.json());
+                if (searchRes?.data?.items?.[0]?.slug) {
+                    const detail = await fetch(`${API}/phim/${searchRes.data.items[0].slug}`).then(r => r.json());
+                    ophimItem = detail?.data?.item;
+                }
+            }
+
+            if (ophimItem?.episodes?.length > 0) {
+                ophimItem.episodes.forEach((svr) => {
+                    const epsList = svr.server_data || [];
+                    if (epsList.length > 0) {
+                        const serverData = epsList.map(e => ({
+                            name: e.name, slug: e.slug, link_m3u8: e.link_m3u8 || "", link_embed: e.link_embed || ""
+                        }));
+                        extractedServers.push({
+                            rawName: svr.server_name || "Vietsub",
+                            source: 'ophim',
+                            isIframe: false,
+                            server_data: serverData
+                        });
+                    }
+                });
+            }
+        } catch(e) {} finally { 
+            isOphimDone = true; 
+            updateServers(extractedServers, ophimItem); 
+            checkFinalError(); 
+        }
+    };
+
+    const fetchNguonc = async () => {
+        let nguoncItem = null;
+        let extractedServers = [];
+        try {
+            const res = await fetch(`${API_NGUONC_DETAIL}/${slug}`).then(r => r.json());
+            nguoncItem = res?.movie || res?.item;
+
+            if (!nguoncItem && backupSearchName) {
+                const searchRes = await fetch(`${API_NGUONC}/search?keyword=${encodeURIComponent(backupSearchName)}`).then(r => r.json());
+                const matchSlug = searchRes?.items?.[0]?.slug || searchRes?.data?.items?.[0]?.slug;
+                if (matchSlug) {
+                    const detail = await fetch(`${API_NGUONC_DETAIL}/${matchSlug}`).then(r => r.json());
+                    nguoncItem = detail?.movie || detail?.item;
+                }
+            }
+
+            if (nguoncItem?.episodes?.length > 0) {
+                nguoncItem.episodes.forEach((svr) => {
+                    const epsList = svr.items || svr.server_data || [];
+                    if (epsList.length > 0) {
+                        const serverData = epsList.map(e => ({
+                            name: e.name, 
+                            slug: e.slug, 
+                            link_m3u8: e.m3u8 || e.m3u8_url || e.link_m3u8 || "", 
+                            link_embed: e.embed || e.embed_url || e.link_embed || ""
+                        }));
+                        extractedServers.push({
+                            rawName: svr.server_name || "Vietsub",
+                            source: 'nguonc',
+                            isIframe: true,
+                            server_data: serverData
+                        });
+                    }
+                });
+            }
+        } catch(e) {} finally { 
+            isNguoncDone = true; 
+            updateServers(extractedServers, nguoncItem); 
+            checkFinalError(); 
+        }
+    };
+
+    const checkFinalError = () => {
+        if (isOphimDone && isNguoncDone && currentServers.length === 0) {
+            setError(true);
+            setLoadingPage(false);
+            setLoadingPlayer(false);
+        }
+    };
+
+    fetchOphim();
+    fetchNguonc();
   }, [slug, movieData]);
 
   if (loadingPage) return <div className="h-screen flex justify-center items-center bg-[#050505]"><Icon.Loader2 className="animate-spin text-[#E50914]" size={40} /></div>;
   
-  if (error || !data) return (
+  if (error || (!data && !loadingPlayer)) return (
      <div className="h-screen flex flex-col justify-center items-center bg-[#050505] text-white">
         <Icon.AlertTriangle className="text-[#E50914] mb-4" size={48}/>
         <h2 className="text-xl font-bold">Lỗi tải phim!</h2>
@@ -1851,13 +1830,13 @@ function Watch({ slug, movieData }) {
       setActiveServerIdx(idx);
       setActiveTabIdx(0); 
       const newServer = serverList[idx];
+      currentActiveIdentity.current = { source: newServer.source, rawName: newServer.rawName }; // Cập nhật lại identity
       const matchingEp = newServer?.server_data?.find(e => e.name === ep?.name);
-      if (matchingEp) setEp(matchingEp);
-      else if (newServer?.server_data?.length > 0) setEp(newServer.server_data[0]);
+      setEp(matchingEp || newServer?.server_data?.[0]);
   };
 
   return (
-    <div className="pt-16 md:pt-28 pb-10 w-full max-w-[1400px] mx-auto px-0 sm:px-4 md:px-12 animate-in fade-in duration-500 bg-[#050505]">
+    <div className="pt-16 md:pt-28 pb-10 w-full max-w-[1440px] mx-auto px-0 sm:px-4 md:px-12 animate-in fade-in duration-500 bg-[#050505]">
       
       {ep ? (
           <Player 
@@ -1870,6 +1849,8 @@ function Watch({ slug, movieData }) {
              thumbUrl={data?.thumb_url || data?.poster_url} 
              movieYear={data?.year}
              forceIframe={currentServer?.isIframe}
+             serverSource={currentServer?.source}
+             serverRawName={currentServer?.rawName}
           />
       ) : loadingPlayer ? (
           <div className="relative w-full aspect-video bg-[#111] shadow-2xl md:rounded-2xl overflow-hidden border border-white/5 flex justify-center items-center animate-pulse">
@@ -1941,7 +1922,7 @@ function Watch({ slug, movieData }) {
                  </div>
                  <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2 md:gap-3">
                     {currentChunk.map((e, idx) => {
-                       const isActive = ep?.link_m3u8 === e.link_m3u8 && ep?.name === e.name;
+                       const isActive = ep?.name === e.name;
                        return (
                           <button
                              key={idx}
@@ -2074,27 +2055,7 @@ export default function App() {
 
          const searchPromises = topMovies.map(async (tmdbItem) => {
             const titleQuery = tmdbItem.original_title || tmdbItem.original_name || tmdbItem.title || tmdbItem.name;
-            const releaseYear = (tmdbItem.release_date || tmdbItem.first_air_date || '').substring(0, 4);
             if (!titleQuery) return null;
-            
-            const normalize = (s) => (s || "").toLowerCase().replace(/[:\-]/g, ' ').replace(/\s+/g, ' ').trim();
-            const qOrig = normalize(tmdbItem.original_title || tmdbItem.original_name);
-            const qLocal = normalize(tmdbItem.title || tmdbItem.name);
-
-            const checkMatch = (items) => {
-                if (!items || items.length === 0) return null;
-                let match = items.find(m => normalize(m.origin_name || m.original_name) === qOrig);
-                if (!match) match = items.find(m => normalize(m.name) === qLocal);
-                if (!match && qOrig.length > 3) {
-                    match = items.find(m => {
-                        const mOrig = normalize(m.origin_name || m.original_name);
-                        const isSimilarName = mOrig.includes(qOrig) || qOrig.includes(mOrig) || normalize(m.name).includes(qLocal);
-                        const isSameYear = releaseYear && m.year && Math.abs(parseInt(m.year) - parseInt(releaseYear)) <= 1;
-                        return isSimilarName && isSameYear;
-                    });
-                }
-                return match || null; 
-            };
 
             try {
                const [resN, resO] = await Promise.allSettled([
@@ -2102,24 +2063,20 @@ export default function App() {
                   fetch(`${API}/tim-kiem?keyword=${encodeURIComponent(titleQuery)}`).then(r => r.json())
                ]);
                
-               let matchResult = null;
-               if (resN.status === 'fulfilled') matchResult = checkMatch(resN.value?.items || resN.value?.data?.items);
-               if (!matchResult && resO.status === 'fulfilled') matchResult = checkMatch(resO.value?.data?.items);
+               let combinedItems = [];
+               if (resN.status === 'fulfilled') combinedItems = [...combinedItems, ...(resN.value?.items || resN.value?.data?.items || [])];
+               if (resO.status === 'fulfilled') combinedItems = [...combinedItems, ...(resO.value?.data?.items || [])];
                
-               return matchResult;
+               // Sử dụng hàm gộp phim
+               const merged = mergeDuplicateMovies(combinedItems);
+               return merged.length > 0 ? merged[0] : null;
             } catch(e) { return null; }
          });
 
          const results = await Promise.all(searchPromises);
          const validMovies = results.filter(Boolean);
          
-         const uniqueMap = new Map();
-         validMovies.forEach(m => {
-            const key = m.origin_name || m.original_name || m.slug;
-            if(!uniqueMap.has(key)) uniqueMap.set(key, m);
-         });
-         
-         setMovies(Array.from(uniqueMap.values()).slice(0, 20));
+         setMovies(mergeDuplicateMovies(validMovies).slice(0, 20));
          setHasMore(false); 
        } catch(e) {
          console.error(e);
@@ -2164,9 +2121,8 @@ export default function App() {
 
       setMovies((prev) => {
         const combined = isNewView ? newItems : [...prev, ...newItems];
-        const uniqueMap = new Map();
-        combined.forEach(m => uniqueMap.set(m.slug, m));
-        return Array.from(uniqueMap.values());
+        // Sử dụng hàm gộp thông minh để lọc trùng
+        return mergeDuplicateMovies(combined);
       });
       
       setHasMore(pageNum < totalPages);
@@ -2198,9 +2154,9 @@ export default function App() {
         .animate-spin { animation: custom-spin 1s linear infinite !important; }
         
         .custom-range { -webkit-appearance: none; outline: none; border-radius: 4px; }
-        .custom-range::-webkit-slider-thumb { -webkit-appearance: none; height: 14px; width: 14px; border-radius: 50%; background: #E50914; cursor: pointer; box-shadow: 0 0 5px rgba(0,0,0,0.5); }
+        .custom-range::-webkit-slider-thumb { -webkit-appearance: none; height: 0px; width: 0px; background: transparent; border: none; box-shadow: none; cursor: pointer; }
         .custom-range::-webkit-slider-runnable-track { width: 100%; height: 100%; background: transparent; cursor: pointer; border-radius: 4px; }
-        .custom-range::-moz-range-thumb { height: 14px; width: 14px; border-radius: 50%; background: #E50914; border: none; cursor: pointer; box-shadow: 0 0 5px rgba(0,0,0,0.5); }
+        .custom-range::-moz-range-thumb { height: 0px; width: 0px; background: transparent; border: none; box-shadow: none; cursor: pointer; }
         .custom-range::-moz-range-track { width: 100%; height: 100%; background: transparent; cursor: pointer; border-radius: 4px; }
       `}</style>
       
@@ -2211,24 +2167,23 @@ export default function App() {
           <Hero navigate={navigate} />
           <div className="max-w-[1400px] mx-auto w-full px-4 md:px-12 relative z-20 pb-20 pt-8 md:pt-12">
             
-            {/* Vẫn giữ luồng Phim Mới Cập Nhật gốc để đảm bảo ra tập mới nhanh nhất */}
-            <MovieSection title="Phim Mới Cập Nhật" slug="phim-moi-cap-nhat" type="danh-sach" navigate={navigate} progressData={progressData} />
-            
-            {/* THAY ĐỔI: Tích hợp Fetch API TMDB chuẩn quốc tế và search sang nguồn phim Việt cho toàn bộ Homepage */}
-            <TMDBMatchedSection title="Phim Thịnh Hành 🔥" tmdbUrl={`https://api.themoviedb.org/3/trending/all/week?api_key=${TMDB_API_KEY}&language=vi-VN`} navigate={navigate} progressData={progressData} />
-            
+            {/* ĐƯA TIẾP TỤC XEM LÊN ĐẦU TIÊN TRONG MỤC DANH SÁCH */}
             <ContinueWatching navigate={navigate} progressData={progressData} onRemove={removeProgress} />
             
-            <TMDBMatchedSection title="Hành Động - Viễn Tưởng" slug="hanh-dong" type="the-loai" tmdbUrl={`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=vi-VN&with_genres=28,878&sort_by=popularity.desc`} navigate={navigate} progressData={progressData} />
-            <TMDBMatchedSection title="Tình Cảm - Tâm Lý" slug="tinh-cam" type="the-loai" tmdbUrl={`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=vi-VN&with_genres=10749,18&sort_by=popularity.desc`} navigate={navigate} progressData={progressData} />
-            <TMDBMatchedSection title="Hoạt Hình (Anime/Cartoon)" slug="hoat-hinh" type="the-loai" tmdbUrl={`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=vi-VN&with_genres=16&sort_by=popularity.desc`} navigate={navigate} progressData={progressData} />
-            <TMDBMatchedSection title="Kinh Dị - Giật Gân" slug="kinh-di" type="the-loai" tmdbUrl={`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=vi-VN&with_genres=27&sort_by=popularity.desc`} navigate={navigate} progressData={progressData} />
-            <TMDBMatchedSection title="Hài Hước" slug="hai-huoc" type="the-loai" tmdbUrl={`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=vi-VN&with_genres=35&sort_by=popularity.desc`} navigate={navigate} progressData={progressData} />
+            <MovieSection title="Phim Mới Cập Nhật" slug="phim-moi-cap-nhat" type="danh-sach" navigate={navigate} progressData={progressData} />
+            <MovieSection title="Phim Bộ Mới" slug="phim-bo" type="danh-sach" navigate={navigate} progressData={progressData} />
+            <MovieSection title="Phim Lẻ Mới" slug="phim-le" type="danh-sach" navigate={navigate} progressData={progressData} />
+            
+            <MovieSection title="Hành Động - Viễn Tưởng" slug="hanh-dong" type="the-loai" navigate={navigate} progressData={progressData} />
+            <MovieSection title="Tình Cảm - Tâm Lý" slug="tinh-cam" type="the-loai" navigate={navigate} progressData={progressData} />
+            <MovieSection title="Hoạt Hình (Anime/Cartoon)" slug="hoat-hinh" type="the-loai" navigate={navigate} progressData={progressData} />
+            <MovieSection title="Kinh Dị - Giật Gân" slug="kinh-di" type="the-loai" navigate={navigate} progressData={progressData} />
+            <MovieSection title="Hài Hước" slug="hai-huoc" type="the-loai" navigate={navigate} progressData={progressData} />
 
-            <TMDBMatchedSection title="Phim Hàn Quốc" slug="han-quoc" type="quoc-gia" tmdbUrl={`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=vi-VN&with_origin_country=KR&sort_by=popularity.desc`} navigate={navigate} progressData={progressData} />
-            <TMDBMatchedSection title="Phim Trung Quốc" slug="trung-quoc" type="quoc-gia" tmdbUrl={`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=vi-VN&with_origin_country=CN&sort_by=popularity.desc`} navigate={navigate} progressData={progressData} />
-            <TMDBMatchedSection title="Phim Âu - Mỹ" slug="au-my" type="quoc-gia" tmdbUrl={`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=vi-VN&with_origin_country=US,GB&sort_by=popularity.desc`} navigate={navigate} progressData={progressData} />
-            <TMDBMatchedSection title="Phim Việt Nam" slug="viet-nam" type="quoc-gia" tmdbUrl={`https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=vi-VN&with_origin_country=VN&sort_by=popularity.desc`} navigate={navigate} progressData={progressData} />
+            <MovieSection title="Phim Hàn Quốc" slug="han-quoc" type="quoc-gia" navigate={navigate} progressData={progressData} />
+            <MovieSection title="Phim Trung Quốc" slug="trung-quoc" type="quoc-gia" navigate={navigate} progressData={progressData} />
+            <MovieSection title="Phim Âu - Mỹ" slug="au-my" type="quoc-gia" navigate={navigate} progressData={progressData} />
+            <MovieSection title="Phim Việt Nam" slug="viet-nam" type="quoc-gia" navigate={navigate} progressData={progressData} />
           </div>
         </div>
       ) : view.type === "detail" ? (

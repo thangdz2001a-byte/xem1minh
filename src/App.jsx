@@ -61,12 +61,13 @@ async function fetchTMDB(name, originName, slug, year) {
     if (results.length === 0 && name) results = await search(name);
 
     if (results.length > 0) {
+       // Ưu tiên tìm đúng phim bằng cách KHỚP NĂM SẢN XUẤT (Dung sai 1 năm)
        if (year) {
-          match = results.find(item => 
-             item.media_type !== 'person' &&
-             (item.poster_path || item.backdrop_path) && 
-             (extractYear(item.release_date) === year.toString() || extractYear(item.first_air_date) === year.toString())
-          );
+          match = results.find(item => {
+             if (item.media_type === 'person' || (!item.poster_path && !item.backdrop_path)) return false;
+             const y = extractYear(item.release_date) || extractYear(item.first_air_date);
+             return y && Math.abs(parseInt(y) - parseInt(year)) <= 1;
+          });
        }
        if (!match) {
           match = results.find(item => item.media_type !== 'person' && (item.poster_path || item.backdrop_path));
@@ -319,9 +320,9 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
     if (!document.fullscreenElement && !document.webkitFullscreenElement) {
       if (container.requestFullscreen) {
         container.requestFullscreen().catch(() => {});
-      } else if (container.webkitRequestFullscreen) {
+      } else if (container.webkitRequestFullscreen) { /* Safari PC */
         container.webkitRequestFullscreen();
-      } else if (video && video.webkitEnterFullscreen) {
+      } else if (video && video.webkitEnterFullscreen) { /* Đặc quyền Mobile Safari iOS */
         video.webkitEnterFullscreen();
       }
     } else {
@@ -1050,26 +1051,30 @@ function ContinueWatching({ navigate, progressData, onRemove }) {
   );
 }
 
-// COMPONENT DROPDOWN TÙY CHỈNH KÈM PHÂN TRANG (Căn giữa toán học tuyệt đối dựa trên tâm chữ tiêu đề)
+// COMPONENT DROPDOWN TÙY CHỈNH KÈM PHÂN TRANG (Căn giữa TOÁN HỌC TUYỆT ĐỐI chuẩn 100%)
 const DropdownGrid = ({ label, items, navigate, mode }) => {
   const [page, setPage] = useState(0);
+  const cols = mode === "search" ? 4 : 3;
   const itemsPerPage = mode === "search" ? 12 : 9; 
   const totalPages = Math.ceil((items?.length || 0) / itemsPerPage);
   const currentItems = (items || []).slice(page * itemsPerPage, (page + 1) * itemsPerPage);
 
   return (
     <div className="group cursor-pointer flex items-center h-full py-4 px-1 lg:px-2" onMouseEnter={() => setPage(0)}>
-      <div className="relative inline-flex items-center justify-center">
-        {/* Vùng chứa text để làm mỏ neo tuyệt đối. Chữ nằm thẳng với tâm bảng Dropdown */}
+      {/* Vùng mỏ neo RELATIVE CHỈ BỌC ĐÚNG CHỮ để Dropdown gióng tâm chính xác 100% */}
+      <div className="relative flex justify-center">
         <span className="font-black tracking-widest uppercase hover:text-white transition whitespace-nowrap">
           {label}
         </span>
 
-        {/* Dropdown Container Căn GIỮA TUYỆT ĐỐI (left-1/2 -translate-x-1/2) so với chữ */}
+        {/* Dropdown Container Căn GIỮA TUYỆT ĐỐI so với tâm của chữ */}
         <div className="absolute top-full left-1/2 -translate-x-1/2 pt-[22px] hidden group-hover:block z-50 cursor-default font-sans normal-case tracking-normal font-normal" onClick={e => e.stopPropagation()}>
-           <div className="bg-[#111]/98 backdrop-blur-xl p-5 w-[360px] rounded-2xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.9)] relative">
+           <div className="bg-[#111] p-5 w-[380px] rounded-2xl border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.9)] relative">
+              {/* Mũi tên chỉ lên đỉnh */}
+              <div className="absolute -top-[6px] left-1/2 -translate-x-1/2 w-3 h-3 bg-[#111] border-t border-l border-white/10 rotate-45 rounded-tl-[2px] z-10"></div>
+
               {/* Grid Content */}
-              <div className="grid grid-cols-3 gap-2 text-center min-h-[110px] items-start relative z-20">
+              <div className={`grid ${cols === 4 ? 'grid-cols-4' : 'grid-cols-3'} gap-2 text-center min-h-[110px] items-start relative z-20`}>
                 {currentItems.map((c) => (
                   <button 
                      key={c.slug || c} 
@@ -1078,7 +1083,7 @@ const DropdownGrid = ({ label, items, navigate, mode }) => {
                        if (mode === 'search') navigate({ type: "search", keyword: c.toString() });
                        else navigate({ type: "list", slug: c.slug, title: c.name, mode: mode }); 
                      }} 
-                     className="py-2 px-1 text-[10px] lg:text-[11px] font-bold text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all uppercase tracking-tight text-center w-full truncate"
+                     className="py-2.5 px-1 text-[11px] font-bold text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all uppercase tracking-tight text-center w-full truncate"
                   >
                     {c.name || c}
                   </button>
@@ -1110,7 +1115,7 @@ const DropdownGrid = ({ label, items, navigate, mode }) => {
            </div>
         </div>
       </div>
-      {/* Mũi tên Chevron nằm ngoài để không đẩy lệch tâm của tiêu đề */}
+      {/* Icon Mũi tên nằm ngoài thẻ mỏ neo để không làm lệch toạ độ tâm của chữ */}
       <Icon.ChevronDown size={12} strokeWidth={3} className="ml-1.5 opacity-60 group-hover:rotate-180 transition-transform duration-300" />
     </div>
   );
@@ -1129,7 +1134,7 @@ function Header({ navigate, categories, countries }) {
   return (
     <>
       <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} navigate={navigate} />
-      <header className={`fixed top-0 w-full z-[100] transition-all duration-300 transform-gpu ${scrolled ? "bg-[#050505]/95 backdrop-blur-md border-b border-white/5 py-2 md:py-3 shadow-2xl" : "bg-gradient-to-b from-black/90 via-black/40 to-transparent py-4 md:py-5"}`}>
+      <header className={`fixed top-0 w-full z-[100] transition-all duration-300 transform-gpu ${scrolled ? "bg-[#050505]/95 backdrop-blur-md border-b border-white/5 py-2 md:py-3 shadow-2xl" : "bg-transparent py-4 md:py-5"}`}>
         <div className="max-w-[1400px] mx-auto px-4 md:px-12 flex justify-between items-center gap-4">
           
           <div 
@@ -1139,18 +1144,16 @@ function Header({ navigate, categories, countries }) {
             POLITE
           </div>
 
-          <nav className="hidden md:flex flex-1 justify-center text-[11px] lg:text-[12px] text-gray-300 items-center whitespace-nowrap">
+          <nav className="hidden md:flex flex-1 justify-center text-[11px] lg:text-[12px] text-gray-300 items-center whitespace-nowrap gap-4 lg:gap-8">
             <button onClick={() => navigate({ type: "home" })} className="font-black tracking-widest hover:text-white transition uppercase py-4 px-2 mr-2 lg:mr-4">Trang Chủ</button>
             <DropdownGrid label="Thể Loại" items={categories} navigate={navigate} mode="the-loai" />
-            <div className="w-2 lg:w-4" /> {/* Spacer */}
             <DropdownGrid label="Quốc Gia" items={countries} navigate={navigate} mode="quoc-gia" />
-            <div className="w-2 lg:w-4" /> {/* Spacer */}
             <DropdownGrid label="Năm Phát Hành" items={YEARS} navigate={navigate} mode="search" />
           </nav>
 
           <div className="flex items-center gap-3 md:gap-5 shrink-0">
             <div onClick={() => setIsSearchOpen(true)} className="hidden lg:flex relative group cursor-pointer transform-gpu">
-              <div className="bg-black/40 border border-white/10 px-4 py-2 pl-10 rounded-full w-48 lg:w-72 text-xs lg:text-sm text-gray-400 group-hover:bg-black/60 transition-all backdrop-blur-md flex items-center">Tìm kiếm phim...</div>
+              <div className="bg-black/30 border border-white/10 px-4 py-2 pl-10 rounded-full w-48 lg:w-72 text-xs lg:text-sm text-gray-400 group-hover:bg-black/60 transition-all backdrop-blur-md flex items-center">Tìm kiếm phim...</div>
               <Icon.Search className="absolute left-3.5 top-2 lg:top-2.5 text-gray-400 group-hover:text-white transition" size={16} />
             </div>
             <button onClick={() => setIsSearchOpen(true)} className="lg:hidden p-1.5"><Icon.Search size={20} className="text-white" /></button>
@@ -1340,7 +1343,7 @@ function MovieGrid({ movies, navigate, loading, title, onLoadMore, hasMore, load
   return (
     <div className="max-w-[1400px] mx-auto px-4 md:px-12 pt-20 md:pt-32 pb-10 min-h-screen transform-gpu">
       <h2 className="text-xl md:text-[28px] font-black text-white mb-8 uppercase tracking-tighter flex items-center gap-3">
-        <span className="w-[4px] h-6 md:h-8 bg-[#E50914] block" /> {title}
+        <span className="w-[4px] h-6 md:h-9 bg-[#E50914] block" /> {title}
       </h2>
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-4 sm:gap-6">
         {movies.map((m, idx) => <MovieCard key={`${m.slug}-${idx}`} m={m} navigate={navigate} progressData={progressData} />)}
@@ -1363,9 +1366,16 @@ function MovieDetail({ slug, navigate }) {
       setLoadingPage(true);
       setError(false);
       try {
+        
+        // 1. GỌI API LẤY CHI TIẾT CỦA CẢ OPHIM VÀ NGUONC (BẢO VỆ CHỐNG TREO)
+        const fetchWithTimeout = (url) => Promise.race([
+          fetch(url, { signal: controller.signal }).then(r => r.json()),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+        ]);
+
         const [resO, resN] = await Promise.allSettled([
-          fetch(`${API}/phim/${slug}`, { signal: controller.signal }).then(r => r.json()),
-          fetch(`${API_NGUONC_DETAIL}/${slug}`, { signal: controller.signal }).then(r => r.json())
+          fetchWithTimeout(`${API}/phim/${slug}`),
+          fetchWithTimeout(`${API_NGUONC_DETAIL}/${slug}`)
         ]);
 
         let finalItem = null;
@@ -1382,6 +1392,7 @@ function MovieDetail({ slug, navigate }) {
            return;
         } 
         
+        // 2. NẾU BỊ ĐỔI SLUG NGẦM, CHẠY TÌM KIẾM DỰ PHÒNG
         const searchSlug = slug.replace(/-/g, ' ');
         try {
            const searchRes = await fetch(`${API_NGUONC}/search?keyword=${encodeURIComponent(searchSlug)}`);
@@ -1815,7 +1826,6 @@ export default function App() {
     fetch(`${API}/the-loai`).then((r) => r.json()).then((j) => setCats(j?.data?.items || [])).catch(() => {});
     fetch(`${API}/quoc-gia`).then((r) => r.json()).then((j) => setCountries(j?.data?.items || [])).catch(() => {});
 
-    // SETUP PWA: Mã hóa SVG Icon sang Base64 để tránh lỗi trình duyệt
     const setupPWA = () => {
       const metaTags = [
         { name: 'apple-mobile-web-app-capable', content: 'yes' },
@@ -1831,7 +1841,6 @@ export default function App() {
         document.head.appendChild(meta);
       });
 
-      // Mã màu đỏ chuẩn #E50914 (Logo sẽ không bị đen)
       const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="#000000"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-family="Arial, sans-serif" font-weight="900" font-style="italic" font-size="65" fill="#E50914">P</text></svg>`;
       const iconUrl = `data:image/svg+xml;base64,${btoa(svgIcon)}`;
       
@@ -1870,7 +1879,7 @@ export default function App() {
     if (isNewView) { setLoading(true); setMovies([]); } 
     else { setLoadingMore(true); }
 
-    // THUẬT TOÁN TÌM PHIM CỦA DIỄN VIÊN (ĐÃ NÂNG CẤP CHẶN PHIM RÁC VÀ ÉP BUỘC TRÙNG TÊN VÀ NĂM)
+    // THUẬT TOÁN TÌM PHIM CỦA DIỄN VIÊN ĐÃ ĐƯỢC MỞ RỘNG (Khắc phục mất phim Thor/Siêu anh hùng)
     if (view.type === "actor") {
        try {
          const tmdbRes = await fetch(`https://api.themoviedb.org/3/person/${view.actorId}/combined_credits?api_key=${TMDB_API_KEY}&language=vi-VN`);
@@ -1879,64 +1888,65 @@ export default function App() {
          const topMovies = (tmdbData.cast || [])
             .filter(m => (m.media_type === "movie" || m.media_type === "tv") && !m.character?.toLowerCase().includes("self") && !m.character?.toLowerCase().includes("voice") && !m.character?.toLowerCase().includes("uncredited"))
             .sort((a,b) => b.popularity - a.popularity)
-            .slice(0, 20); 
+            .slice(0, 40); // Tăng lên 40 phim để bao quát hết sự nghiệp
 
          const searchPromises = topMovies.map(async (tmdbItem) => {
-            const titleQuery = tmdbItem.title || tmdbItem.name || tmdbItem.original_title || tmdbItem.original_name;
+            const titleQuery = tmdbItem.original_title || tmdbItem.original_name || tmdbItem.title || tmdbItem.name;
             const releaseYear = (tmdbItem.release_date || tmdbItem.first_air_date || '').substring(0, 4);
             if (!titleQuery) return null;
             
             const normalize = (s) => (s || "").toLowerCase().replace(/[:\-]/g, ' ').replace(/\s+/g, ' ').trim();
-            const qTitle = normalize(titleQuery);
+            const qOrig = normalize(tmdbItem.original_title || tmdbItem.original_name);
+            const qLocal = normalize(tmdbItem.title || tmdbItem.name);
 
             const checkMatch = (items) => {
                 if (!items || items.length === 0) return null;
                 
-                let exactMatch = items.find(m => 
-                    normalize(m.name) === qTitle || 
-                    normalize(m.origin_name || m.original_name) === qTitle
-                );
+                // Ưu tiên 1: Khớp chính xác tên gốc tiếng Anh (Cực chuẩn cho phim Âu Mỹ)
+                let match = items.find(m => normalize(m.origin_name || m.original_name) === qOrig);
 
-                if (exactMatch) {
-                   if (releaseYear && exactMatch.year) {
-                       if (Math.abs(parseInt(exactMatch.year) - parseInt(releaseYear)) <= 1) return exactMatch;
-                       return null; 
-                   }
-                   return exactMatch; 
+                // Ưu tiên 2: Khớp chính xác tên tiếng Việt
+                if (!match) {
+                    match = items.find(m => normalize(m.name) === qLocal);
                 }
                 
-                // Trả về null nếu không khớp 100%, không lấy rác
-                return null; 
+                // Ưu tiên 3: Tên tương đối (Chứa từ khóa), nhưng bắt buộc phải khớp NĂM SẢN XUẤT (Dung sai 1 năm)
+                if (!match && qOrig.length > 3) {
+                    match = items.find(m => {
+                        const mOrig = normalize(m.origin_name || m.original_name);
+                        const isSimilarName = mOrig.includes(qOrig) || qOrig.includes(mOrig) || normalize(m.name).includes(qLocal);
+                        const isSameYear = releaseYear && m.year && Math.abs(parseInt(m.year) - parseInt(releaseYear)) <= 1;
+                        return isSimilarName && isSameYear;
+                    });
+                }
+                
+                return match || null; 
             };
 
             try {
-               const resN = await fetch(`${API_NGUONC}/search?keyword=${encodeURIComponent(titleQuery)}`);
-               const jN = await resN.json();
-               const matchN = checkMatch(jN?.items || jN?.data?.items);
-               if (matchN) return matchN;
+               const [resN, resO] = await Promise.allSettled([
+                  fetch(`${API_NGUONC}/search?keyword=${encodeURIComponent(titleQuery)}`).then(r => r.json()),
+                  fetch(`${API}/tim-kiem?keyword=${encodeURIComponent(titleQuery)}`).then(r => r.json())
+               ]);
                
-               const resO = await fetch(`${API}/tim-kiem?keyword=${encodeURIComponent(titleQuery)}`);
-               const jO = await resO.json();
-               const matchO = checkMatch(jO?.data?.items);
-               if (matchO) return matchO;
+               let matchResult = null;
+               if (resN.status === 'fulfilled') matchResult = checkMatch(resN.value?.items || resN.value?.data?.items);
+               if (!matchResult && resO.status === 'fulfilled') matchResult = checkMatch(resO.value?.data?.items);
                
+               return matchResult;
             } catch(e) { return null; }
-            return null;
          });
 
          const results = await Promise.all(searchPromises);
          const validMovies = results.filter(Boolean);
          
-         const sortedMovies = validMovies.sort((a, b) => {
-           const aHas = (a.thumb_url || a.poster_url) ? 1 : 0;
-           const bHas = (b.thumb_url || b.poster_url) ? 1 : 0;
-           return bHas - aHas;
-         });
-
          const uniqueMap = new Map();
-         sortedMovies.forEach(m => uniqueMap.set(m.slug, m));
+         validMovies.forEach(m => {
+            const key = m.origin_name || m.original_name || m.slug;
+            if(!uniqueMap.has(key)) uniqueMap.set(key, m);
+         });
          
-         setMovies(Array.from(uniqueMap.values()));
+         setMovies(Array.from(uniqueMap.values()).slice(0, 20));
          setHasMore(false); 
        } catch(e) {
          console.error(e);

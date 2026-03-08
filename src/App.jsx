@@ -147,7 +147,6 @@ const mergeDuplicateMovies = (items) => {
       if (existingIdx !== -1) {
           const existingHasImage = isValidImg(merged[existingIdx].thumb_url) || isValidImg(merged[existingIdx].poster_url);
           const newHasImage = isValidImg(item.thumb_url) || isValidImg(item.poster_url);
-          // Nếu Ophim bị lỗi ảnh (avatar.png), dùng NguonC đè lên
           if (!existingHasImage && newHasImage) {
               merged[existingIdx] = item; 
           }
@@ -244,6 +243,30 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
   const useIframe = forceIframe || !m3u8Link || m3u8Link.trim() === "";
   const idleTimeoutRef = useRef(null);
 
+  // Lưu trữ Info Player hiện tại để đảm bảo Unmount lấy đúng State mới nhất
+  const playerStateRef = useRef({});
+  useEffect(() => {
+      playerStateRef.current = { movieSlug, ep, movieName, originName, thumbUrl, movieYear, serverSource, serverRawName, duration };
+  }, [movieSlug, ep, movieName, originName, thumbUrl, movieYear, serverSource, serverRawName, duration]);
+
+  const saveCurrentProgress = (currTime, totalDuration) => {
+      const info = playerStateRef.current;
+      if (!info.movieSlug || !info.ep?.slug) return;
+      const progress = JSON.parse(localStorage.getItem("movieProgress") || "{}");
+      progress[info.movieSlug] = {
+          episodeSlug: info.ep.slug,
+          currentTime: currTime,
+          percentage: totalDuration > 0 ? (currTime / totalDuration) * 100 : 1, // Iframe luôn lưu 1%
+          name: info.movieName,
+          origin_name: info.originName, 
+          thumb: info.thumbUrl,
+          year: info.movieYear,
+          serverSource: info.serverSource,
+          serverRawName: info.serverRawName 
+      };
+      localStorage.setItem("movieProgress", JSON.stringify(progress));
+  };
+
   useEffect(() => {
     setIsPlaying(false);
     setCurrentTime(0);
@@ -253,25 +276,17 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
     lastSaveRef.current = 0;
   }, [ep, m3u8Link, forceIframe]);
 
+  // TIẾN TRÌNH IFRAME (BẮT SỰ KIỆN LƯU TỨC THÌ KHI CHUYỂN TRANG)
   useEffect(() => {
     if (!useIframe || !movieSlug || !ep?.slug) return;
-    const timer = setTimeout(() => {
-      const progress = JSON.parse(localStorage.getItem("movieProgress") || "{}");
-      const currentProg = progress[movieSlug];
-      progress[movieSlug] = {
-        episodeSlug: ep.slug,
-        currentTime: currentProg?.currentTime || 0,
-        percentage: Math.max(currentProg?.percentage || 0, 1),
-        name: movieName,
-        origin_name: originName, 
-        thumb: thumbUrl,
-        year: movieYear,
-        serverSource: serverSource,
-        serverRawName: serverRawName 
-      };
-      localStorage.setItem("movieProgress", JSON.stringify(progress));
-    }, 5000); 
-    return () => clearTimeout(timer);
+    
+    const saveIframeProg = () => saveCurrentProgress(0, 0); // Iframe không có time, lưu % mặc định
+    const timer = setInterval(saveIframeProg, 5000); 
+    
+    return () => {
+        clearInterval(timer);
+        saveIframeProg(); // LƯU TỨC THÌ KHI THOÁT TRANG
+    };
   }, [useIframe, movieSlug, ep, movieName, originName, thumbUrl, movieYear, serverSource, serverRawName]);
 
   useEffect(() => {
@@ -333,6 +348,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
     };
   }, [m3u8Link, useIframe]);
 
+  // TIẾN TRÌNH VIDEO GỐC (BẮT SỰ KIỆN LƯU TỨC THÌ KHI CHUYỂN TRANG)
   useEffect(() => {
     if (useIframe || !vRef.current || hlsError) return; 
     const video = vRef.current;
@@ -341,19 +357,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
       setCurrentTime(video.currentTime);
       if (video.currentTime > 0 && video.duration > 0 && Math.abs(video.currentTime - lastSaveRef.current) > 5) {
         lastSaveRef.current = video.currentTime;
-        const progress = JSON.parse(localStorage.getItem("movieProgress") || "{}");
-        progress[movieSlug] = {
-          episodeSlug: ep.slug,
-          currentTime: video.currentTime,
-          percentage: (video.currentTime / video.duration) * 100,
-          name: movieName,
-          origin_name: originName, 
-          thumb: thumbUrl,
-          year: movieYear,
-          serverSource: serverSource,
-          serverRawName: serverRawName 
-        };
-        localStorage.setItem("movieProgress", JSON.stringify(progress));
+        saveCurrentProgress(video.currentTime, video.duration);
       }
     };
 
@@ -377,6 +381,11 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
     video.addEventListener("waiting", handlePauseState);
     
     return () => {
+      // LƯU TỨC THÌ LẦN CUỐI KHI NGƯỜI DÙNG BẤM THOÁT TRANG CHỦ HOẶC MỤC KHÁC
+      if (video && video.currentTime > 0 && video.duration > 0) {
+          saveCurrentProgress(video.currentTime, video.duration);
+      }
+      
       video.removeEventListener("timeupdate", handleTimeUpdate);
       video.removeEventListener("loadedmetadata", handleLoadedMetadata);
       video.removeEventListener("play", handlePlayState);
@@ -861,7 +870,6 @@ function MovieSection({ title, slug, type = "the-loai", navigate, progressData }
 
         let reqs = [];
 
-        // NẾU LÀ MỤC HOẠT HÌNH: PHẢI GỌI CẢ /DANH-SACH LẪN /THE-LOAI ĐỂ TRÁNH API TRẢ MẢNG RỖNG
         if (slug === 'hoat-hinh') {
             reqs = [
                 fetchTimeout(`${API}/danh-sach/hoat-hinh?page=1`, 4000),
@@ -897,14 +905,12 @@ function MovieSection({ title, slug, type = "the-loai", navigate, progressData }
 
         let merged = mergeDuplicateMovies(allItems);
         
-        // RÀO CHẮN HOẠT HÌNH: CHỈ CHO PHÉP XUẤT HIỆN Ở MỤC HOẠT HÌNH
         if (slug === 'hoat-hinh') {
-            // Không filter isHoatHinhMovie nữa vì đã lấy đúng endpoint dành riêng cho Hoạt Hình
+            // Mục Hoạt hình được quyền thoải mái
         } else {
             merged = merged.filter(m => !isHoatHinhMovie(m));
         }
 
-        // BỘ LỌC CHỐNG TRÙNG LẶP TOÀN CỤC TRÊN TRANG CHỦ
         let uniqueMovies = [];
         merged.forEach(m => {
             const id = getMovieUniqueId(m);
@@ -913,16 +919,13 @@ function MovieSection({ title, slug, type = "the-loai", navigate, progressData }
             }
         });
 
-        // BẢO HIỂM GIAO DIỆN: Nếu lọc xong mà còn quá ít phim, thì lấy lại phim cũ để không bị cụt
         let finalMovies = uniqueMovies;
         if (uniqueMovies.length < 10) {
             finalMovies = merged; 
         }
 
-        // LUÔN LUÔN CẮT LẤY 15 PHIM
         finalMovies = finalMovies.slice(0, 15);
 
-        // LƯU CÁC PHIM NÀY VÀO DANH SÁCH ĐÃ HIỂN THỊ
         finalMovies.forEach(m => {
             const id = getMovieUniqueId(m);
             if (id) globalDisplayedSlugs.add(id);
@@ -1293,14 +1296,12 @@ function Hero({ navigate }) {
         rawItems = rawItems.filter(m => {
             const epStr = String(m.episode_current || "").toLowerCase();
             if (epStr.includes("trailer")) return false;
-            // LỌC BỎ 100% HOẠT HÌNH KHỎI BANNER
             if (isHoatHinhMovie(m)) return false;
             return true;
         });
 
         let items = mergeDuplicateMovies(rawItems);
 
-        // LUÔN ÉP LẤY ĐÚNG 7 PHIM HOT NHẤT
         const finalBanner = items.slice(0, 7);
         setBannerMovies(finalBanner);
         setCurrentIndex(Math.floor(finalBanner.length / 2));
@@ -1728,7 +1729,6 @@ function Watch({ slug, movieData }) {
             let oItem = resOphim.status === 'fulfilled' ? resOphim.value?.data?.item : null;
             let nItem = resNguonc.status === 'fulfilled' ? (resNguonc.value?.movie || resNguonc.value?.item) : null;
 
-            // --- THUẬT TOÁN TRUY QUÉT CHÉO GỘP SERVER (Khắc phục "Ẩn Danh 2" vs "Tài Xế Ẩn Danh (Phần 2)") ---
             const normalizeForMatch = (str) => String(str || "").normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
             const isCrossMatch = (m1, m2) => {
@@ -1863,10 +1863,19 @@ function Watch({ slug, movieData }) {
                 s.groupType = String(s.rawName || "Vietsub").replace(/#\d+/g, '').trim().toUpperCase();
             });
 
+            // TÍNH NĂNG ÉP VIETSUB LÊN ĐẦU MẶC ĐỊNH
             extractedServers.sort((a, b) => {
+                const aIsVietsub = a.groupType.includes('VIETSUB') || a.groupType.includes('VIỆT SUB');
+                const bIsVietsub = b.groupType.includes('VIETSUB') || b.groupType.includes('VIỆT SUB');
+                
+                // Vietsub luôn luôn được ưu tiên số 1
+                if (aIsVietsub && !bIsVietsub) return -1;
+                if (!aIsVietsub && bIsVietsub) return 1;
+                
                 if (a.groupType !== b.groupType) return a.groupType.localeCompare(b.groupType);
-                const sourceRankA = a.source === 'ophim' ? 1 : (a.source === 'nguonc' ? 2 : 3);
-                const sourceRankB = b.source === 'ophim' ? 1 : (b.source === 'nguonc' ? 2 : 3);
+                
+                const sourceRankA = a.source === 'ophim' ? 1 : 2;
+                const sourceRankB = b.source === 'ophim' ? 1 : 2;
                 return sourceRankA - sourceRankB;
             });
 
@@ -1878,10 +1887,12 @@ function Watch({ slug, movieData }) {
 
             setServerList(extractedServers);
 
+            // MẶC ĐỊNH LẤY SERVER 0 (LÀ VIETSUB VÌ ĐÃ SORT Ở TRÊN)
             let targetServerIdx = 0;
             let targetEp = extractedServers[0].server_data[0];
             let targetTabIdx = 0;
 
+            // CHỈ GHI ĐÈ NẾU PHIM NÀY ĐÃ TỪNG ĐƯỢC XEM (LẤY TỪ LOCALSTORAGE)
             if (savedProgress?.serverSource) {
                 const foundIdx = extractedServers.findIndex(s => s.source === savedProgress.serverSource && s.rawName === savedProgress.serverRawName);
                 if (foundIdx !== -1) {
@@ -1984,18 +1995,13 @@ function Watch({ slug, movieData }) {
         {serverList.length > 0 ? (
            <div className="animate-in fade-in duration-500">
               <div className="mb-6 md:mb-8">
-                 {/* RENDER GROUP MÁY CHỦ BỞI TYPE VÀ ÉP VIETSUB LÊN ĐẦU TIÊN */}
                  {Object.entries(
                     serverList.reduce((acc, s, idx) => {
                         if (!acc[s.groupType]) acc[s.groupType] = [];
                         acc[s.groupType].push({ ...s, originalIndex: idx });
                         return acc;
                     }, {})
-                 ).sort(([typeA], [typeB]) => {
-                     if (typeA.includes('VIETSUB') && !typeB.includes('VIETSUB')) return -1;
-                     if (!typeA.includes('VIETSUB') && typeB.includes('VIETSUB')) return 1;
-                     return typeA.localeCompare(typeB);
-                 }).map(([type, servers]) => (
+                 ).map(([type, servers]) => (
                      <div key={type} className="mb-4 last:mb-0">
                          <p className="text-gray-400 text-[10px] md:text-xs font-bold uppercase mb-2 tracking-widest">
                              MÁY CHỦ : {type}
@@ -2100,16 +2106,23 @@ export default function App() {
     } catch(e){}
   };
 
+  // CHUYỂN TRANG (CẬP NHẬT TIẾN TRÌNH TỨC THÌ)
   const navigate = (newView) => {
     window.history.pushState(newView, '', '');
     setView(newView);
     window.scrollTo(0, 0);
+    
+    // Đợi 50ms cho Player unmount xong rồi update tiến trình để trang chủ nhận ngay
+    setTimeout(() => {
+        refreshProgress();
+    }, 50);
   };
 
-  // KHI TRỞ VỀ TRANG CHỦ THÌ RESET BỘ LỌC PHIM ĐÃ HIỂN THỊ ĐỂ LOAD LẠI TỪ ĐẦU
+  // KHI TRỞ VỀ TRANG CHỦ THÌ RESET BỘ LỌC PHIM VÀ LẤY TIẾN TRÌNH MỚI NHẤT
   useEffect(() => {
     if (view.type === "home") {
         globalDisplayedSlugs.clear();
+        refreshProgress();
     }
   }, [view.type]);
 

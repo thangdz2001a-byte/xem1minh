@@ -1,27 +1,35 @@
 import React, { useState, useEffect, useRef, memo, useMemo } from "react";
 import * as Icon from "lucide-react";
 
+// --- BIẾN TOÀN CỤC CHỐNG TRÙNG LẶP TRÊN TRANG CHỦ ---
+const globalDisplayedSlugs = new Set();
+
 // --- CẤU HÌNH API --- 
 const WORKER_URL = "https://polite-api.thangdz2001a.workers.dev";
-
 const API = "https://ophim1.com/v1/api";
 const API_NGUONC = "https://phim.nguonc.com/api/films";
 const API_NGUONC_DETAIL = "https://phim.nguonc.com/api/film";
 const IMG = "https://img.ophim.live/uploads/movies";
 const TMDB_API_KEY = "0e620a51728a0fea887a8506831d8866";
 
-// Danh sách Năm tĩnh
 const YEARS = Array.from({ length: 20 }, (_, i) => new Date().getFullYear() - i);
 
 // --- UTILS ---
 function getImg(p) {
-  if (!p) return "https://images.unsplash.com/photo-1440404653325-ab127d49abc1?q=80&w=500";
+  if (!p || typeof p !== 'string') return "";
   if (p.startsWith("http")) return p;
   const path = p.startsWith("/") ? p.substring(1) : p;
-  // Trỏ về Worker để dùng Cache của Cloudflare
   return `${IMG}/${path}`;
 }
-}
+
+// KIỂM TRA ẢNH LỖI (ƯU TIÊN OPHIM, FALLBACK NGUONC)
+const isValidImg = (img) => {
+    if (!img || typeof img !== 'string') return false;
+    if (img.length < 10) return false;
+    if (img.includes('avatar.png') || img.includes('no-poster') || img.includes('default')) return false;
+    if (img === 'https://img.ophim.live/uploads/movies/' || img === 'https://img.ophim.live/uploads/movies') return false;
+    return true;
+};
 
 function formatTime(seconds) {
   if (isNaN(seconds)) return "00:00";
@@ -33,47 +41,124 @@ function formatTime(seconds) {
     : `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
-const safeJoin = (data) => {
-  if (!data) return "Đang cập nhật";
-  if (typeof data === 'string') return data;
+const extractReadableNames = (data) => {
+  if (!data) return [];
+  if (typeof data === 'string') return [data];
   if (Array.isArray(data)) {
-      return data.map(item => typeof item === 'object' && item !== null ? item.name : item).join(", ");
+      return data.map(item => {
+          if (typeof item === 'string') return item;
+          if (item?.name) return item.name;
+          if (item?.NAME) return item.NAME;
+          return null;
+      }).filter(Boolean);
   }
-  return "Đang cập nhật";
+  if (typeof data === 'object') {
+      let names = [];
+      Object.values(data).forEach(val => {
+          if (val && typeof val === 'object') {
+              if (val.LIST && Array.isArray(val.LIST)) {
+                  val.LIST.forEach(i => {
+                      if (typeof i === 'string') names.push(i);
+                      else if (i?.name) names.push(i.name);
+                      else if (i?.NAME) names.push(i.NAME);
+                  });
+              } else if (val.name) names.push(val.name);
+              else if (val.NAME) names.push(val.NAME);
+          }
+      });
+      return names;
+  }
+  return [];
 };
 
-// Hàm chuẩn hóa chuỗi để loại bỏ trùng lặp chính xác hơn
-const normalizeString = (s) => (s || "").toLowerCase().replace(/[:\-]/g, ' ').replace(/\s+/g, ' ').trim();
+const safeText = (data, fallback = "") => {
+  if (data === null || data === undefined || data === "") return fallback;
+  let parsedData = data;
+  if (typeof data === 'string') {
+      const trimmed = data.trim();
+      if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+          try { parsedData = JSON.parse(trimmed); } catch (e) {}
+      }
+  }
+  if (typeof parsedData === 'object' && parsedData !== null) {
+      try {
+          const names = extractReadableNames(parsedData);
+          if (names.length > 0) return names.join(', ');
+          return fallback;
+      } catch (e) { return fallback; }
+  }
+  return String(parsedData);
+};
 
-// Hàm gộp phim trùng lặp thông minh (Quét theo Tên Gốc, Tên Việt và Slug)
+const safeJoin = (data) => safeText(data, "Đang cập nhật");
+
+const normalizeString = (s) => {
+  if (typeof s === 'object' && s !== null) s = extractReadableNames(s).join(' ');
+  return String(s || "").normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[:\-]/g, ' ').replace(/\s+/g, ' ').trim();
+};
+
+const getMovieUniqueId = (m) => normalizeString(m?.origin_name || m?.original_name || m?.name);
+
+// --- BỘ LỌC CÁCH LY HOẠT HÌNH / ANIME TUYỆT ĐỐI ---
+const isHoatHinhMovie = (m) => {
+    if (!m) return false;
+    const type = String(m.type || "").toLowerCase();
+    const slug = String(m.slug || "").toLowerCase();
+    
+    if (type.includes("hoathinh") || type.includes("anime") || type.includes("cartoon")) return true;
+    if (slug.includes("hoat-hinh") || slug.includes("anime") || slug.includes("doraemon") || slug.includes("conan") || slug.includes("one-piece") || slug.includes("pokemon")) return true;
+    
+    let cats = "";
+    if (Array.isArray(m.category)) {
+        cats = m.category.map(c => typeof c === 'string' ? c : (c.name || "")).join(" ").toLowerCase();
+    } else if (typeof m.category === 'string') {
+        cats = m.category.toLowerCase();
+    } else if (m.category) {
+        cats = JSON.stringify(m.category).toLowerCase();
+    }
+    
+    if (cats.includes("hoạt hình") || cats.includes("anime") || cats.includes("hoathinh")) return true;
+    
+    return false;
+};
+
+// --- GỘP PHIM VÀ BẮT ẢNH LỖI (ƯU TIÊN OPHIM, FALLBACK NGUONC) ---
 const mergeDuplicateMovies = (items) => {
+  if (!Array.isArray(items)) return [];
   const merged = [];
-  (items || []).forEach(item => {
-      if (!item || item.episode_current?.toLowerCase().includes("trailer")) return;
+  
+  items.forEach(item => {
+      if (!item) return;
+      const epCurrent = String(item.episode_current || "");
+      if (epCurrent.toLowerCase().includes("trailer")) return;
       
       const normOrigin = normalizeString(item.origin_name || item.original_name);
       const normName = normalizeString(item.name);
       
-      const exists = merged.find(m => {
+      const existingIdx = merged.findIndex(m => {
           const mNormOrigin = normalizeString(m.origin_name || m.original_name);
           const mNormName = normalizeString(m.name);
-          
           const matchOrigin = normOrigin && mNormOrigin && normOrigin === mNormOrigin;
           const matchName = normName && mNormName && normName === mNormName;
-          const matchSlug = item.slug === m.slug;
-          
+          const matchSlug = item.slug && m.slug && item.slug === m.slug;
           return matchOrigin || matchName || matchSlug;
       });
       
-      if (!exists) {
+      if (existingIdx !== -1) {
+          const existingHasImage = isValidImg(merged[existingIdx].thumb_url) || isValidImg(merged[existingIdx].poster_url);
+          const newHasImage = isValidImg(item.thumb_url) || isValidImg(item.poster_url);
+          // Nếu Ophim bị lỗi ảnh (avatar.png), dùng NguonC đè lên
+          if (!existingHasImage && newHasImage) {
+              merged[existingIdx] = item; 
+          }
+      } else {
           merged.push(item);
       }
   });
   return merged;
 };
 
-
-// --- HỆ THỐNG CACHE VÀ RÀ SOÁT TMDB CHỈ DÀNH CHO TRANG CHI TIẾT (Diễn viên) ---
+// --- HỆ THỐNG CACHE VÀ RÀ SOÁT TMDB ---
 const tmdbCache = new Map();
 
 async function fetchTMDB(name, originName, slug, year) {
@@ -81,16 +166,14 @@ async function fetchTMDB(name, originName, slug, year) {
   if (!cacheKey) return null;
   if (tmdbCache.has(cacheKey)) return tmdbCache.get(cacheKey);
 
-  const extractYear = (dateString) => dateString ? dateString.substring(0, 4) : null;
+  const extractYear = (dateString) => typeof dateString === 'string' ? dateString.substring(0, 4) : null;
 
   try {
     let match = null;
     const search = async (query) => {
-  // Gọi qua Worker để lấy thông tin TMDB
-  let res = await fetch(`${WORKER_URL}/api/tmdb/search/multi?query=${encodeURIComponent(query)}`);
-  let data = await res.json();
-  return data.results || [];
-};
+      let res = await fetch(`${WORKER_URL}/api/tmdb/search/multi?query=${encodeURIComponent(String(query || "").trim())}`);
+      let data = await res.json();
+      return data.results || [];
     };
 
     let results = [];
@@ -105,9 +188,7 @@ async function fetchTMDB(name, originName, slug, year) {
              return y && Math.abs(parseInt(y) - parseInt(year)) <= 1;
           });
        }
-       if (!match) {
-          match = results.find(item => item.media_type !== 'person' && (item.poster_path || item.backdrop_path));
-       }
+       if (!match) match = results.find(item => item.media_type !== 'person' && (item.poster_path || item.backdrop_path));
     }
 
     if (match) {
@@ -119,50 +200,19 @@ async function fetchTMDB(name, originName, slug, year) {
   return null;
 }
 
-function useTMDBData(name, originName, slug, year) {
-  const cacheKey = slug || originName || name;
-  const [data, setData] = useState(() => (cacheKey ? tmdbCache.get(cacheKey) : null));
-  const [loading, setLoading] = useState(() => (cacheKey ? !tmdbCache.has(cacheKey) : false));
-
-  useEffect(() => {
-    if (!cacheKey) return;
-    if (tmdbCache.has(cacheKey)) {
-      setData(tmdbCache.get(cacheKey));
-      setLoading(false);
-      return;
-    }
-
-    let isMounted = true;
-    setLoading(true);
-    fetchTMDB(name, originName, slug, year).then((res) => {
-      if (isMounted) {
-        setData(res);
-        setLoading(false);
-      }
-    });
-
-    return () => { isMounted = false; };
-  }, [name, originName, slug, year, cacheKey]);
-
-  return { data, loading };
-}
-
 // --- CÁC COMPONENT ---
-
 function SmartImage({ src, alt, className }) {
-  let finalSrc = src ? getImg(src) : "https://images.unsplash.com/photo-1440404653325-ab127d49abc1?q=80&w=500";
-  
+  const finalSrc = src ? getImg(src) : "";
+
   return (
     <img
-      src={finalSrc}
-      alt={alt}
-      className={className}
-      loading="lazy"
-      decoding="async"
+      src={finalSrc || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3Crect width='100%25' height='100%25' fill='%23111'/%3E%3C/svg%3E"}
+      alt={safeText(alt, "Movie Poster")}
+      className={`${className} bg-[#111]`}
       onError={(e) => {
         if (!e.target.dataset.error) {
           e.target.dataset.error = true;
-          e.target.src = "https://images.unsplash.com/photo-1440404653325-ab127d49abc1?q=80&w=500";
+          e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3Crect width='100%25' height='100%25' fill='%23111'/%3E%3C/svg%3E";
         }
       }}
     />
@@ -191,7 +241,6 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
   const [levels, setLevels] = useState([]);
   const [currentLevel, setCurrentLevel] = useState(-1);
   
-  // FIX: Loại bỏ useState cho useIframe để tránh rendering trễ 1 nhịp gây kẹt Player
   const useIframe = forceIframe || !m3u8Link || m3u8Link.trim() === "";
   const idleTimeoutRef = useRef(null);
 
@@ -217,15 +266,14 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
         origin_name: originName, 
         thumb: thumbUrl,
         year: movieYear,
-        serverSource: serverSource, // Lưu lại máy chủ (Ophim/NguonC)
-        serverRawName: serverRawName // Lưu lại nhóm Vietsub/Lồng tiếng
+        serverSource: serverSource,
+        serverRawName: serverRawName 
       };
       localStorage.setItem("movieProgress", JSON.stringify(progress));
     }, 5000); 
     return () => clearTimeout(timer);
   }, [useIframe, movieSlug, ep, movieName, originName, thumbUrl, movieYear, serverSource, serverRawName]);
 
-  // FIX TỐC ĐỘ TẢI HLS VÀ LỖI CLICK KHÔNG CHẠY
   useEffect(() => {
     if (useIframe || !vRef.current || !m3u8Link) return; 
     
@@ -254,12 +302,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
           if (data.fatal) {
             switch (data.type) {
               case window.Hls.ErrorTypes.NETWORK_ERROR:
-                hls.destroy();
-                setHlsError(true);
-                break;
               case window.Hls.ErrorTypes.MEDIA_ERROR:
-                hls.recoverMediaError();
-                break;
               default:
                 hls.destroy();
                 setHlsError(true);
@@ -270,7 +313,6 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
       }
     };
 
-    // Kiểm tra chống load script 2 lần do React Strict Mode
     if (!window.Hls) {
       let existingScript = document.querySelector('script[src="https://cdn.jsdelivr.net/npm/hls.js@latest"]');
       if (!existingScript) {
@@ -308,8 +350,8 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
           origin_name: originName, 
           thumb: thumbUrl,
           year: movieYear,
-          serverSource: serverSource, // Lưu lại máy chủ (Ophim/NguonC)
-          serverRawName: serverRawName // Lưu lại nhóm Vietsub/Lồng tiếng
+          serverSource: serverSource,
+          serverRawName: serverRawName 
         };
         localStorage.setItem("movieProgress", JSON.stringify(progress));
       }
@@ -347,17 +389,9 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
   const togglePlay = (e) => {
     if (e) e.stopPropagation();
     if (!vRef.current || hlsError) return;
-    
     if (vRef.current.paused) {
       const playPromise = vRef.current.play();
-      if (playPromise !== undefined) {
-          playPromise.then(() => {
-              setIsPlaying(true);
-          }).catch(error => {
-              console.log("Autoplay prevented or stream not ready.");
-              setIsPlaying(false);
-          });
-      }
+      if (playPromise !== undefined) playPromise.then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
     } else {
       vRef.current.pause();
       setIsPlaying(false);
@@ -368,21 +402,13 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
     if (e) e.stopPropagation();
     const container = containerRef.current;
     const video = vRef.current;
-
     if (!document.fullscreenElement && !document.webkitFullscreenElement) {
-      if (container.requestFullscreen) {
-        container.requestFullscreen().catch(() => {});
-      } else if (container.webkitRequestFullscreen) {
-        container.webkitRequestFullscreen();
-      } else if (video && video.webkitEnterFullscreen) {
-        video.webkitEnterFullscreen();
-      }
+      if (container.requestFullscreen) container.requestFullscreen().catch(() => {});
+      else if (container.webkitRequestFullscreen) container.webkitRequestFullscreen();
+      else if (video && video.webkitEnterFullscreen) video.webkitEnterFullscreen();
     } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen();
-      } else if (document.webkitExitFullscreen) {
-        document.webkitExitFullscreen();
-      }
+      if (document.exitFullscreen) document.exitFullscreen();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
     }
   };
 
@@ -423,22 +449,10 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
     if (useIframe || hlsError) return;
     const handleKeyDown = (e) => {
       if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
-      if (e.code === 'Space') {
-        e.preventDefault();
-        togglePlay();
-      }
-      if (e.code === 'KeyF') {
-        e.preventDefault();
-        toggleFullscreen();
-      }
-      if (e.code === 'ArrowRight') {
-         e.preventDefault();
-         skipForward();
-      }
-      if (e.code === 'ArrowLeft') {
-         e.preventDefault();
-         skipBackward();
-      }
+      if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+      if (e.code === 'KeyF') { e.preventDefault(); toggleFullscreen(); }
+      if (e.code === 'ArrowRight') { e.preventDefault(); skipForward(); }
+      if (e.code === 'ArrowLeft') { e.preventDefault(); skipBackward(); }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -524,17 +538,13 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
             </div>
 
             <div className="flex justify-between items-center text-white w-full" onClick={(e) => e.stopPropagation()}>
-              
               <div className="flex items-center gap-2 sm:gap-4">
-                
                 <button onClick={skipBackward} className="hover:text-[#E50914] transition-colors focus:outline-none p-1 md:p-0 transform-gpu hover:scale-110">
                   <Icon.RotateCcw className="w-4 h-4 md:w-5 md:h-5" />
                 </button>
-                
                 <button onClick={togglePlay} className="hover:text-[#E50914] transition-colors focus:outline-none p-1 md:p-0 transform-gpu hover:scale-110">
                   {isPlaying ? <Icon.Pause fill="currentColor" className="w-5 h-5 md:w-6 md:h-6" /> : <Icon.Play fill="currentColor" className="w-5 h-5 md:w-6 md:h-6" />}
                 </button>
-
                 <button onClick={skipForward} className="hover:text-[#E50914] transition-colors focus:outline-none p-1 md:p-0 transform-gpu hover:scale-110">
                   <Icon.RotateCw className="w-4 h-4 md:w-5 md:h-5" />
                 </button>
@@ -571,7 +581,6 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
               </div>
 
               <div className="flex items-center gap-3 sm:gap-4">
-                
                 <div className="relative">
                   <button onClick={() => setShowSettings(!showSettings)} className="hover:text-[#E50914] transition-all duration-300 focus:outline-none p-1 flex items-center transform-gpu hover:scale-110">
                     <Icon.Settings className={`w-4 h-4 md:w-5 md:h-5 ${showSettings ? "rotate-90 text-[#E50914]" : ""}`} />
@@ -602,6 +611,8 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
 }
 
 const SearchItem = memo(function SearchItem({ m, navigate, onClose }) {
+  if (!m) return null; 
+  
   return (
     <div
       onClick={() => {
@@ -617,17 +628,17 @@ const SearchItem = memo(function SearchItem({ m, navigate, onClose }) {
         <SmartImage
           src={m.thumb_url || m.poster_url}
           className="w-full h-full object-cover group-hover/card:scale-105 transition-transform duration-300 transform-gpu will-change-transform"
-          alt={m.name}
+          alt={safeText(m.name)}
         />
       </div>
       <div className="flex flex-col justify-center py-1">
-        <h4 className="text-base md:text-lg font-bold text-white mb-1 line-clamp-1">{m.name}</h4>
-        <p className="text-xs md:text-sm text-gray-400 mb-2.5">{(m.origin_name || m.original_name)} • {m.year}</p>
+        <h4 className="text-base md:text-lg font-bold text-white mb-1 line-clamp-1">{safeText(m.name)}</h4>
+        <p className="text-xs md:text-sm text-gray-400 mb-2.5">{safeText(m.origin_name || m.original_name)} • {safeText(m.year)}</p>
         <div className="flex flex-wrap items-center gap-2 text-[11px] md:text-xs text-gray-400 font-medium">
-          <span className="text-gray-300">{m.quality || "HD"}</span>
+          <span className="text-gray-300">{safeText(m.quality, "HD")}</span>
           <span>•</span>
-          <span>{m.episode_current || "Đang cập nhật"}</span>
-          {m.tmdb?.vote_average ? (
+          <span>{safeText(m.episode_current, "Đang cập nhật")}</span>
+          {m.tmdb?.vote_average && !isNaN(Number(m.tmdb.vote_average)) ? (
             <>
               <span>•</span>
               <span className="flex items-center gap-1 text-[#f5c518] font-bold">
@@ -648,43 +659,56 @@ function SearchModal({ isOpen, onClose, navigate }) {
   const inputRef = useRef(null);
 
   useEffect(() => {
-    if (isOpen) setTimeout(() => inputRef.current?.focus(), 100);
-    else { setQuery(""); setResults([]); }
+    if (isOpen) {
+        setTimeout(() => inputRef.current?.focus(), 100);
+    } else { 
+        setQuery(""); 
+        setResults([]); 
+        setLoading(false); 
+    }
   }, [isOpen]);
 
   useEffect(() => {
-    if (query.trim().length < 2) { setResults([]); return; }
+    if (query.trim().length < 2) { 
+        setResults([]); 
+        setLoading(false); 
+        return; 
+    }
+    
     setLoading(true);
     const controller = new AbortController();
+    
     const delay = setTimeout(async () => {
+      const timeoutId = setTimeout(() => controller.abort(), 8000); 
       try {
-        const encodedQuery = encodeURIComponent(query);
-        const [ophimRes, nguoncRes] = await Promise.allSettled([
-          fetch(`${API}/tim-kiem?keyword=${encodedQuery}`, { signal: controller.signal }),
-          fetch(`${API_NGUONC}/search?keyword=${encodedQuery}`, { signal: controller.signal })
-        ]);
+        const encodedQuery = encodeURIComponent(String(query || "").trim());
+        
+        const pOphim = fetch(`${API}/tim-kiem?keyword=${encodedQuery}`, { signal: controller.signal })
+            .then(r => r.json())
+            .then(d => {
+                if (d?.data?.items && d.data.items.length > 0) return d.data.items;
+                throw new Error();
+            });
+            
+        const pNguonc = fetch(`${API_NGUONC}/search?keyword=${encodedQuery}`, { signal: controller.signal })
+            .then(r => r.json())
+            .then(d => {
+                const items = d?.items || d?.data?.items;
+                if (items && items.length > 0) return items;
+                throw new Error();
+            });
 
-        let combinedItems = [];
+        const items = await Promise.any([pOphim, pNguonc]);
+        if (!controller.signal.aborted) setResults(mergeDuplicateMovies(items));
         
-        if (ophimRes.status === 'fulfilled') {
-          const ophimJson = await ophimRes.value.json();
-          if (ophimJson?.data?.items) combinedItems = [...combinedItems, ...ophimJson.data.items];
-        }
-        
-        if (nguoncRes.status === 'fulfilled') {
-          const nguoncJson = await nguoncRes.value.json();
-          const nguoncItems = nguoncJson?.items || nguoncJson?.data?.items || [];
-          combinedItems = [...combinedItems, ...nguoncItems];
-        }
-        
-        // Sử dụng hàm gộp thông minh
-        setResults(mergeDuplicateMovies(combinedItems));
       } catch (error) {
-        if (error.name !== 'AbortError') console.error("Lỗi tìm kiếm:", error);
+        if (!controller.signal.aborted) setResults([]);
       } finally {
-        setLoading(false);
+        clearTimeout(timeoutId);
+        if (!controller.signal.aborted) setLoading(false);
       }
     }, 400);
+    
     return () => { clearTimeout(delay); controller.abort(); };
   }, [query]);
 
@@ -721,7 +745,7 @@ function SearchModal({ isOpen, onClose, navigate }) {
             <div className="py-10 flex justify-center"><Icon.Loader2 className="animate-spin text-[#E50914]" size={30} /></div>
           ) : results.length > 0 ? (
             <>
-              {results.map((m) => <SearchItem key={m.slug} m={m} navigate={navigate} onClose={onClose} />)}
+              {results.map((m, idx) => <SearchItem key={m.slug || `s-${idx}`} m={m} navigate={navigate} onClose={onClose} />)}
               <button
                 onClick={() => { navigate({ type: "search", keyword: query }); onClose(); }}
                 className="w-full mt-2 py-4 text-center text-[#E50914] font-bold text-sm hover:bg-white/5 transition-colors rounded-xl border border-dashed border-white/10"
@@ -739,6 +763,7 @@ function SearchModal({ isOpen, onClose, navigate }) {
 }
 
 const MovieCard = memo(function MovieCard({ m, navigate, progressData, isRow = false, onRemove = null, onClickOverride = null }) {
+  if (!m) return null;
   const progData = progressData?.[m.slug];
   const prog = progData?.percentage || 0;
   const thumbSrc = m.thumb_url || m.thumb || m.poster_url;
@@ -763,29 +788,21 @@ const MovieCard = memo(function MovieCard({ m, navigate, progressData, isRow = f
         <SmartImage 
           src={thumbSrc} 
           className="w-full h-full object-cover transition-transform duration-500 group-hover/card:scale-110 transform-gpu will-change-transform" 
-          alt={m.name} 
+          alt={safeText(m.name)} 
         />
         
         <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/card:opacity-100 transition-opacity duration-500 z-20 pointer-events-none will-change-opacity" />
         
         <div className="absolute top-1.5 left-1.5 md:top-2 md:left-2 bg-[#E50914] text-white text-[8px] md:text-[10px] px-1.5 md:px-2 py-0.5 rounded font-black uppercase shadow-lg tracking-widest z-10">
-          {m.quality || "HD"}
+          {safeText(m.quality, "HD")}
         </div>
 
-        {!prog && m.episode_current && (
-          <div className="absolute bottom-0 left-0 w-full p-2 flex justify-start items-end bg-gradient-to-t from-black/90 via-black/40 to-transparent z-10 pointer-events-none">
-            <span className="bg-[#111]/80 backdrop-blur-sm text-gray-200 text-[9px] md:text-[11px] px-2 py-1 rounded font-bold shadow-md border border-white/10">
-              {m.episode_current}
-            </span>
-          </div>
-        )}
-        
         {prog > 0 && prog < 99 && (
           <>
             <div className="absolute bottom-0 left-0 w-full h-1/2 bg-gradient-to-t from-black/90 via-black/40 to-transparent z-10 pointer-events-none" />
             <div className="absolute bottom-2 md:bottom-3 left-0 w-full flex justify-center items-center z-20 pointer-events-none px-1">
               <span className="text-[9px] md:text-[11px] font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] tracking-wider truncate">
-                {progData.episodeSlug?.toUpperCase().replace("TAP-", "TẬP ")?.replace("FULL", "FULL")?.replace(/['"]/g, '').trim()} • {formatTime(progData.currentTime)}
+                {safeText(String(progData.episodeSlug || "").toUpperCase().replace("TAP-", "TẬP ").replace("FULL", "FULL").replace(/['"]/g, '').trim())} • {formatTime(progData.currentTime)}
               </span>
             </div>
             <div className="absolute bottom-0 left-0 w-full h-1 md:h-1.5 bg-gray-500/80 z-20">
@@ -796,11 +813,23 @@ const MovieCard = memo(function MovieCard({ m, navigate, progressData, isRow = f
       </div>
       
       <div className="mt-2 md:mt-3 flex flex-col flex-1 px-1">
-        <h3 className="text-[12px] sm:text-[13px] md:text-[15px] font-bold text-gray-200 line-clamp-2 group-hover/card:text-white transition-colors uppercase tracking-tight">{m.name}</h3>
-        <div className="flex justify-between items-center mt-1">
-          <p className="text-[9px] sm:text-[10px] md:text-[11px] text-gray-500 font-medium">{m.year || "2025"}</p>
-          {voteAverage ? (
-            <span className="flex items-center gap-1 text-[#f5c518] text-[9px] sm:text-[10px] md:text-[11px] font-bold">
+        <h3 className="text-[12px] sm:text-[13px] md:text-[15px] font-bold text-gray-200 line-clamp-2 group-hover/card:text-white transition-colors uppercase tracking-tight">{safeText(m.name)}</h3>
+        
+        <div className="flex items-center justify-between mt-1.5 gap-2">
+          <div className="flex items-center gap-1.5 text-[9px] sm:text-[10px] md:text-[11px] text-gray-500 font-medium min-w-0">
+            <span className="shrink-0">{safeText(m.year, "2025")}</span>
+            {!prog && m.episode_current && (
+              <>
+                <span className="shrink-0 text-gray-700">•</span>
+                <span className="text-[#E50914] font-bold truncate">
+                  {safeText(m.episode_current)}
+                </span>
+              </>
+            )}
+          </div>
+
+          {voteAverage && !isNaN(Number(voteAverage)) ? (
+            <span className="flex items-center gap-1 text-[#f5c518] text-[9px] sm:text-[10px] md:text-[11px] font-bold shrink-0">
               <Icon.Star fill="currentColor" size={10} className="md:w-[12px] md:h-[12px]" /> {Number(voteAverage).toFixed(1)}
             </span>
           ) : null}
@@ -821,26 +850,91 @@ function MovieSection({ title, slug, type = "the-loai", navigate, progressData }
     const fetchMovies = async () => {
       try {
         setLoading(true);
-        let combinedItems = [];
-
-        // Lấy độc quyền nguồn Ophim cho các Section ở trang chủ để tránh giật lag
-        const resO = await fetch(`${API}/${type}/${slug}`, { signal: controller.signal });
-        const jO = await resO.json();
         
-        if (jO?.data?.items) {
-           combinedItems = [...jO.data.items];
+        const fetchTimeout = (url, ms) => {
+            const abortCtrl = new AbortController();
+            const id = setTimeout(() => abortCtrl.abort(), ms);
+            return fetch(url, { signal: abortCtrl.signal })
+                .then(r => r.json())
+                .finally(() => clearTimeout(id));
+        };
+
+        let reqs = [];
+
+        // NẾU LÀ MỤC HOẠT HÌNH: PHẢI GỌI CẢ /DANH-SACH LẪN /THE-LOAI ĐỂ TRÁNH API TRẢ MẢNG RỖNG
+        if (slug === 'hoat-hinh') {
+            reqs = [
+                fetchTimeout(`${API}/danh-sach/hoat-hinh?page=1`, 4000),
+                fetchTimeout(`${API}/the-loai/hoat-hinh?page=1`, 4000),
+                fetchTimeout(`${API_NGUONC}/the-loai/hoathinh?page=1`, 4000),
+                fetchTimeout(`${API}/danh-sach/hoat-hinh?page=2`, 4000),
+                fetchTimeout(`${API}/the-loai/hoat-hinh?page=2`, 4000),
+                fetchTimeout(`${API_NGUONC}/the-loai/hoathinh?page=2`, 4000)
+            ];
+        } else {
+            let urlOphim = `${API}/${type}/${slug}`;
+            let urlNguonc = slug === 'phim-moi-cap-nhat' ? `${API_NGUONC}/phim-moi-cap-nhat` : `${API_NGUONC}/${type}/${slug}`;
+            
+            reqs = [
+                fetchTimeout(`${urlOphim}?page=1`, 4000),
+                fetchTimeout(`${urlNguonc}?page=1`, 4000),
+                fetchTimeout(`${urlOphim}?page=2`, 4000),
+                fetchTimeout(`${urlNguonc}?page=2`, 4000),
+                fetchTimeout(`${urlOphim}?page=3`, 4000),
+                fetchTimeout(`${urlNguonc}?page=3`, 4000)
+            ];
         }
 
-        if (combinedItems.length === 0) {
-          setLoading(false);
-          return;
-        }
+        const results = await Promise.allSettled(reqs);
         
-        setMovies(mergeDuplicateMovies(combinedItems));
+        let allItems = [];
+        results.forEach(res => {
+            if (res.status === 'fulfilled' && res.value) {
+                const items = res.value.items || res.value.data?.items || [];
+                allItems.push(...items);
+            }
+        });
+
+        let merged = mergeDuplicateMovies(allItems);
+        
+        // RÀO CHẮN HOẠT HÌNH: CHỈ CHO PHÉP XUẤT HIỆN Ở MỤC HOẠT HÌNH
+        if (slug === 'hoat-hinh') {
+            // Không filter isHoatHinhMovie nữa vì đã lấy đúng endpoint dành riêng cho Hoạt Hình
+        } else {
+            merged = merged.filter(m => !isHoatHinhMovie(m));
+        }
+
+        // BỘ LỌC CHỐNG TRÙNG LẶP TOÀN CỤC TRÊN TRANG CHỦ
+        let uniqueMovies = [];
+        merged.forEach(m => {
+            const id = getMovieUniqueId(m);
+            if (id && !globalDisplayedSlugs.has(id)) {
+                uniqueMovies.push(m);
+            }
+        });
+
+        // BẢO HIỂM GIAO DIỆN: Nếu lọc xong mà còn quá ít phim, thì lấy lại phim cũ để không bị cụt
+        let finalMovies = uniqueMovies;
+        if (uniqueMovies.length < 10) {
+            finalMovies = merged; 
+        }
+
+        // LUÔN LUÔN CẮT LẤY 15 PHIM
+        finalMovies = finalMovies.slice(0, 15);
+
+        // LƯU CÁC PHIM NÀY VÀO DANH SÁCH ĐÃ HIỂN THỊ
+        finalMovies.forEach(m => {
+            const id = getMovieUniqueId(m);
+            if (id) globalDisplayedSlugs.add(id);
+        });
+
+        setMovies(finalMovies);
+        
       } catch (error) {
-        if (error.name !== 'AbortError') console.error("Lỗi fetch section:", error);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) {
+           setLoading(false);
+        }
       }
     };
 
@@ -860,7 +954,7 @@ function MovieSection({ title, slug, type = "the-loai", navigate, progressData }
     <div className="mb-8 md:mb-12 relative group/section transform-gpu">
        <div className="flex items-center gap-4 mb-3 md:mb-4 px-1">
           <h2 className="text-[15px] sm:text-lg md:text-2xl font-black text-white uppercase tracking-tighter flex items-center gap-2 md:gap-3">
-            <span className="w-[4px] h-6 md:h-8 bg-[#E50914] block" /> {title}
+            <span className="w-[4px] h-6 md:h-8 bg-[#E50914] block" /> {safeText(title)}
           </h2>
           <Icon.Loader2 className="animate-spin text-[#E50914]" size={20} />
        </div>
@@ -872,7 +966,7 @@ function MovieSection({ title, slug, type = "the-loai", navigate, progressData }
     <div className="mb-8 md:mb-12 relative group/section transform-gpu">
       <div className="flex items-center justify-between mb-3 md:mb-4 px-1">
         <h2 className="text-[15px] sm:text-lg md:text-2xl font-black text-white uppercase tracking-tighter flex items-center gap-2 md:gap-3">
-          <span className="w-[4px] h-6 md:h-8 bg-[#E50914] block" /> {title}
+          <span className="w-[4px] h-6 md:h-8 bg-[#E50914] block" /> {safeText(title)}
         </h2>
         <button onClick={() => navigate({ type: "list", slug, title, mode: type })} className="text-[#E50914] text-[9px] sm:text-[10px] md:text-xs font-black hover:underline opacity-100 md:opacity-0 group-hover/section:opacity-100 transition-opacity uppercase tracking-widest">Xem tất cả</button>
       </div>
@@ -893,7 +987,11 @@ function MovieSection({ title, slug, type = "the-loai", navigate, progressData }
 
 function ContinueWatching({ navigate, progressData, onRemove }) {
   const scrollRef = useRef(null);
-  const watchedSlugs = useMemo(() => Object.keys(progressData).filter((key) => progressData[key].percentage < 99), [progressData]);
+  
+  const watchedSlugs = useMemo(() => Object.keys(progressData).filter((key) => {
+      const item = progressData[key];
+      return item && typeof item === 'object' && item.percentage < 99;
+  }), [progressData]);
   
   const [fetchedData, setFetchedData] = useState({});
 
@@ -989,13 +1087,11 @@ function ContinueWatching({ navigate, progressData, onRemove }) {
   );
 }
 
-// --- MENU HOÀN THIỆN: CĂN GIỮA TUYỆT ĐỐI CHO TẤT CẢ ---
 const DropdownGrid = ({ label, items, navigate, mode }) => {
   const [page, setPage] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
 
-  // Đóng bảng khi click ra ngoài
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -1006,13 +1102,10 @@ const DropdownGrid = ({ label, items, navigate, mode }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Cấu hình số cột và phân trang
   const cols = mode === "search" ? 4 : 2;
   const itemsPerPage = mode === "search" ? 16 : 14; 
   const totalPages = Math.ceil((items?.length || 0) / itemsPerPage);
   const currentItems = (items || []).slice(page * itemsPerPage, (page + 1) * itemsPerPage);
-
-  // TÍNH TOÁN VỊ TRÍ CHUẨN: Đồng bộ căn giữa tâm
   const boxWidth = mode === "search" ? "w-[400px]" : "w-[340px]"; 
 
   return (
@@ -1024,15 +1117,10 @@ const DropdownGrid = ({ label, items, navigate, mode }) => {
         setPage(0);
       }}
     >
-      <div className="flex items-center justify-center gap-1.5">
-         <span className={`font-black tracking-widest uppercase transition-colors whitespace-nowrap ${isOpen ? 'text-[#E50914]' : 'text-gray-300 hover:text-white'}`}>
+      <div className="flex items-center justify-center relative transition-colors">
+         <span className={`font-black tracking-widest uppercase transition-colors duration-300 whitespace-nowrap ${isOpen ? 'text-[#E50914]' : 'text-gray-300 group-hover:text-[#E50914]'}`}>
            {label}
          </span>
-         <Icon.ChevronDown
-           size={14}
-           strokeWidth={3}
-           className={`mt-[2px] transition-transform duration-300 ${isOpen ? 'rotate-180 text-[#E50914] opacity-100' : 'opacity-60 group-hover:text-white'}`}
-         />
       </div>
 
       <div
@@ -1115,7 +1203,9 @@ function Header({ navigate, categories, countries }) {
           </div>
 
           <nav className="hidden md:flex items-center justify-center text-[11px] lg:text-[13px] text-gray-300 whitespace-nowrap gap-2 lg:gap-6">
-            <button onClick={() => navigate({ type: "home" })} className="font-black tracking-widest hover:text-white transition uppercase py-4 px-2">Trang Chủ</button>
+            <button onClick={() => navigate({ type: "home" })} className="relative font-black tracking-widest text-gray-300 hover:text-[#E50914] transition-colors duration-300 uppercase py-4 px-2 group">
+              Trang Chủ
+            </button>
             <DropdownGrid label="Thể Loại" items={categories} navigate={navigate} mode="the-loai" />
             <DropdownGrid label="Quốc Gia" items={countries} navigate={navigate} mode="quoc-gia" />
             <DropdownGrid label="Năm Phát Hành" items={YEARS} navigate={navigate} mode="search" />
@@ -1175,7 +1265,6 @@ function BottomNav({ navigate, categories, countries, currentView }) {
   );
 }
 
-// LẤY DỮ LIỆU TỪ OPHIM THAY VÌ TMDB
 function Hero({ navigate }) {
   const [bannerMovies, setBannerMovies] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -1195,26 +1284,31 @@ function Hero({ navigate }) {
   useEffect(() => {
     const fetchBannerData = async () => {
       try {
-        // Ưu tiên nạp dữ liệu từ Ophim
-        const res = await fetch(`${API}/danh-sach/phim-moi-cap-nhat`);
-        const json = await res.json();
-        const items = (json?.data?.items || [])
-            .filter(m => !m.episode_current?.toLowerCase().includes("trailer"))
-            .slice(0, 7);
+        const res1 = await fetch(`${API}/danh-sach/phim-moi-cap-nhat?page=1`).then(r=>r.json());
+        const res2 = await fetch(`${API}/danh-sach/phim-moi-cap-nhat?page=2`).then(r=>r.json());
+        const res3 = await fetch(`${API}/danh-sach/phim-moi-cap-nhat?page=3`).then(r=>r.json());
+        
+        let rawItems = [...(res1?.data?.items || []), ...(res2?.data?.items || []), ...(res3?.data?.items || [])];
+        
+        rawItems = rawItems.filter(m => {
+            const epStr = String(m.episode_current || "").toLowerCase();
+            if (epStr.includes("trailer")) return false;
+            // LỌC BỎ 100% HOẠT HÌNH KHỎI BANNER
+            if (isHoatHinhMovie(m)) return false;
+            return true;
+        });
 
-        if (items.length > 0) {
-            setBannerMovies(mergeDuplicateMovies(items));
-            setCurrentIndex(Math.floor(items.length / 2)); 
-        } else {
-           // Fallback NguonC
-           const fbRes = await fetch(`${API_NGUONC}/phim-moi-cap-nhat`);
-           const fbJson = await fbRes.json();
-           const fbItems = (fbJson.items || fbJson.data?.items || [])
-              .filter(m => !m.episode_current?.toLowerCase().includes("trailer"))
-              .slice(0, 7);
-           setBannerMovies(mergeDuplicateMovies(fbItems));
-           setCurrentIndex(Math.floor(fbItems.length / 2));
-        }
+        let items = mergeDuplicateMovies(rawItems);
+
+        // LUÔN ÉP LẤY ĐÚNG 7 PHIM HOT NHẤT
+        const finalBanner = items.slice(0, 7);
+        setBannerMovies(finalBanner);
+        setCurrentIndex(Math.floor(finalBanner.length / 2));
+        
+        finalBanner.forEach(m => {
+            const id = getMovieUniqueId(m);
+            if (id) globalDisplayedSlugs.add(id);
+        });
 
       } catch (error) { console.error(error); } finally { setLoading(false); }
     };
@@ -1225,7 +1319,7 @@ function Hero({ navigate }) {
     if (bannerMovies.length === 0) return;
     const timer = setInterval(() => {
       setCurrentIndex((prevIndex) => (prevIndex + 1) % bannerMovies.length);
-    }, 4500); 
+    }, 3200); 
     return () => clearInterval(timer);
   }, [bannerMovies.length, currentIndex]);
 
@@ -1331,7 +1425,7 @@ function Hero({ navigate }) {
                     <img
                        src={getImg(movie.thumb_url || movie.poster_url)}
                        className="w-full h-full object-cover block"
-                       alt={movie.name}
+                       alt={safeText(movie.name)}
                     />
                  </div>
               );
@@ -1341,21 +1435,21 @@ function Hero({ navigate }) {
         <div className="w-full max-w-4xl text-center mt-6 md:mt-8 px-4 z-[40] pointer-events-none relative pb-6 md:pb-12 transition-opacity duration-500">
            
            <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-[42px] font-[900] text-white uppercase tracking-tighter line-clamp-2 mb-2 drop-shadow-[0_4px_10px_rgba(0,0,0,0.8)] !font-sans leading-tight">
-             {currentMovie?.name}
+             {safeText(currentMovie?.name)}
            </h1>
            
            <p className="text-[#f5c518] text-[10px] md:text-sm font-black mb-3 md:mb-4 drop-shadow-md uppercase tracking-[0.2em] !font-sans">
-              {currentMovie?.origin_name || currentMovie?.original_name}
+              {safeText(currentMovie?.origin_name || currentMovie?.original_name)}
            </p>
            
            <div className="flex justify-center items-center gap-2 md:gap-3 text-[10px] md:text-xs font-black text-gray-300 mb-6 uppercase tracking-widest drop-shadow-md">
-             <span className="text-[#E50914]">{currentMovie?.year || "2025"}</span>
+             <span className="text-[#E50914]">{safeText(currentMovie?.year, "2025")}</span>
              <span className="text-gray-500">|</span>
-             <span className="bg-[#E50914] px-1.5 py-0.5 rounded text-white">{currentMovie?.quality || "HD"}</span>
+             <span className="bg-[#E50914] px-1.5 py-0.5 rounded text-white">{safeText(currentMovie?.quality, "HD")}</span>
              {currentMovie?.episode_current && (
                <>
                  <span className="text-gray-500">|</span>
-                 <span className="text-gray-200">{currentMovie?.episode_current}</span>
+                 <span className="text-gray-200">{safeText(currentMovie?.episode_current)}</span>
                </>
              )}
            </div>
@@ -1388,24 +1482,27 @@ function Hero({ navigate }) {
 function MovieGrid({ movies, navigate, loading, title, onLoadMore, hasMore, loadingMore }) {
   const observer = useRef();
   const lastElementRef = useRef();
-  const [progressData, setProgressData] = useState({});
-
-  useEffect(() => { setProgressData(JSON.parse(localStorage.getItem("movieProgress") || "{}")); }, [movies]);
 
   useEffect(() => {
     if (loading || loadingMore || !hasMore) return;
     if (observer.current) observer.current.disconnect();
-    observer.current = new IntersectionObserver((entries) => { if (entries[0].isIntersecting) onLoadMore(); });
+    
+    observer.current = new IntersectionObserver((entries) => { 
+        if (entries[0].isIntersecting) onLoadMore(); 
+    }, {
+        rootMargin: '2000px' 
+    });
+    
     if (lastElementRef.current) observer.current.observe(lastElementRef.current);
   }, [loading, loadingMore, hasMore, onLoadMore]);
 
   return (
     <div className="max-w-[1400px] mx-auto px-4 md:px-12 pt-20 md:pt-32 pb-10 min-h-screen transform-gpu">
       <h2 className="text-xl md:text-[28px] font-black text-white mb-8 uppercase tracking-tighter flex items-center gap-3">
-        <span className="w-[4px] h-6 md:h-9 bg-[#E50914] block" /> {title}
+        <span className="w-[4px] h-6 md:h-9 bg-[#E50914] block" /> {safeText(title)}
       </h2>
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-4 sm:gap-6">
-        {movies.map((m, idx) => <MovieCard key={`${m.slug}-${idx}`} m={m} navigate={navigate} progressData={progressData} />)}
+        {movies.map((m, idx) => <MovieCard key={`${m.slug || idx}-${idx}`} m={m} navigate={navigate} />)}
       </div>
       {(loading || loadingMore) && <div className="py-12 flex justify-center"><Icon.Loader2 className="animate-spin text-[#E50914]" size={36} /></div>}
       <div ref={lastElementRef} className="h-20" />
@@ -1414,92 +1511,75 @@ function MovieGrid({ movies, navigate, loading, title, onLoadMore, hasMore, load
 }
 
 function MovieDetail({ slug, movieData, navigate }) {
-  const [m, setM] = useState(() => movieData ? { item: movieData } : null);
+  const [m, setM] = useState(() => movieData ? { item: movieData.item || movieData } : null);
   const [cast, setCast] = useState([]); 
   const [loadingPage, setLoadingPage] = useState(!movieData);
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    const controller = new AbortController();
+    let isSubscribed = true;
+    const fetchFastActors = async () => {
+       const q = String(m?.item?.origin_name || m?.item?.original_name || m?.item?.name || String(slug || "").replace(/-/g, ' '));
+       if (!q) return;
+       try {
+           const searchRes = await fetch(`${WORKER_URL}/api/tmdb/search/multi?query=${encodeURIComponent(q)}`).then(r=>r.json());
+           const match = searchRes?.results?.find(i => i.media_type !== 'person' && (i.poster_path || i.backdrop_path));
+           if (match && isSubscribed) {
+               const castRes = await fetch(`https://api.themoviedb.org/3/${match.media_type || 'movie'}/${match.id}/credits?api_key=${TMDB_API_KEY}&language=vi-VN`).then(r=>r.json());
+               if (castRes?.cast && isSubscribed) setCast(castRes.cast.slice(0, 12));
+           }
+       } catch (e) {}
+    };
+    if (m?.item) fetchFastActors();
+    return () => { isSubscribed = false; }
+  }, [m?.item?.name, m?.item?.origin_name, slug]);
+
+  useEffect(() => {
     const fetchDetail = async () => {
-      if (!m) setLoadingPage(true);
+      if (!m?.item?.content) setLoadingPage(true);
       setError(false);
       try {
-        const pOphim = fetch(`${API}/phim/${slug}`, { signal: controller.signal })
-            .then(r => r.json())
-            .then(j => { if (j?.data?.item) return j.data.item; throw new Error('Ophim no data'); });
-            
-        const pNguonc = fetch(`${API_NGUONC_DETAIL}/${slug}`, { signal: controller.signal })
-            .then(r => r.json())
-            .then(j => { if (j?.movie || j?.item) return j.movie || j.item; throw new Error('Nguonc no data'); });
-
+        const pOphim = fetch(`${API}/phim/${slug}`).then(r => r.json()).then(j => { if (j?.data?.item) return j.data.item; throw new Error(); });
+        const pNguonc = fetch(`${API_NGUONC_DETAIL}/${slug}`).then(r => r.json()).then(j => { if (j?.movie || j?.item) return j.movie || j.item; throw new Error(); });
+        
+        let item;
         try {
-            const fastestItem = await Promise.any([pOphim, pNguonc]);
-            setM(prev => ({ item: { ...(prev?.item || {}), ...fastestItem } }));
+             item = await Promise.any([pOphim, pNguonc]);
+        } catch(e) {
+             const searchSlug = String(slug || "").replace(/-/g, ' ');
+             const searchOphim = fetch(`${API}/tim-kiem?keyword=${encodeURIComponent(searchSlug)}`)
+                .then(r=>r.json())
+                .then(j => j?.data?.items?.[0]?.slug ? fetch(`${API}/phim/${j.data.items[0].slug}`).then(r=>r.json()).then(j=>j.data.item) : Promise.reject());
+             const searchNguonc = fetch(`${API_NGUONC}/search?keyword=${encodeURIComponent(searchSlug)}`)
+                .then(r=>r.json())
+                .then(j => { 
+                    const list = j?.items || j?.data?.items || [];
+                    const s = list[0]?.slug; 
+                    return s ? fetch(`${API_NGUONC_DETAIL}/${s}`).then(r=>r.json()).then(j=>j.movie||j.item) : Promise.reject()
+                });
+             item = await Promise.any([searchOphim, searchNguonc]);
+        }
+        
+        if (!item) {
+            setError(true);
             setLoadingPage(false);
-            return; 
-        } catch(e) {}
-        
-        const searchSlug = slug.replace(/-/g, ' ');
-        try {
-           const searchRes = await fetch(`${API_NGUONC}/search?keyword=${encodeURIComponent(searchSlug)}`);
-           const searchJ = await searchRes.json();
-           const match = searchJ?.items?.[0] || searchJ?.data?.items?.[0];
-           if (match && match.slug) {
-              const resN2 = await fetch(`${API_NGUONC_DETAIL}/${match.slug}`).then(r => r.json());
-              if (resN2?.movie || resN2?.item) {
-                 setM(prev => ({ item: { ...(prev?.item || {}), ...(resN2.movie || resN2.item) } }));
-                 setLoadingPage(false);
-                 return;
-              }
-           }
-        } catch(e) {}
-        
-        try {
-           const searchResO = await fetch(`${API_NGUONC}/tim-kiem?keyword=${encodeURIComponent(searchSlug)}`);
-           const searchJO = await searchResO.json();
-           const matchO = searchJO?.data?.items?.[0];
-           if (matchO && matchO.slug) {
-               const resO2 = await fetch(`${API}/phim/${matchO.slug}`).then(r => r.json());
-               if (resO2?.data?.item) {
-                   setM(prev => ({ item: { ...(prev?.item || {}), ...resO2.data.item } }));
-                   setLoadingPage(false);
-                   return;
-               }
-           }
-        } catch(e) {}
+            return;
+        }
 
-        if (!m) setError(true);
+        setM({ item });
+        setLoadingPage(false);
+
       } catch (e) {
-        if (e.name !== 'AbortError' && !m) setError(true);
-      } finally {
+        setError(true);
         setLoadingPage(false);
       }
     };
     if (slug) fetchDetail();
-    return () => controller.abort();
   }, [slug]);
-
-  const i = m?.item;
-  
-  const { data: tmdbData } = useTMDBData(i?.name, i?.origin_name || i?.original_name, i?.slug, i?.year);
-  const voteAverage = tmdbData?.vote_average || i?.tmdb?.vote_average;
-
-  useEffect(() => {
-    if (tmdbData?.id) {
-       const type = tmdbData.media_type || (i?.episode_total > 1 ? 'tv' : 'movie');
-       fetch(`https://api.themoviedb.org/3/${type}/${tmdbData.id}/credits?api_key=${TMDB_API_KEY}&language=vi-VN`)
-         .then(r => r.json())
-         .then(d => {
-            if (Array.isArray(d.cast)) setCast(d.cast.slice(0, 12)); 
-         })
-         .catch(e => console.log(e));
-    }
-  }, [tmdbData?.id, tmdbData?.media_type, i?.episode_total]);
 
   if (loadingPage) return <div className="h-screen flex justify-center items-center bg-[#050505]"><Icon.Loader2 className="animate-spin text-[#E50914]" size={40} /></div>;
   
-  if (error || !m || !i) return (
+  if (error || !m || !m.item) return (
      <div className="h-screen flex flex-col justify-center items-center bg-[#050505] text-white">
         <Icon.AlertTriangle className="text-[#E50914] mb-4" size={48}/>
         <h2 className="text-xl font-bold">Lỗi tải phim!</h2>
@@ -1510,7 +1590,8 @@ function MovieDetail({ slug, movieData, navigate }) {
      </div>
   );
 
-  const backdropUrl = getImg(i?.poster_url || i?.thumb_url);
+  const i = m.item;
+  const backdropUrl = getImg(i.poster_url || i.thumb_url);
 
   return (
     <div className="pb-20 animate-in fade-in duration-700 bg-[#050505]">
@@ -1530,19 +1611,23 @@ function MovieDetail({ slug, movieData, navigate }) {
         
         <div className="relative max-w-[1440px] mx-auto w-full px-4 md:px-12 pb-16 flex flex-col md:flex-row gap-10 items-center md:items-end text-center md:text-left z-20">
           <div className="w-44 md:w-72 shrink-0 shadow-[0_20px_50px_rgba(0,0,0,0.8)] rounded-2xl overflow-hidden border border-white/10 transform-gpu">
-            <SmartImage src={i?.thumb_url || i?.poster_url} className="w-full h-full object-cover" />
+            <SmartImage src={i.thumb_url || i.poster_url} className="w-full h-full object-cover" />
           </div>
           <div className="flex-1">
-            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-white mb-4 uppercase tracking-tighter leading-none !font-sans">{i?.name}</h1>
+            <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-black text-white mb-4 uppercase tracking-tighter leading-none !font-sans">{safeText(i.name)}</h1>
             <div className="flex flex-wrap justify-center md:justify-start items-center gap-2 md:gap-4 mb-6 md:mb-10 text-gray-300 text-[10px] md:text-base font-black tracking-widest uppercase !font-sans">
-              {voteAverage && <span className="flex items-center gap-1 text-[#f5c518]"><Icon.Star fill="currentColor" size={16} /> {Number(voteAverage).toFixed(1)}</span>}
-              {voteAverage && <span>|</span>}
-              <span className="text-[#E50914]">{i?.year}</span><span>|</span>
-              <span className="bg-[#E50914] px-2 py-0.5 rounded text-white text-[9px] md:text-xs font-black">{i?.quality || "HD"}</span><span>|</span>
-              <span className="border-2 border-gray-600 px-2 py-0.5 rounded text-xs">{i?.episode_current}</span>
+              <span className="text-[#E50914]">{safeText(i.year)}</span><span>|</span>
+              <span className="bg-[#E50914] px-2 py-0.5 rounded text-white text-[9px] md:text-xs font-black">{safeText(i.quality, "HD")}</span><span>|</span>
+              <span className="border-2 border-gray-600 px-2 py-0.5 rounded text-xs">{safeText(i.episode_current)}</span>
+              {i.time && (
+                <>
+                   <span>|</span>
+                   <span className="text-gray-400 text-xs flex items-center gap-1"><Icon.Clock size={14} /> {safeText(i.time)}</span>
+                </>
+              )}
             </div>
             <button 
-              onClick={() => { navigate({ type: "watch", slug: i?.slug, movieData: m }); window.scrollTo(0, 0); }} 
+              onClick={() => { navigate({ type: "watch", slug: i.slug, movieData: m }); window.scrollTo(0, 0); }} 
               className="bg-[#E50914] hover:bg-red-700 text-white px-10 py-4 md:px-14 md:py-5 rounded-full font-black flex items-center gap-3 transition-transform transform-gpu hover:scale-105 active:scale-95 shadow-[0_10px_30px_rgba(229,9,20,0.5)] uppercase tracking-widest text-sm mx-auto md:mx-0 !font-sans"
             >
               <Icon.Play fill="currentColor" /> BẮT ĐẦU XEM
@@ -1558,8 +1643,8 @@ function MovieDetail({ slug, movieData, navigate }) {
            </h3>
            
            <div className="text-gray-400 leading-relaxed text-base md:text-lg font-medium">
-             {i?.content ? (
-                <div dangerouslySetInnerHTML={{ __html: typeof i.content === 'string' ? i.content : "Đang cập nhật nội dung..." }} />
+             {i.content ? (
+                <div dangerouslySetInnerHTML={{ __html: typeof i.content === 'string' ? i.content : safeText(i.content) }} />
              ) : (
                 <div className="animate-pulse flex flex-col gap-3">
                     <div className="h-4 bg-white/10 rounded w-full"></div>
@@ -1571,23 +1656,21 @@ function MovieDetail({ slug, movieData, navigate }) {
            
            {cast && cast.length > 0 && (
              <div className="mt-10 pt-8 border-t border-white/5 animate-in fade-in duration-500">
-                <h4 className="text-sm font-black text-white uppercase mb-6 tracking-[0.2em] text-[#E50914]">Diễn viên</h4>
+                <h4 className="text-sm font-black text-white uppercase mb-6 tracking-[0.2em] text-[#E50914]">Diễn viên (TMDB)</h4>
                 <div className="flex gap-4 md:gap-6 overflow-x-auto scroll-smooth no-scrollbar pb-4 overscroll-x-contain">
                   {cast.map((actor, idx) => (
                     <div 
                       key={idx} 
-                      onClick={() => { navigate({ type: "actor", actorId: actor.id, actorName: actor.name }); window.scrollTo(0,0); }} 
-                      className="cursor-pointer shrink-0 text-center w-[72px] md:w-[88px] group"
+                      className="shrink-0 text-center w-[72px] md:w-[88px]"
                     >
-                      <div className="w-16 h-16 md:w-[80px] md:h-[80px] mx-auto rounded-full overflow-hidden bg-[#222] mb-3 md:mb-4 border border-white/10 group-hover:border-[#E50914] group-hover:scale-105 transition-transform transform-gpu shadow-lg flex items-center justify-center">
+                      <div className="w-16 h-16 md:w-[80px] md:h-[80px] mx-auto rounded-full overflow-hidden bg-[#222] mb-3 md:mb-4 border border-white/10 transition-colors transform-gpu shadow-lg flex items-center justify-center">
                          <img 
-                            src={actor.profile_path ? `https://image.tmdb.org/t/p/w200${actor.profile_path}` : 'https://ui-avatars.com/api/?name=' + encodeURIComponent(actor.name) + '&background=111&color=fff'} 
-                            alt={actor.name} 
+                            src={actor.profile_path ? `https://image.tmdb.org/t/p/w200${actor.profile_path}` : 'https://ui-avatars.com/api/?name=' + encodeURIComponent(String(actor.name || "").trim()) + '&background=111&color=fff'} 
+                            alt={safeText(actor.name)} 
                             className="w-full h-full object-cover" 
-                            loading="lazy"
                          />
                       </div>
-                      <p className="text-[10px] md:text-[11px] text-gray-400 group-hover:text-white font-bold leading-snug line-clamp-2 uppercase tracking-tight">{actor.name}</p>
+                      <p className="text-[10px] md:text-[11px] text-gray-400 font-bold leading-snug line-clamp-2 uppercase tracking-tight transition-colors">{safeText(actor.name)}</p>
                     </div>
                   ))}
                 </div>
@@ -1597,12 +1680,15 @@ function MovieDetail({ slug, movieData, navigate }) {
         </div>
 
         <div className="md:col-span-4 bg-[#111]/50 p-6 md:p-10 rounded-3xl border border-white/5 backdrop-blur-md shadow-2xl space-y-8">
-           {[{ l: "Quốc gia", v: safeJoin(i?.country) }, { l: "Thể loại", v: safeJoin(i?.category) }, ...(cast.length === 0 ? [{ l: "Diễn viên", v: safeJoin(i?.actor) }] : [])].map((x) => (
-            <div key={x.l} className="space-y-2 md:space-y-3 border-b border-white/5 pb-4 md:pb-6 last:border-0 last:pb-0">
-              <p className="text-[10px] md:text-xs text-gray-500 font-black uppercase tracking-[0.3em]">{x.l}</p>
-              <p className="text-xs md:text-base font-bold text-gray-300 leading-snug uppercase tracking-tight">{x.v}</p>
-            </div>
-          ))}
+           {[{ l: "Quốc gia", v: safeJoin(i?.country) }, { l: "Thể loại", v: safeJoin(i?.category) }, { l: "Đạo diễn", v: safeJoin(i?.director) }, { l: "Diễn viên (Chữ)", v: safeJoin(i?.actor) }].map((x, idx) => {
+             if (!x.v || x.v === 'Đang cập nhật' || x.v === '') return null;
+             return (
+              <div key={idx} className="space-y-2 md:space-y-3 border-b border-white/5 pb-4 md:pb-6 last:border-0 last:pb-0">
+                <p className="text-[10px] md:text-xs text-gray-500 font-black uppercase tracking-[0.3em]">{x.l}</p>
+                <p className="text-xs md:text-base font-bold text-gray-300 leading-snug uppercase tracking-tight">{safeText(x.v)}</p>
+              </div>
+             )
+          })}
         </div>
       </div>
     </div>
@@ -1621,193 +1707,215 @@ function Watch({ slug, movieData }) {
   const [loadingPlayer, setLoadingPlayer] = useState(true);
   const [error, setError] = useState(false);
 
-  const currentActiveIdentity = useRef(null);
-  const hasSetEp = useRef(false);
-
-  // --- LOGIC MAP MÁY CHỦ THÔNG MINH ---
   useEffect(() => {
-    let currentServers = [];
-    let isOphimDone = false;
-    let isNguoncDone = false;
-    let restored = false;
-
-    // Đọc lịch sử xem phim ngay từ đầu
-    const savedProgress = JSON.parse(localStorage.getItem("movieProgress") || "{}")[slug];
-
+    let isMounted = true;
     if (!data) setLoadingPage(true);
     setLoadingPlayer(true);
     setError(false);
 
-    const searchOriginName = movieData?.item?.origin_name || movieData?.item?.original_name || movieData?.origin_name || movieData?.original_name;
-    const searchLocalName = movieData?.item?.name || movieData?.name;
-    const backupSearchName = searchOriginName || searchLocalName || slug.replace(/-/g, ' ');
-
-    const updateServers = (newServers, itemData) => {
-      let hasNew = false;
-      newServers.forEach(ns => {
-          if (!currentServers.some(s => s.source === ns.source && s.rawName === ns.rawName)) {
-              currentServers.push(ns);
-              hasNew = true;
-          }
-      });
-
-      // Chỉ cập nhật nếu có Máy Chủ mới HOẶC nếu cả 2 nguồn đã load xong (để xử lý fallback)
-      if (hasNew || (isOphimDone && isNguoncDone)) {
-          currentServers.sort((a, b) => {
-              if (a.source !== b.source) return a.source === 'ophim' ? -1 : 1;
-              return a.rawName.localeCompare(b.rawName);
-          });
-
-          currentServers.forEach((s, idx) => {
-              s.sourceName = `Máy Chủ ${idx + 1}${s.rawName ? ` - ${s.rawName}` : ''}`;
-          });
-
-          setServerList([...currentServers]);
-          
-          // Ưu tiên nạp đúng Máy Chủ và Tập phim đã lưu
-          if (!restored && savedProgress?.serverSource) {
-              const foundIdx = currentServers.findIndex(s => s.source === savedProgress.serverSource && s.rawName === savedProgress.serverRawName);
-              if (foundIdx !== -1) {
-                  // Đã tìm thấy Máy chủ theo lịch sử
-                  setActiveServerIdx(foundIdx);
-                  currentActiveIdentity.current = { source: savedProgress.serverSource, rawName: savedProgress.serverRawName };
-                  restored = true;
-                  hasSetEp.current = true;
-                  
-                  const matchEp = currentServers[foundIdx].server_data.find(e => e.slug === savedProgress.episodeSlug);
-                  if (matchEp) {
-                      const epIndex = currentServers[foundIdx].server_data.findIndex(e => e.slug === savedProgress.episodeSlug);
-                      setActiveTabIdx(Math.floor(epIndex / 50));
-                  }
-                  setEp(matchEp || currentServers[foundIdx].server_data[0]);
-              } else if (isOphimDone && isNguoncDone && currentServers.length > 0) {
-                  // Cả 2 đều load xong nhưng ko tìm thấy => nạp mặc định
-                  currentActiveIdentity.current = { source: currentServers[0].source, rawName: currentServers[0].rawName };
-                  setActiveServerIdx(0);
-                  setEp(currentServers[0].server_data[0]);
-                  restored = true;
-                  hasSetEp.current = true;
-              }
-          } else if (!hasSetEp.current || (!restored && currentActiveIdentity.current?.source !== 'ophim' && currentServers[0].source === 'ophim')) {
-              // KHÔNG CÓ LỊCH SỬ.
-              // LUÔN ƯU TIÊN MÁY CHỦ 1 (OPHIM). 
-              // Nếu NguonC load trước và bị set tạm, khi Ophim load xong sẽ ĐÈ lại và tự chuyển sang Ophim.
-              currentActiveIdentity.current = { source: currentServers[0].source, rawName: currentServers[0].rawName };
-              setActiveServerIdx(0);
-              
-              setEp(prevEp => {
-                 const matchingEp = prevEp ? currentServers[0].server_data.find(e => e.name === prevEp.name) : null;
-                 return matchingEp || currentServers[0].server_data[0];
-              });
-              hasSetEp.current = true;
-          } else if (hasSetEp.current && currentActiveIdentity.current && currentServers.length > 0) {
-              // Giữ đúng Index Máy Chủ ngay cả khi luồng đến sau và thay đổi vị trí Mảng
-              const newIdx = currentServers.findIndex(s => s.source === currentActiveIdentity.current.source && s.rawName === currentActiveIdentity.current.rawName);
-              if (newIdx !== -1) {
-                  setActiveServerIdx(newIdx);
-              }
-          }
-          
-          if (!data && itemData) setData(itemData);
-          
-          if (hasSetEp.current) {
-              setLoadingPage(false);
-              setLoadingPlayer(false);
-          }
-      }
-    };
-
-    const fetchOphim = async () => {
-        let ophimItem = null;
-        let extractedServers = [];
+    const fetchMovieData = async () => {
+        const savedProgress = JSON.parse(localStorage.getItem("movieProgress") || "{}")[slug];
         try {
-            const res = await fetch(`${API}/phim/${slug}`).then(r => r.json());
-            ophimItem = res?.data?.item;
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
             
-            if (!ophimItem && backupSearchName) {
-                const searchRes = await fetch(`${API}/tim-kiem?keyword=${encodeURIComponent(backupSearchName)}`).then(r => r.json());
-                if (searchRes?.data?.items?.[0]?.slug) {
-                    const detail = await fetch(`${API}/phim/${searchRes.data.items[0].slug}`).then(r => r.json());
-                    ophimItem = detail?.data?.item;
+            const [resOphim, resNguonc] = await Promise.allSettled([
+                fetch(`${API}/phim/${slug}`, { signal: controller.signal }).then(r => r.json()),
+                fetch(`${API_NGUONC_DETAIL}/${slug}`, { signal: controller.signal }).then(r => r.json())
+            ]);
+            clearTimeout(timeoutId);
+
+            let oItem = resOphim.status === 'fulfilled' ? resOphim.value?.data?.item : null;
+            let nItem = resNguonc.status === 'fulfilled' ? (resNguonc.value?.movie || resNguonc.value?.item) : null;
+
+            // --- THUẬT TOÁN TRUY QUÉT CHÉO GỘP SERVER (Khắc phục "Ẩn Danh 2" vs "Tài Xế Ẩn Danh (Phần 2)") ---
+            const normalizeForMatch = (str) => String(str || "").normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+            const isCrossMatch = (m1, m2) => {
+                if(!m1 || !m2) return false;
+                const n1 = normalizeForMatch(m1.name); const n2 = normalizeForMatch(m2.name);
+                const o1 = normalizeForMatch(m1.origin_name || m1.original_name); const o2 = normalizeForMatch(m2.origin_name || m2.original_name);
+                
+                if (o1 && o2 && o1 === o2) return true;
+                if (n1 && n2 && n1 === n2) return true;
+                
+                const y1 = m1.year; const y2 = m2.year;
+                if (y1 && y2 && String(y1) === String(y2)) {
+                    if (o1 && o2 && (o1.includes(o2) || o2.includes(o1))) return true;
+                    if (n1 && n2 && (n1.includes(n2) || n2.includes(n1))) return true;
                 }
+                return false;
+            };
+
+            if (oItem && !nItem) {
+                 const queries = [oItem.origin_name, oItem.original_name, oItem.name, oItem.name.replace(/phần \d+/i, '').trim()].filter(Boolean);
+                 for (let q of queries) {
+                      try {
+                          const sRes = await fetch(`${API_NGUONC}/search?keyword=${encodeURIComponent(q)}`).then(r=>r.json());
+                          const itemsList = sRes?.items || sRes?.data?.items || [];
+                          
+                          let match = itemsList.find(i => isCrossMatch(oItem, i));
+                          if (!match && itemsList.length > 0) {
+                              if (normalizeForMatch(q) === normalizeForMatch(oItem.origin_name || oItem.original_name)) {
+                                  match = itemsList[0];
+                              }
+                          }
+
+                          if (match && match.slug) {
+                              const dRes = await fetch(`${API_NGUONC_DETAIL}/${match.slug}`).then(r=>r.json());
+                              nItem = dRes?.movie || dRes?.item;
+                              if (nItem) break;
+                          }
+                      } catch(e){}
+                 }
+            } else if (!oItem && nItem) {
+                 const queries = [nItem.origin_name, nItem.original_name, nItem.name, nItem.name.replace(/phần \d+/i, '').trim()].filter(Boolean);
+                 for (let q of queries) {
+                      try {
+                          const sRes = await fetch(`${API}/tim-kiem?keyword=${encodeURIComponent(q)}`).then(r=>r.json());
+                          const itemsList = sRes?.data?.items || [];
+                          
+                          let match = itemsList.find(i => isCrossMatch(nItem, i));
+                          if (!match && itemsList.length > 0) {
+                              if (normalizeForMatch(q) === normalizeForMatch(nItem.origin_name || nItem.original_name)) {
+                                  match = itemsList[0];
+                              }
+                          }
+                          
+                          if (match && match.slug) {
+                              const dRes = await fetch(`${API}/phim/${match.slug}`).then(r=>r.json());
+                              oItem = dRes?.data?.item;
+                              if (oItem) break;
+                          }
+                      } catch(e){}
+                 }
+            } else if (!oItem && !nItem) {
+                 const searchSlug = String(slug || "").replace(/-/g, ' ');
+                 const [sO, sN] = await Promise.allSettled([
+                     fetch(`${API}/tim-kiem?keyword=${encodeURIComponent(searchSlug)}`).then(r=>r.json()),
+                     fetch(`${API_NGUONC}/search?keyword=${encodeURIComponent(searchSlug)}`).then(r=>r.json())
+                 ]);
+                 
+                 const oList = sO.status === 'fulfilled' ? (sO.value?.data?.items || []) : [];
+                 const nList = sN.status === 'fulfilled' ? (sN.value?.items || sN.value?.data?.items || []) : [];
+                 
+                 const oMatchSlug = oList[0]?.slug;
+                 const nMatchSlug = nList.find(i => oList[0] ? isCrossMatch(oList[0], i) : true)?.slug || nList[0]?.slug;
+
+                 const [fbO, fbN] = await Promise.allSettled([
+                    oMatchSlug ? fetch(`${API}/phim/${oMatchSlug}`).then(r=>r.json()) : Promise.reject(),
+                    nMatchSlug ? fetch(`${API_NGUONC_DETAIL}/${nMatchSlug}`).then(r=>r.json()) : Promise.reject()
+                 ]);
+                 oItem = fbO.status === 'fulfilled' ? fbO.value?.data?.item : null;
+                 nItem = fbN.status === 'fulfilled' ? (fbN.value?.movie || fbN.value?.item) : null;
             }
 
-            if (ophimItem?.episodes?.length > 0) {
-                ophimItem.episodes.forEach((svr) => {
+            if (!isMounted) return;
+
+            if (!oItem && !nItem) {
+                setError(true);
+                setLoadingPage(false);
+                setLoadingPlayer(false);
+                return;
+            }
+
+            const baseItem = oItem || nItem;
+            setData(baseItem);
+
+            let extractedServers = [];
+            
+            if (oItem?.episodes?.length > 0) {
+                oItem.episodes.forEach((svr) => {
                     const epsList = svr.server_data || [];
                     if (epsList.length > 0) {
-                        const serverData = epsList.map(e => ({
-                            name: e.name, slug: e.slug, link_m3u8: e.link_m3u8 || "", link_embed: e.link_embed || ""
-                        }));
                         extractedServers.push({
                             rawName: svr.server_name || "Vietsub",
                             source: 'ophim',
                             isIframe: false,
-                            server_data: serverData
+                            server_data: epsList.map(e => ({ name: e.name, slug: e.slug, link_m3u8: e.link_m3u8 || "", link_embed: e.link_embed || "" }))
                         });
                     }
                 });
             }
-        } catch(e) {} finally { 
-            isOphimDone = true; 
-            updateServers(extractedServers, ophimItem); 
-            checkFinalError(); 
-        }
-    };
 
-    const fetchNguonc = async () => {
-        let nguoncItem = null;
-        let extractedServers = [];
-        try {
-            const res = await fetch(`${API_NGUONC_DETAIL}/${slug}`).then(r => r.json());
-            nguoncItem = res?.movie || res?.item;
-
-            if (!nguoncItem && backupSearchName) {
-                const searchRes = await fetch(`${API_NGUONC}/search?keyword=${encodeURIComponent(backupSearchName)}`).then(r => r.json());
-                const matchSlug = searchRes?.items?.[0]?.slug || searchRes?.data?.items?.[0]?.slug;
-                if (matchSlug) {
-                    const detail = await fetch(`${API_NGUONC_DETAIL}/${matchSlug}`).then(r => r.json());
-                    nguoncItem = detail?.movie || detail?.item;
-                }
-            }
-
-            if (nguoncItem?.episodes?.length > 0) {
-                nguoncItem.episodes.forEach((svr) => {
+            if (nItem?.episodes?.length > 0) {
+                nItem.episodes.forEach((svr) => {
                     const epsList = svr.items || svr.server_data || [];
                     if (epsList.length > 0) {
-                        const serverData = epsList.map(e => ({
-                            name: e.name, 
-                            slug: e.slug, 
-                            link_m3u8: e.m3u8 || e.m3u8_url || e.link_m3u8 || "", 
-                            link_embed: e.embed || e.embed_url || e.link_embed || ""
-                        }));
                         extractedServers.push({
                             rawName: svr.server_name || "Vietsub",
                             source: 'nguonc',
                             isIframe: true,
-                            server_data: serverData
+                            server_data: epsList.map(e => ({ name: e.name, slug: e.slug, link_m3u8: e.m3u8 || e.m3u8_url || e.link_m3u8 || "", link_embed: e.embed || e.embed_url || e.link_embed || "" }))
                         });
                     }
                 });
             }
-        } catch(e) {} finally { 
-            isNguoncDone = true; 
-            updateServers(extractedServers, nguoncItem); 
-            checkFinalError(); 
-        }
-    };
 
-    const checkFinalError = () => {
-        if (isOphimDone && isNguoncDone && currentServers.length === 0) {
-            setError(true);
+            if (extractedServers.length === 0) {
+                setError(true);
+                setLoadingPage(false);
+                setLoadingPlayer(false);
+                return;
+            }
+
+            extractedServers.forEach(s => {
+                s.groupType = String(s.rawName || "Vietsub").replace(/#\d+/g, '').trim().toUpperCase();
+            });
+
+            extractedServers.sort((a, b) => {
+                if (a.groupType !== b.groupType) return a.groupType.localeCompare(b.groupType);
+                const sourceRankA = a.source === 'ophim' ? 1 : (a.source === 'nguonc' ? 2 : 3);
+                const sourceRankB = b.source === 'ophim' ? 1 : (b.source === 'nguonc' ? 2 : 3);
+                return sourceRankA - sourceRankB;
+            });
+
+            const counts = {};
+            extractedServers.forEach((s) => {
+                counts[s.groupType] = (counts[s.groupType] || 0) + 1;
+                s.sourceName = `MÁY CHỦ ${counts[s.groupType]} : ${s.groupType}`;
+            });
+
+            setServerList(extractedServers);
+
+            let targetServerIdx = 0;
+            let targetEp = extractedServers[0].server_data[0];
+            let targetTabIdx = 0;
+
+            if (savedProgress?.serverSource) {
+                const foundIdx = extractedServers.findIndex(s => s.source === savedProgress.serverSource && s.rawName === savedProgress.serverRawName);
+                if (foundIdx !== -1) {
+                    targetServerIdx = foundIdx;
+                    const matchEp = extractedServers[foundIdx].server_data.find(e => e.slug === savedProgress.episodeSlug);
+                    if (matchEp) {
+                        const epIndex = extractedServers[foundIdx].server_data.findIndex(e => e.slug === savedProgress.episodeSlug);
+                        targetTabIdx = Math.floor(epIndex / 50);
+                        targetEp = matchEp;
+                    } else {
+                        targetEp = extractedServers[foundIdx].server_data[0];
+                    }
+                }
+            }
+
+            setActiveServerIdx(targetServerIdx);
+            setActiveTabIdx(targetTabIdx);
+            setEp(targetEp);
+            
             setLoadingPage(false);
             setLoadingPlayer(false);
+
+        } catch (e) {
+            if (isMounted) {
+                setError(true);
+                setLoadingPage(false);
+                setLoadingPlayer(false);
+            }
         }
     };
 
-    fetchOphim();
-    fetchNguonc();
-  }, [slug, movieData]);
+    fetchMovieData();
+    return () => { isMounted = false; };
+  }, [slug]);
 
   if (loadingPage) return <div className="h-screen flex justify-center items-center bg-[#050505]"><Icon.Loader2 className="animate-spin text-[#E50914]" size={40} /></div>;
   
@@ -1835,10 +1943,8 @@ function Watch({ slug, movieData }) {
   const handleServerChange = (idx) => {
       setActiveServerIdx(idx);
       setActiveTabIdx(0); 
-      const newServer = serverList[idx];
-      currentActiveIdentity.current = { source: newServer.source, rawName: newServer.rawName }; // Cập nhật lại identity
-      const matchingEp = newServer?.server_data?.find(e => e.name === ep?.name);
-      setEp(matchingEp || newServer?.server_data?.[0]);
+      const matchingEp = serverList[idx]?.server_data?.find(e => e.name === ep?.name);
+      setEp(matchingEp || serverList[idx]?.server_data?.[0]);
   };
 
   return (
@@ -1865,11 +1971,11 @@ function Watch({ slug, movieData }) {
       ) : null}
       
       <div className="mt-6 md:mt-10 bg-[#111] p-5 md:p-8 rounded-none sm:rounded-2xl border-y sm:border border-white/5 shadow-2xl">
-        <h1 className="text-xl md:text-3xl font-black text-white mb-2 md:mb-4 uppercase tracking-tighter line-clamp-2 !font-sans">{data?.name}</h1>
+        <h1 className="text-xl md:text-3xl font-black text-white mb-2 md:mb-4 uppercase tracking-tighter line-clamp-2 !font-sans">{safeText(data?.name)}</h1>
         
         {ep ? (
           <p className="text-gray-400 text-xs md:text-lg mb-8 md:mb-10 font-bold uppercase tracking-widest !font-sans">
-            Đang phát: Tập <span className="text-[#E50914]">{ep?.name?.replace(/tập\s*/i, '').replace(/['"]/g, '').trim()}</span>
+            Đang phát: Tập <span className="text-[#E50914]">{safeText(String(ep?.name || "").replace(/tập\s*/i, '').replace(/['"]/g, '').trim())}</span>
           </p>
         ) : (
           <div className="h-5 bg-white/10 rounded w-48 mb-8 md:mb-10 animate-pulse" />
@@ -1878,20 +1984,35 @@ function Watch({ slug, movieData }) {
         {serverList.length > 0 ? (
            <div className="animate-in fade-in duration-500">
               <div className="mb-6 md:mb-8">
-                 <p className="text-gray-500 text-[10px] md:text-xs font-black uppercase tracking-[0.2em] mb-3 md:mb-4 border-l-2 border-[#E50914] pl-2 leading-none">
-                   Chọn Máy Chủ Phát
-                 </p>
-                 <div className="flex flex-wrap gap-3">
-                    {serverList.map((s, idx) => (
-                       <button
-                          key={idx}
-                          onClick={() => handleServerChange(idx)}
-                          className={`flex items-center gap-2 px-4 py-2 md:px-5 md:py-2.5 rounded-lg border transition-all ${activeServerIdx === idx ? "border-[#E50914] bg-[#E50914]/10 text-white shadow-[0_0_15px_rgba(229,9,20,0.2)]" : "border-white/10 bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 hover:border-white/20"}`}
-                       >
-                          <span className="text-xs md:text-sm font-bold uppercase tracking-widest">{s.sourceName}</span>
-                       </button>
-                    ))}
-                 </div>
+                 {/* RENDER GROUP MÁY CHỦ BỞI TYPE VÀ ÉP VIETSUB LÊN ĐẦU TIÊN */}
+                 {Object.entries(
+                    serverList.reduce((acc, s, idx) => {
+                        if (!acc[s.groupType]) acc[s.groupType] = [];
+                        acc[s.groupType].push({ ...s, originalIndex: idx });
+                        return acc;
+                    }, {})
+                 ).sort(([typeA], [typeB]) => {
+                     if (typeA.includes('VIETSUB') && !typeB.includes('VIETSUB')) return -1;
+                     if (!typeA.includes('VIETSUB') && typeB.includes('VIETSUB')) return 1;
+                     return typeA.localeCompare(typeB);
+                 }).map(([type, servers]) => (
+                     <div key={type} className="mb-4 last:mb-0">
+                         <p className="text-gray-400 text-[10px] md:text-xs font-bold uppercase mb-2 tracking-widest">
+                             MÁY CHỦ : {type}
+                         </p>
+                         <div className="flex flex-wrap gap-3">
+                            {servers.map((s) => (
+                               <button
+                                  key={s.originalIndex}
+                                  onClick={() => handleServerChange(s.originalIndex)}
+                                  className={`flex items-center gap-2 px-4 py-2 md:px-5 md:py-2.5 rounded-lg border transition-all ${activeServerIdx === s.originalIndex ? "border-[#E50914] bg-[#E50914]/10 text-white shadow-[0_0_15px_rgba(229,9,20,0.2)]" : "border-white/10 bg-white/5 text-gray-400 hover:text-white hover:bg-white/10 hover:border-white/20"}`}
+                               >
+                                  <span className="text-xs md:text-sm font-bold uppercase tracking-widest">{s.sourceName}</span>
+                               </button>
+                            ))}
+                         </div>
+                     </div>
+                 ))}
               </div>
 
               {episodeChunks.length > 1 && (
@@ -1922,9 +2043,6 @@ function Watch({ slug, movieData }) {
                      <p className="text-gray-500 text-[10px] md:text-xs font-black uppercase tracking-[0.2em] border-l-2 border-[#E50914] pl-2 leading-none">
                        Danh Sách Tập
                      </p>
-                     <span className="text-gray-600 text-[9px] md:text-[10px] uppercase tracking-widest font-bold">
-                       Click để xem
-                     </span>
                  </div>
                  <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2 md:gap-3">
                     {currentChunk.map((e, idx) => {
@@ -1938,7 +2056,7 @@ function Watch({ slug, movieData }) {
                              }}
                              className={`py-3 md:py-4 text-[11px] md:text-sm rounded-lg border transition-all font-black uppercase tracking-tighter flex items-center justify-center ${isActive ? "bg-[#E50914] border-[#E50914] text-white shadow-[0_4px_15px_rgba(229,9,20,0.4)] scale-105 z-10 transform-gpu" : "bg-white/5 border-white/5 text-gray-400 hover:bg-white/10 hover:text-white hover:border-white/20"}`}
                           >
-                             {e.name?.replace(/tập\s*/i, '').replace(/['"]/g, '').trim()}
+                             {safeText(String(e.name || "").replace(/tập\s*/i, '').replace(/['"]/g, '').trim())}
                           </button>
                        )
                     })}
@@ -1967,12 +2085,19 @@ export default function App() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [progressData, setProgressData] = useState({});
 
-  const refreshProgress = () => { setProgressData(JSON.parse(localStorage.getItem("movieProgress") || "{}")); };
+  const refreshProgress = () => { 
+      try {
+          setProgressData(JSON.parse(localStorage.getItem("movieProgress") || "{}")); 
+      } catch(e) { setProgressData({}); }
+  };
+
   const removeProgress = (slug) => {
-    const current = JSON.parse(localStorage.getItem("movieProgress") || "{}");
-    delete current[slug];
-    localStorage.setItem("movieProgress", JSON.stringify(current));
-    refreshProgress();
+    try {
+        const current = JSON.parse(localStorage.getItem("movieProgress") || "{}");
+        delete current[slug];
+        localStorage.setItem("movieProgress", JSON.stringify(current));
+        refreshProgress();
+    } catch(e){}
   };
 
   const navigate = (newView) => {
@@ -1980,6 +2105,13 @@ export default function App() {
     setView(newView);
     window.scrollTo(0, 0);
   };
+
+  // KHI TRỞ VỀ TRANG CHỦ THÌ RESET BỘ LỌC PHIM ĐÃ HIỂN THỊ ĐỂ LOAD LẠI TỪ ĐẦU
+  useEffect(() => {
+    if (view.type === "home") {
+        globalDisplayedSlugs.clear();
+    }
+  }, [view.type]);
 
   useEffect(() => {
     const handlePopState = (event) => {
@@ -1992,10 +2124,15 @@ export default function App() {
     document.title = "POLITE";
     refreshProgress();
     
-    fetch(`${API}/the-loai`).then((r) => r.json()).then((j) => setCats(j?.data?.items || [])).catch(() => {});
+    fetch(`${API}/the-loai`).then((r) => r.json()).then((j) => {
+        let items = j?.data?.items || [];
+        items = items.filter(i => i.slug !== 'hoat-hinh');
+        items.unshift({ name: 'Hoạt Hình', slug: 'hoat-hinh' });
+        setCats(items);
+    }).catch(() => {});
+    
     fetch(`${API}/quoc-gia`).then((r) => r.json()).then((j) => setCountries(j?.data?.items || [])).catch(() => {});
 
-    // SETUP PWA
     const setupPWA = () => {
       const metaTags = [
         { name: 'apple-mobile-web-app-capable', content: 'yes' },
@@ -2023,22 +2160,11 @@ export default function App() {
       standardIcon.rel = 'icon';
       standardIcon.href = iconUrl;
       document.head.appendChild(standardIcon);
-
-      const manifest = {
-        name: "POLITE Phim",
-        short_name: "POLITE",
-        start_url: ".",
-        display: "standalone",
-        background_color: "#050505",
-        theme_color: "#050505",
-        icons: [{ src: iconUrl, sizes: "512x512", type: "image/svg+xml" }]
-      };
-      const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
-      const manifestUrl = URL.createObjectURL(blob);
-      let manifestLink = document.createElement('link');
-      manifestLink.rel = 'manifest';
-      manifestLink.href = manifestUrl;
-      document.head.appendChild(manifestLink);
+      
+      const preconnect = document.createElement('link');
+      preconnect.rel = 'preconnect';
+      preconnect.href = 'https://i0.wp.com'; 
+      document.head.appendChild(preconnect);
     };
     setupPWA();
 
@@ -2049,92 +2175,78 @@ export default function App() {
     if (isNewView) { setLoading(true); setMovies([]); } 
     else { setLoadingMore(true); }
 
-    if (view.type === "actor") {
-       try {
-         const tmdbRes = await fetch(`https://api.themoviedb.org/3/person/${view.actorId}/combined_credits?api_key=${TMDB_API_KEY}&language=vi-VN`);
-         const tmdbData = await tmdbRes.json();
-         
-         const topMovies = (tmdbData.cast || [])
-            .filter(m => (m.media_type === "movie" || m.media_type === "tv") && !m.character?.toLowerCase().includes("self") && !m.character?.toLowerCase().includes("voice") && !m.character?.toLowerCase().includes("uncredited"))
-            .sort((a,b) => b.popularity - a.popularity)
-            .slice(0, 40); 
+    if (view.type === "actor") return;
 
-         const searchPromises = topMovies.map(async (tmdbItem) => {
-            const titleQuery = tmdbItem.original_title || tmdbItem.original_name || tmdbItem.title || tmdbItem.name;
-            if (!titleQuery) return null;
-
-            try {
-               const [resN, resO] = await Promise.allSettled([
-                  fetch(`${API_NGUONC}/search?keyword=${encodeURIComponent(titleQuery)}`).then(r => r.json()),
-                  fetch(`${API}/tim-kiem?keyword=${encodeURIComponent(titleQuery)}`).then(r => r.json())
-               ]);
-               
-               let combinedItems = [];
-               if (resN.status === 'fulfilled') combinedItems = [...combinedItems, ...(resN.value?.items || resN.value?.data?.items || [])];
-               if (resO.status === 'fulfilled') combinedItems = [...combinedItems, ...(resO.value?.data?.items || [])];
-               
-               // Sử dụng hàm gộp phim
-               const merged = mergeDuplicateMovies(combinedItems);
-               return merged.length > 0 ? merged[0] : null;
-            } catch(e) { return null; }
-         });
-
-         const results = await Promise.all(searchPromises);
-         const validMovies = results.filter(Boolean);
-         
-         setMovies(mergeDuplicateMovies(validMovies).slice(0, 20));
-         setHasMore(false); 
-       } catch(e) {
-         console.error(e);
-       } finally {
-         setLoading(false);
-         setLoadingMore(false);
-       }
-       return; 
-    }
-
-    let urlOphim = "";
-    let urlNguonc = "";
+    let fetches = [];
     
     if (view.type === "search") {
-      urlOphim = `${API}/tim-kiem?keyword=${encodeURIComponent(view.keyword)}&page=${pageNum}`;
-      urlNguonc = `${API_NGUONC}/search?keyword=${encodeURIComponent(view.keyword)}&page=${pageNum}`;
+      const q = encodeURIComponent(String(view.keyword || "").trim());
+      fetches = [
+          `${API}/tim-kiem?keyword=${q}&page=${pageNum}`,
+          `${API_NGUONC}/search?keyword=${q}&page=${pageNum}`
+      ];
     } else if (view.type === "list") {
-      urlOphim = `${API}/${view.mode}/${view.slug}?page=${pageNum}`;
-      urlNguonc = `${API_NGUONC}/${view.mode === 'quoc-gia' ? 'quoc-gia' : 'the-loai'}/${view.slug}?page=${pageNum}`;
+      if (view.slug === 'hoat-hinh') {
+          fetches = [
+              `${API}/the-loai/hoat-hinh?page=${pageNum}`,
+              `${API}/danh-sach/hoat-hinh?page=${pageNum}`,
+              `${API}/the-loai/hoa-hinh?page=${pageNum}`,
+              `${API_NGUONC}/the-loai/hoathinh?page=${pageNum}`,
+              `${API_NGUONC}/danh-sach/hoathinh?page=${pageNum}`
+          ];
+      } else if (view.slug === 'phim-moi-cap-nhat') {
+          fetches = [
+              `${API}/danh-sach/phim-moi-cap-nhat?page=${pageNum}`,
+              `${API_NGUONC}/phim-moi-cap-nhat?page=${pageNum}`
+          ];
+      } else {
+          fetches = [
+              `${API}/${view.mode}/${view.slug}?page=${pageNum}`,
+              `${API_NGUONC}/${view.mode}/${view.slug}?page=${pageNum}`
+          ];
+      }
     } else {
-      urlOphim = `${API}/home?page=${pageNum}`;
-      urlNguonc = `${API_NGUONC}/phim-moi-cap-nhat?page=${pageNum}`;
+      fetches = [
+          `${API}/danh-sach/phim-moi-cap-nhat?page=${pageNum}`,
+          `${API_NGUONC}/phim-moi-cap-nhat?page=${pageNum}`
+      ];
     }
 
-    Promise.allSettled([
-      fetch(urlOphim).then(r => r.json()),
-      fetch(urlNguonc).then(r => r.json())
-    ]).then(([resO, resN]) => {
-      let newItems = [];
-      let totalPages = 1;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000); 
 
-      if (resO.status === 'fulfilled' && resO.value?.data?.items) {
-        newItems = [...newItems, ...resO.value.data.items];
-        totalPages = Math.max(totalPages, resO.value.data.params?.pagination?.totalPages || 1);
-      }
-      
-      if (resN.status === 'fulfilled') {
-        const nguoncItems = resN.value?.items || resN.value?.data?.items || [];
-        newItems = [...newItems, ...nguoncItems];
-        totalPages = Math.max(totalPages, resN.value?.paginate?.total_page || resN.value?.data?.params?.pagination?.totalPages || 1);
-      }
+    try {
+        const reqs = fetches.map(url => fetch(url, { signal: controller.signal }).then(r => r.json()));
+        const results = await Promise.allSettled(reqs);
 
-      setMovies((prev) => {
-        const combined = isNewView ? newItems : [...prev, ...newItems];
-        // Sử dụng hàm gộp thông minh để lọc trùng
-        return mergeDuplicateMovies(combined);
-      });
-      
-      setHasMore(pageNum < totalPages);
-    })
-    .catch(() => {})
-    .finally(() => { setLoading(false); setLoadingMore(false); });
+        clearTimeout(timeoutId);
+
+        let newItems = [];
+
+        results.forEach(res => {
+            if (res.status === 'fulfilled') {
+                const items = res.value?.items || res.value?.data?.items;
+                if (Array.isArray(items)) {
+                    newItems = [...newItems, ...items];
+                }
+            }
+        });
+
+        setMovies((prev) => {
+            const combined = isNewView ? newItems : [...prev, ...newItems];
+            return mergeDuplicateMovies(combined);
+        });
+        
+        setHasMore(newItems.length > 0);
+        
+    } catch(e) {
+        if (isNewView) setMovies([]);
+        setHasMore(false);
+    } finally {
+        clearTimeout(timeoutId);
+        setLoading(false);
+        setLoadingMore(false);
+    }
   };
 
   useEffect(() => {
@@ -2143,9 +2255,17 @@ export default function App() {
     }
   }, [view]);
 
+  const loadNextPage = () => {
+     if (!loadingMore && hasMore) {
+        setPage((p) => {
+            fetchData(p + 1, false);
+            return p + 1;
+        });
+     }
+  };
+
   return (
     <div className="bg-[#050505] min-h-screen text-white font-sans antialiased selection:bg-[#E50914] selection:text-white pb-16 md:pb-10 overflow-x-hidden">
-      
       <link rel="preconnect" href="https://fonts.googleapis.com" />
       <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="true" />
       <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet" />
@@ -2162,8 +2282,6 @@ export default function App() {
         .custom-range { -webkit-appearance: none; outline: none; border-radius: 4px; }
         .custom-range::-webkit-slider-thumb { -webkit-appearance: none; height: 0px; width: 0px; background: transparent; border: none; box-shadow: none; cursor: pointer; }
         .custom-range::-webkit-slider-runnable-track { width: 100%; height: 100%; background: transparent; cursor: pointer; border-radius: 4px; }
-        .custom-range::-moz-range-thumb { height: 0px; width: 0px; background: transparent; border: none; box-shadow: none; cursor: pointer; }
-        .custom-range::-moz-range-track { width: 100%; height: 100%; background: transparent; cursor: pointer; border-radius: 4px; }
       `}</style>
       
       <Header navigate={navigate} categories={cats} countries={countries} />
@@ -2173,16 +2291,14 @@ export default function App() {
           <Hero navigate={navigate} />
           <div className="max-w-[1400px] mx-auto w-full px-4 md:px-12 relative z-20 pb-20 pt-8 md:pt-12">
             
-            {/* ĐƯA TIẾP TỤC XEM LÊN ĐẦU TIÊN TRONG MỤC DANH SÁCH */}
             <ContinueWatching navigate={navigate} progressData={progressData} onRemove={removeProgress} />
-            
             <MovieSection title="Phim Mới Cập Nhật" slug="phim-moi-cap-nhat" type="danh-sach" navigate={navigate} progressData={progressData} />
+            <MovieSection title="Anime / Hoạt Hình Hot" slug="hoat-hinh" type="the-loai" navigate={navigate} progressData={progressData} />
             <MovieSection title="Phim Bộ Mới" slug="phim-bo" type="danh-sach" navigate={navigate} progressData={progressData} />
             <MovieSection title="Phim Lẻ Mới" slug="phim-le" type="danh-sach" navigate={navigate} progressData={progressData} />
             
             <MovieSection title="Hành Động - Viễn Tưởng" slug="hanh-dong" type="the-loai" navigate={navigate} progressData={progressData} />
             <MovieSection title="Tình Cảm - Tâm Lý" slug="tinh-cam" type="the-loai" navigate={navigate} progressData={progressData} />
-            <MovieSection title="Hoạt Hình (Anime/Cartoon)" slug="hoat-hinh" type="the-loai" navigate={navigate} progressData={progressData} />
             <MovieSection title="Kinh Dị - Giật Gân" slug="kinh-di" type="the-loai" navigate={navigate} progressData={progressData} />
             <MovieSection title="Hài Hước" slug="hai-huoc" type="the-loai" navigate={navigate} progressData={progressData} />
 
@@ -2198,13 +2314,13 @@ export default function App() {
         <Watch slug={view.slug} movieData={view.movieData} />
       ) : (
         <MovieGrid 
-          title={view.type === "actor" ? `Phim của: ${view.actorName}` : view.type === "search" ? `Tìm kiếm: ${view.keyword}` : view.title} 
+          title={view.type === "search" ? `Tìm kiếm: ${view.keyword}` : view.title} 
           movies={movies} 
           loading={loading} 
           navigate={navigate}
-          onLoadMore={() => { if (!loadingMore && hasMore) { setPage((p) => p + 1); fetchData(page + 1, false); } }} 
+          onLoadMore={loadNextPage} 
           hasMore={hasMore} 
-          loading_more={loadingMore} 
+          loadingMore={loadingMore} 
         />
       )}
       

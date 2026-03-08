@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef, memo, useMemo } from "react";
 import * as Icon from "lucide-react";
 
-// --- CẤU HÌNH API ---
+// --- CẤU HÌNH API --- 
+const WORKER_URL = "https://polite-api.thangdz2001a.workers.dev";
+
 const API = "https://ophim1.com/v1/api";
 const API_NGUONC = "https://phim.nguonc.com/api/films";
 const API_NGUONC_DETAIL = "https://phim.nguonc.com/api/film";
@@ -16,7 +18,9 @@ function getImg(p) {
   if (!p) return "https://images.unsplash.com/photo-1440404653325-ab127d49abc1?q=80&w=500";
   if (p.startsWith("http")) return p;
   const path = p.startsWith("/") ? p.substring(1) : p;
+  // Trỏ về Worker để dùng Cache của Cloudflare
   return `${IMG}/${path}`;
+}
 }
 
 function formatTime(seconds) {
@@ -82,9 +86,11 @@ async function fetchTMDB(name, originName, slug, year) {
   try {
     let match = null;
     const search = async (query) => {
-      let res = await fetch(`https://api.themoviedb.org/3/search/multi?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&language=vi-VN`);
-      let data = await res.json();
-      return data.results || [];
+  // Gọi qua Worker để lấy thông tin TMDB
+  let res = await fetch(`${WORKER_URL}/api/tmdb/search/multi?query=${encodeURIComponent(query)}`);
+  let data = await res.json();
+  return data.results || [];
+};
     };
 
     let results = [];

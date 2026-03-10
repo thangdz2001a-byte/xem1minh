@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from "react";
 import * as Icon from "lucide-react";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { db } from "../../config/firebase";
 import { YEARS } from "../../utils/helpers";
 import SearchModal from "../common/SearchModal";
 import DropdownGrid from "../common/DropdownGrid";
 
 // ==========================================
-// 1. CÁC COMPONENT SVG AVATAR ĐỘNG VẬT
+// 1. CÁC COMPONENT SVG AVATAR ĐỘNG VẬT (10 CON)
 // ==========================================
 const ShibaAvatar = ({ className }) => (
   <svg viewBox="0 0 100 100" className={className}>
@@ -110,13 +112,85 @@ const PandaAvatar = ({ className }) => (
   </svg>
 );
 
+const FoxAvatar = ({ className }) => (
+  <svg viewBox="0 0 100 100" className={className}>
+    <path d="M 25 55 L 10 15 L 45 35 Z" fill="#EA580C" stroke="#111" strokeWidth="3" strokeLinejoin="round"/>
+    <path d="M 75 55 L 90 15 L 55 35 Z" fill="#EA580C" stroke="#111" strokeWidth="3" strokeLinejoin="round"/>
+    <path d="M 23 45 L 17 22 L 35 34 Z" fill="#FDBA74"/>
+    <path d="M 77 45 L 83 22 L 65 34 Z" fill="#FDBA74"/>
+    <path d="M 12 55 Q 50 105 88 55 Q 50 25 12 55 Z" fill="#EA580C" stroke="#111" strokeWidth="3" strokeLinejoin="round"/>
+    <path d="M 12 55 Q 50 100 50 75 Q 30 65 12 55 Z" fill="#FFF" strokeLinejoin="round"/>
+    <path d="M 88 55 Q 50 100 50 75 Q 70 65 88 55 Z" fill="#FFF" strokeLinejoin="round"/>
+    <circle cx="35" cy="50" r="5" fill="#111"/>
+    <circle cx="33" cy="48" r="1.5" fill="#FFF"/>
+    <circle cx="65" cy="50" r="5" fill="#111"/>
+    <circle cx="63" cy="48" r="1.5" fill="#FFF"/>
+    <circle cx="50" cy="72" r="5" fill="#111"/>
+  </svg>
+);
+
+const BearAvatar = ({ className }) => (
+  <svg viewBox="0 0 100 100" className={className}>
+    <circle cx="25" cy="30" r="15" fill="#8B5A2B" stroke="#111" strokeWidth="3"/>
+    <circle cx="75" cy="30" r="15" fill="#8B5A2B" stroke="#111" strokeWidth="3"/>
+    <circle cx="25" cy="30" r="8" fill="#D2B48C"/>
+    <circle cx="75" cy="30" r="8" fill="#D2B48C"/>
+    <circle cx="50" cy="60" r="35" fill="#8B5A2B" stroke="#111" strokeWidth="3"/>
+    <circle cx="50" cy="70" r="16" fill="#D2B48C" stroke="#111" strokeWidth="3"/>
+    <circle cx="35" cy="50" r="4.5" fill="#111"/>
+    <circle cx="33" cy="48" r="1.5" fill="#FFF"/>
+    <circle cx="65" cy="50" r="4.5" fill="#111"/>
+    <circle cx="63" cy="48" r="1.5" fill="#FFF"/>
+    <ellipse cx="50" cy="65" rx="7" ry="4" fill="#111"/>
+    <path d="M 45 74 Q 50 78 55 74" fill="none" stroke="#111" strokeWidth="3" strokeLinecap="round"/>
+  </svg>
+);
+
+const RabbitAvatar = ({ className }) => (
+  <svg viewBox="0 0 100 100" className={className}>
+    <ellipse cx="35" cy="30" rx="10" ry="25" transform="rotate(-15 35 30)" fill="#E2E8F0" stroke="#111" strokeWidth="3"/>
+    <ellipse cx="65" cy="30" rx="10" ry="25" transform="rotate(15 65 30)" fill="#E2E8F0" stroke="#111" strokeWidth="3"/>
+    <ellipse cx="35" cy="30" rx="4" ry="18" transform="rotate(-15 35 30)" fill="#FBCFE8"/>
+    <ellipse cx="65" cy="30" rx="4" ry="18" transform="rotate(15 65 30)" fill="#FBCFE8"/>
+    <ellipse cx="50" cy="65" rx="35" ry="28" fill="#E2E8F0" stroke="#111" strokeWidth="3"/>
+    <circle cx="35" cy="60" r="5" fill="#111"/>
+    <circle cx="33" cy="58" r="1.5" fill="#FFF"/>
+    <circle cx="65" cy="60" r="5" fill="#111"/>
+    <circle cx="63" cy="58" r="1.5" fill="#FFF"/>
+    <ellipse cx="50" cy="68" rx="4" ry="3" fill="#F472B6"/>
+    <path d="M 45 75 Q 50 78 55 75" fill="none" stroke="#111" strokeWidth="2" strokeLinecap="round"/>
+  </svg>
+);
+
+const FrogAvatar = ({ className }) => (
+  <svg viewBox="0 0 100 100" className={className}>
+    <circle cx="30" cy="35" r="14" fill="#22C55E" stroke="#111" strokeWidth="3"/>
+    <circle cx="70" cy="35" r="14" fill="#22C55E" stroke="#111" strokeWidth="3"/>
+    <circle cx="30" cy="35" r="8" fill="#FFF" stroke="#111" strokeWidth="2"/>
+    <circle cx="70" cy="35" r="8" fill="#FFF" stroke="#111" strokeWidth="2"/>
+    <circle cx="32" cy="35" r="4" fill="#111"/>
+    <circle cx="72" cy="35" r="4" fill="#111"/>
+    <circle cx="33" cy="34" r="1.5" fill="#FFF"/>
+    <circle cx="73" cy="34" r="1.5" fill="#FFF"/>
+    <ellipse cx="50" cy="65" rx="40" ry="28" fill="#22C55E" stroke="#111" strokeWidth="3"/>
+    <path d="M 25 65 Q 50 85 75 65" fill="none" stroke="#111" strokeWidth="3" strokeLinecap="round"/>
+    <ellipse cx="20" cy="65" rx="4" ry="2" fill="#16A34A"/>
+    <ellipse cx="80" cy="65" rx="4" ry="2" fill="#16A34A"/>
+  </svg>
+);
+
+// Danh sách 10 con vật
 const avatarsList = [
-  { id: 'shiba', Component: ShibaAvatar, bgColor: 'bg-yellow-200' },
-  { id: 'husky', Component: HuskyAvatar, bgColor: 'bg-blue-200' },
-  { id: 'pug', Component: PugAvatar, bgColor: 'bg-green-200' },
-  { id: 'golden', Component: GoldenAvatar, bgColor: 'bg-orange-200' },
-  { id: 'cat', Component: CatAvatar, bgColor: 'bg-pink-200' },
-  { id: 'panda', Component: PandaAvatar, bgColor: 'bg-purple-200' }
+  { id: 'shiba', name: 'Shiba', Component: ShibaAvatar, bgColor: 'bg-yellow-200' },
+  { id: 'husky', name: 'Husky', Component: HuskyAvatar, bgColor: 'bg-blue-200' },
+  { id: 'pug', name: 'Pug', Component: PugAvatar, bgColor: 'bg-green-200' },
+  { id: 'golden', name: 'Golden', Component: GoldenAvatar, bgColor: 'bg-orange-200' },
+  { id: 'cat', name: 'Mèo', Component: CatAvatar, bgColor: 'bg-pink-200' },
+  { id: 'panda', name: 'Gấu Trúc', Component: PandaAvatar, bgColor: 'bg-purple-200' },
+  { id: 'fox', name: 'Cáo', Component: FoxAvatar, bgColor: 'bg-red-200' },
+  { id: 'bear', name: 'Gấu Nâu', Component: BearAvatar, bgColor: 'bg-amber-200' },
+  { id: 'rabbit', name: 'Thỏ Trắng', Component: RabbitAvatar, bgColor: 'bg-slate-200' },
+  { id: 'frog', name: 'Ếch Xanh', Component: FrogAvatar, bgColor: 'bg-emerald-200' }
 ];
 
 // ==========================================
@@ -127,17 +201,36 @@ export default function Header({ navigate, categories, countries, user, onLogin,
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   
-  // State cho việc chọn Avatar
-  const [showAvatarModal, setShowAvatarModal] = useState(false);
-  const [customAvatarId, setCustomAvatarId] = useState(null);
+  // State Đổi Tên Hiển Thị
+  const [showNameModal, setShowNameModal] = useState(false);
+  const [editName, setEditName] = useState("");
 
-  // Load avatar đã chọn từ local storage khi khởi chạy
+  // State Chọn Avatar
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [customAvatarId, setCustomAvatarId] = useState(null); // Cái đang lưu thật trên db
+  const [tempAvatarId, setTempAvatarId] = useState(null); // Cái đang chọn tạm thời trong popup
+
+  // ĐỒNG BỘ AVATAR TỪ FIREBASE
   useEffect(() => {
-    const savedAvatarId = localStorage.getItem('polite_avatar');
-    if (savedAvatarId) {
-      setCustomAvatarId(savedAvatarId);
-    }
-  }, [user]); // Chạy lại khi user thay đổi để đảm bảo đồng bộ
+    const fetchAvatarFromFirebase = async () => {
+      if (user) {
+        try {
+          const docRef = doc(db, "users", user.uid);
+          const snap = await getDoc(docRef);
+          if (snap.exists() && snap.data().avatar) {
+            setCustomAvatarId(snap.data().avatar);
+          } else {
+            setCustomAvatarId(null);
+          }
+        } catch (error) {
+          console.error("Lỗi tải avatar:", error);
+        }
+      } else {
+        setCustomAvatarId(null);
+      }
+    };
+    fetchAvatarFromFirebase();
+  }, [user]);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -145,39 +238,95 @@ export default function Header({ navigate, categories, countries, user, onLogin,
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  const handleChangeName = () => {
+  const handleOpenNameModal = () => {
+    setEditName(user?.displayName || "");
     setShowProfile(false);
-    if (!user) return;
-    const newName = window.prompt("Nhập tên hiển thị mới của bạn:", user.displayName);
-    if (newName && newName.trim() !== "" && newName !== user.displayName) {
-      if (onUpdateName) {
-        onUpdateName(newName.trim());
+    setShowNameModal(true);
+  };
+
+  const handleSubmitName = (e) => {
+    e.preventDefault();
+    if (editName.trim() && editName.trim() !== user.displayName) {
+      if (onUpdateName) onUpdateName(editName.trim());
+    }
+    setShowNameModal(false);
+  };
+
+  // Mở modal Avatar: gán state tạm bằng state hiện tại
+  const handleOpenAvatarModal = () => {
+    setTempAvatarId(customAvatarId);
+    setShowProfile(false);
+    setShowAvatarModal(true);
+  };
+
+  // NÚT XÁC NHẬN LƯU AVATAR
+  const handleConfirmAvatar = async () => {
+    setCustomAvatarId(tempAvatarId);
+    setShowAvatarModal(false);
+    
+    if (user) {
+      try {
+        const docRef = doc(db, "users", user.uid);
+        await setDoc(docRef, { avatar: tempAvatarId || null }, { merge: true });
+      } catch (error) {
+        console.error("Lỗi đồng bộ avatar:", error);
       }
     }
   };
 
-  const handleSelectAvatar = (id) => {
-    if (id) {
-      localStorage.setItem('polite_avatar', id);
-      setCustomAvatarId(id);
-    } else {
-      localStorage.removeItem('polite_avatar');
-      setCustomAvatarId(null);
-    }
-    setShowAvatarModal(false);
-    setShowProfile(false);
-  };
-
   const activeAvatar = avatarsList.find(a => a.id === customAvatarId);
+  const tempAvatarData = avatarsList.find(a => a.id === tempAvatarId);
 
   return (
     <>
       <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} navigate={navigate} />
       
-      {/* MODAL CHỌN AVATAR */}
-      {showAvatarModal && (
+      {/* MODAL ĐỔI TÊN HIỂN THỊ */}
+      {showNameModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-2xl bg-[#111] border border-white/10 rounded-2xl p-6 shadow-2xl relative">
+          <form onSubmit={handleSubmitName} className="w-full max-w-md bg-[#111] border border-white/10 rounded-2xl p-6 shadow-2xl relative animate-in zoom-in-95 duration-200">
+            <button 
+              type="button" 
+              onClick={() => setShowNameModal(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-white bg-black/50 p-2 rounded-full transition"
+            >
+              <Icon.X size={20} />
+            </button>
+            <h2 className="text-white text-lg font-black tracking-widest uppercase mb-4 flex items-center gap-2">
+              <Icon.Edit3 size={18} className="text-[#E50914]"/> ĐỔI TÊN HIỂN THỊ
+            </h2>
+            <input
+              type="text"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              placeholder
+              autoFocus
+              maxLength={25}
+              className="w-full bg-[#222] border border-white/10 rounded-xl p-4 text-white outline-none focus:border-[#E50914] transition-colors mb-6 font-bold"
+            />
+            <div className="flex justify-end gap-3">
+              <button 
+                type="button" 
+                onClick={() => setShowNameModal(false)} 
+                className="px-5 py-2.5 text-sm font-bold text-gray-400 hover:text-white transition uppercase tracking-widest"
+              >
+                Hủy
+              </button>
+              <button 
+                type="submit" 
+                className="px-6 py-2.5 bg-[#E50914] hover:bg-red-700 text-white text-sm font-black rounded-xl transition uppercase tracking-widest shadow-[0_4px_15px_rgba(229,9,20,0.4)]"
+              >
+                Lưu Thay Đổi
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* MODAL CHỌN AVATAR (GRID 10 CON) */}
+      {showAvatarModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-[800px] bg-[#111] border border-white/10 rounded-2xl p-5 sm:p-8 shadow-2xl relative animate-in zoom-in-95 duration-200">
             <button 
               onClick={() => setShowAvatarModal(false)}
               className="absolute top-4 right-4 text-gray-400 hover:text-white bg-black/50 p-2 rounded-full transition"
@@ -185,23 +334,24 @@ export default function Header({ navigate, categories, countries, user, onLogin,
               <Icon.X size={20} />
             </button>
 
-            <h2 className="text-gray-300 text-sm font-black tracking-widest uppercase mb-6 flex items-center gap-2">
-              <Icon.Image size={18} className="text-[#E50914]"/> CHỌN AVATAR ĐỘNG VẬT
+            <h2 className="text-gray-300 text-sm md:text-base font-black tracking-widest uppercase mb-6 flex items-center gap-2">
+              <Icon.Image size={20} className="text-[#E50914]"/> CHỌN AVATAR ĐỘNG VẬT
             </h2>
             
-            <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 mb-8">
+            {/* LƯỚI 5 CỘT */}
+            <div className="grid grid-cols-5 gap-3 sm:gap-6 mb-8 place-items-center">
               {avatarsList.map((avatar) => {
-                const isSelected = customAvatarId === avatar.id;
+                const isSelected = tempAvatarId === avatar.id;
                 return (
                   <div
                     key={avatar.id}
-                    onClick={() => handleSelectAvatar(avatar.id)}
+                    onClick={() => setTempAvatarId(avatar.id)}
                     className={`
                       relative cursor-pointer transition-all duration-300 ease-out flex-shrink-0
-                      w-20 h-20 sm:w-24 sm:h-24 rounded-full p-2
+                      w-14 h-14 sm:w-20 sm:h-20 lg:w-24 lg:h-24 rounded-full p-1.5 sm:p-2
                       ${avatar.bgColor}
                       ${isSelected 
-                        ? 'scale-110 border-[4px] border-[#E50914] shadow-[0_0_20px_rgba(229,9,20,0.6)] z-10' 
+                        ? 'scale-110 border-[3px] sm:border-[4px] border-[#E50914] shadow-[0_0_20px_rgba(229,9,20,0.6)] z-10' 
                         : 'border-2 border-transparent hover:scale-105 opacity-70 hover:opacity-100'
                       }
                     `}
@@ -212,16 +362,33 @@ export default function Header({ navigate, categories, countries, user, onLogin,
               })}
             </div>
 
-            <div className="border-t border-white/10 pt-4 flex flex-col sm:flex-row justify-between items-center gap-4">
-              <p className="text-gray-400 text-sm">
-                Bạn đang chọn: <strong className="text-white capitalize">{customAvatarId || 'Mặc định'}</strong>
-              </p>
-              <button 
-                onClick={() => handleSelectAvatar(null)}
-                className="text-xs text-gray-300 bg-white/5 hover:bg-white/10 px-4 py-2 rounded-lg transition-colors"
-              >
-                Dùng ảnh Google mặc định
-              </button>
+            <div className="border-t border-white/10 pt-5 flex flex-col md:flex-row justify-between items-center gap-4">
+              <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+                <p className="text-gray-400 text-sm order-2 md:order-1">
+                  Đang chọn: <strong className="text-white capitalize">{tempAvatarData ? tempAvatarData.name : 'Ảnh Google'}</strong>
+                </p>
+                <button 
+                  onClick={() => setTempAvatarId(null)}
+                  className={`order-1 md:order-2 text-xs font-bold tracking-widest uppercase px-4 py-2.5 rounded-lg transition-colors border ${tempAvatarId === null ? 'bg-white/10 border-white text-white' : 'bg-transparent border-white/20 text-gray-400 hover:bg-white/5'}`}
+                >
+                  Dùng ảnh Google
+                </button>
+              </div>
+
+              <div className="flex gap-3 w-full md:w-auto mt-4 md:mt-0">
+                <button 
+                  onClick={() => setShowAvatarModal(false)}
+                  className="flex-1 md:flex-none px-6 py-3 text-xs font-bold text-gray-400 hover:text-white transition uppercase tracking-widest bg-white/5 hover:bg-white/10 rounded-xl"
+                >
+                  Hủy
+                </button>
+                <button 
+                  onClick={handleConfirmAvatar}
+                  className="flex-1 md:flex-none px-8 py-3 bg-[#E50914] hover:bg-red-700 text-white text-xs font-black rounded-xl transition uppercase tracking-widest shadow-[0_4px_15px_rgba(229,9,20,0.4)]"
+                >
+                  Xác Nhận
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -260,10 +427,9 @@ export default function Header({ navigate, categories, countries, user, onLogin,
             <div className="relative">
               {user ? (
                 <div 
-                  className={`w-8 h-8 md:w-10 md:h-10 rounded-full border-2 border-[#E50914] overflow-hidden cursor-pointer flex items-center justify-center ${activeAvatar ? activeAvatar.bgColor : 'bg-black'}`}
+                  className={`w-8 h-8 md:w-10 md:h-10 rounded-full border-2 border-[#E50914] overflow-hidden cursor-pointer flex items-center justify-center transition-transform hover:scale-110 ${activeAvatar ? activeAvatar.bgColor : 'bg-black'}`}
                   onClick={() => setShowProfile(!showProfile)}
                 >
-                  {/* Hiển thị Avatar SVG tự chọn HOẶC ảnh Google photoURL */}
                   {activeAvatar ? (
                     <activeAvatar.Component className="w-[85%] h-[85%] object-contain drop-shadow-sm" />
                   ) : (
@@ -291,16 +457,16 @@ export default function Header({ navigate, categories, countries, user, onLogin,
                     </div>
                   </div>
                   
-                  <button onClick={() => { setShowAvatarModal(true); setShowProfile(false); }} className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 flex items-center gap-3 transition-colors">
-                    <Icon.Image size={16} /> Đổi Avatar Động Vật
+                  <button onClick={handleOpenAvatarModal} className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 flex items-center gap-3 transition-colors">
+                    <Icon.Image size={16} /> Đổi Avatar 
                   </button>
 
-                  <button onClick={handleChangeName} className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 flex items-center gap-3 transition-colors">
+                  <button onClick={handleOpenNameModal} className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 flex items-center gap-3 transition-colors">
                     <Icon.Edit3 size={16} /> Đổi tên hiển thị
                   </button>
                   
                   <button onClick={() => { setShowProfile(false); navigate({ type: "history" }); }} className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-[#E50914] hover:bg-white/5 flex items-center gap-3 transition-colors">
-                    <Icon.Clock size={16} /> Phim đã xem
+                    <Icon.Clock size={16} /> Phim đang xem
                   </button>
                   
                   <button onClick={() => { setShowProfile(false); navigate({ type: "favorites" }); }} className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-[#E50914] hover:bg-white/5 flex items-center gap-3 transition-colors">

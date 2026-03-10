@@ -1,43 +1,47 @@
 import React, { useState, useEffect } from "react";
 import * as Icon from "lucide-react";
-import { collection, query, onSnapshot, doc, getDoc } from "firebase/firestore";
+import { collection, query, onSnapshot, doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../../config/firebase";
+import { generateRoomId } from "../../utils/helpers";
+
+// HÀM LÀM SẠCH MẬT KHẨU: Xóa khoảng trắng và dấu tiếng Việt
+const cleanPassword = (str) => {
+  return str
+    .replace(/\s/g, "") // Xóa mọi khoảng trắng
+    .normalize("NFD") // Tách dấu ra khỏi chữ
+    .replace(/[\u0300-\u036f]/g, "") // Xóa dấu
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D");
+};
 
 export default function WatchPartyLobby({ navigate, user, onLogin }) {
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   
-  // --- STATE CHO MODAL NHẬP MẬT KHẨU ---
+  // State Tạo phòng
+  const [showPartyModal, setShowPartyModal] = useState(false);
+  const [roomName, setRoomName] = useState("");
+  const [isPublic, setIsPublic] = useState(true);
+  const [password, setPassword] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+
+  // State Vào phòng Private
   const [selectedPrivateRoom, setSelectedPrivateRoom] = useState(null);
   const [passwordInput, setPasswordInput] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [isJoining, setIsJoining] = useState(false);
 
-  // MÀN HÌNH CHƯA ĐĂNG NHẬP
-  if (!user) {
-    return (
-      <div className="min-h-[80vh] flex flex-col items-center justify-center text-white px-4 animate-in fade-in duration-500">
-        <div className="w-24 h-24 bg-white/5 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(229,9,20,0.2)]">
-           <Icon.Users size={48} className="text-[#E50914]" />
-        </div>
-        <h2 className="text-2xl md:text-4xl font-black mb-3 uppercase tracking-widest text-center text-white">Sảnh Xem Chung</h2>
-        <p className="text-gray-400 mb-8 text-center text-sm md:text-base uppercase tracking-widest">Đăng nhập để trải nghiệm cày phim cùng hội bạn</p>
-        <button onClick={onLogin} className="bg-[#E50914] px-8 py-3.5 rounded-full font-black flex items-center gap-3 hover:bg-red-700 transition transform-gpu hover:scale-105 active:scale-95 shadow-[0_10px_25px_rgba(229,9,20,0.4)] text-sm md:text-base uppercase tracking-widest">
-          <Icon.User size={20} /> Bắt đầu ngay
-        </button>
-      </div>
-    );
-  }
-
-  // LOAD DANH SÁCH PHÒNG TỪ FIREBASE
   useEffect(() => {
-    // Bỏ điều kiện where() để lấy cả phòng Public lẫn Private
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
     const q = query(collection(db, "rooms"));
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
       let roomList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // Sắp xếp phòng mới nhất lên đầu
       roomList.sort((a, b) => {
          const timeA = a.createdAt?.toMillis() || 0;
          const timeB = b.createdAt?.toMillis() || 0;
@@ -51,35 +55,63 @@ export default function WatchPartyLobby({ navigate, user, onLogin }) {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [user]);
 
-  // XỬ LÝ CLICK VÀO PHÒNG
+  const handleCreateRoom = async (e) => {
+    e.preventDefault();
+    if (!user) {
+      onLogin();
+      return;
+    }
+    if (!roomName.trim()) return alert("Vui lòng nhập tên phòng");
+
+    setIsCreating(true);
+    try {
+      const roomId = generateRoomId();
+      const roomRef = doc(db, "rooms", roomId);
+      await setDoc(roomRef, {
+        roomId: roomId || "unknown_id",
+        name: roomName.trim(),
+        movieId: "dang-chon-phim", // Default
+        hostId: user?.uid || "unknown_uid",
+        hostName: user?.displayName || user?.email || "Khách",
+        isPublic: isPublic,
+        password: isPublic ? null : password,
+        currentTime: 0,
+        isPlaying: false,
+        createdAt: serverTimestamp(),
+        viewerCount: 1
+      });
+      setShowPartyModal(false);
+      setIsCreating(false);
+      navigate({ type: "watch-room", roomId, slug: "dang-chon-phim" });
+    } catch (err) {
+      alert("Lỗi tạo phòng: " + err.message);
+      setIsCreating(false);
+    }
+  };
+
   const handleRoomClick = (room) => {
-    // Nếu là phòng Công khai HOẶC mình chính là Chủ phòng -> Vào luôn
-    if (room.isPublic || room.hostId === user.uid) {
+    if (room.isPublic || room.hostId === user?.uid) {
        navigate({ type: "watch-room", roomId: room.roomId, slug: room.movieId });
     } else {
-       // Phòng Riêng tư -> Mở Popup
        setSelectedPrivateRoom(room);
        setPasswordInput("");
        setPasswordError("");
     }
   };
 
-  // XỬ LÝ TÌM PHÒNG BẰNG ID HOẶC TÊN (Nút Enter ở thanh Search)
   const handleJoinById = async (e) => {
     e.preventDefault();
     if (!searchTerm.trim()) return;
     
     const cleanId = searchTerm.trim().toUpperCase();
-    
-    // Tìm trong danh sách hiện tại trước
     const foundRoom = rooms.find(r => r.roomId === cleanId);
+    
     if (foundRoom) {
        return handleRoomClick(foundRoom);
     }
 
-    // Nếu không thấy, thử query trực tiếp lên Firebase
     setIsJoining(true);
     try {
         const roomRef = doc(db, "rooms", cleanId);
@@ -95,7 +127,6 @@ export default function WatchPartyLobby({ navigate, user, onLogin }) {
     setIsJoining(false);
   };
 
-  // XỬ LÝ SUBMIT MẬT KHẨU
   const handlePasswordSubmit = (e) => {
      e.preventDefault();
      if (!selectedPrivateRoom) return;
@@ -107,17 +138,94 @@ export default function WatchPartyLobby({ navigate, user, onLogin }) {
      }
   };
 
-  // Lọc phòng theo ô tìm kiếm
   const filteredRooms = rooms.filter(r => 
-    r.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    r.roomId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    r.movieId.toLowerCase().includes(searchTerm.toLowerCase())
+    r.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    r.roomId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    r.movieId?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  if (!user) {
+    return (
+      <div className="pt-24 md:pt-32 pb-20 min-h-screen flex flex-col items-center justify-center text-white px-4 animate-in fade-in duration-500 bg-[#050505]">
+        <div className="w-24 h-24 bg-white/5 rounded-full flex items-center justify-center mb-6 shadow-[0_0_30px_rgba(229,9,20,0.2)]">
+           <Icon.Users size={48} className="text-[#E50914]" />
+        </div>
+        <h2 className="text-2xl md:text-4xl font-black mb-3 uppercase tracking-widest text-center text-white">Sảnh Xem Chung</h2>
+        <p className="text-gray-400 mb-8 text-center text-sm md:text-base uppercase tracking-widest">Đăng nhập để trải nghiệm cày phim cùng hội bạn</p>
+        <button 
+          onClick={onLogin} 
+          className="bg-[#E50914] px-8 py-3.5 rounded-full font-black flex items-center gap-3 hover:bg-red-700 transition transform-gpu hover:scale-105 active:scale-95 shadow-[0_10px_25px_rgba(229,9,20,0.4)] text-sm md:text-base uppercase tracking-widest"
+        >
+          <Icon.User size={20} /> Bắt đầu ngay
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="pt-24 md:pt-32 pb-20 max-w-[1400px] mx-auto px-4 md:px-12 text-white animate-in fade-in duration-500 min-h-screen relative">
       
-      {/* POPUP NHẬP MẬT KHẨU CHO PHÒNG PRIVATE */}
+      {/* POPUP TẠO PHÒNG */}
+      {showPartyModal && (
+        <div className="fixed inset-0 z-[500] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 shadow-2xl">
+          <form onSubmit={handleCreateRoom} className="bg-[#111] p-6 md:p-8 rounded-3xl w-full max-w-md border border-white/10 shadow-2xl animate-in zoom-in-95 duration-300 relative">
+            <button type="button" onClick={() => setShowPartyModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white bg-black/50 p-2 rounded-full transition">
+              <Icon.X size={20} />
+            </button>
+
+            <h2 className="text-xl md:text-2xl font-black mb-6 uppercase tracking-widest flex items-center gap-3 text-white">
+              <span className="w-1.5 h-6 bg-[#E50914] block"></span> TẠO PHÒNG XEM CHUNG
+            </h2>
+
+            <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold tracking-widest">Tên phòng</label>
+            <input
+              required
+              value={roomName}
+              onChange={(e) => setRoomName(e.target.value)}
+              placeholder="Nhập tên phòng..."
+              className="w-full bg-[#222] rounded-xl p-4 mb-5 outline-none border border-white/5 focus:border-[#E50914] text-white font-bold"
+            />
+
+            <div className="flex gap-6 mb-6">
+              <label className="flex items-center gap-2 text-white cursor-pointer font-bold text-sm">
+                <input type="radio" checked={isPublic} onChange={() => setIsPublic(true)} className="accent-[#E50914]" />
+                Công khai
+              </label>
+              <label className="flex items-center gap-2 text-white cursor-pointer font-bold text-sm">
+                <input type="radio" checked={!isPublic} onChange={() => {setIsPublic(false); setPassword("");}} className="accent-[#E50914]" />
+                Riêng tư
+              </label>
+            </div>
+
+            {!isPublic && (
+              <div className="animate-in slide-in-from-top-2 duration-300 mb-6">
+                <label className="block text-[10px] text-gray-400 mb-2 uppercase font-bold tracking-widest">
+                  Mật khẩu (Không dấu, không khoảng trắng)
+                </label>
+                <input
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(cleanPassword(e.target.value))}
+                  type="text"
+                  placeholder="Nhập mật khẩu..."
+                  className="w-full bg-[#222] rounded-xl p-4 outline-none border border-white/5 focus:border-[#E50914] text-white font-bold tracking-widest"
+                />
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 mt-8">
+              <button type="button" onClick={() => setShowPartyModal(false)} className="px-6 py-3 text-xs font-bold text-gray-400 hover:text-white transition uppercase tracking-widest bg-white/5 hover:bg-white/10 rounded-xl">
+                Hủy
+              </button>
+              <button type="submit" disabled={isCreating} className="px-8 py-3 bg-[#E50914] hover:bg-red-700 disabled:bg-gray-700 text-white rounded-xl font-black uppercase text-xs transition shadow-[0_4px_15px_rgba(229,9,20,0.4)]">
+                {isCreating ? "ĐANG TẠO..." : "TẠO PHÒNG"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* POPUP NHẬP MẬT KHẨU PHÒNG PRIVATE */}
       {selectedPrivateRoom && (
         <div className="fixed inset-0 z-[999] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-[#111] border border-white/10 p-6 md:p-8 rounded-3xl max-w-sm w-full shadow-[0_20px_60px_rgba(0,0,0,0.8)] animate-in zoom-in-95 duration-300 relative">
@@ -139,9 +247,12 @@ export default function WatchPartyLobby({ navigate, user, onLogin }) {
                  type="text" 
                  autoFocus
                  value={passwordInput}
-                 onChange={(e) => { setPasswordInput(e.target.value); setPasswordError(""); }}
+                 onChange={(e) => { 
+                   setPasswordInput(cleanPassword(e.target.value)); 
+                   setPasswordError(""); 
+                 }}
                  placeholder="Nhập mật khẩu..." 
-                 className={`w-full bg-[#0a0a0a] border ${passwordError ? 'border-red-500 focus:border-red-500 text-red-500' : 'border-white/10 focus:border-[#E50914] text-white'} rounded-xl px-4 py-3.5 text-sm text-center outline-none transition-colors mb-2 tracking-widest`}
+                 className={`w-full bg-[#0a0a0a] border ${passwordError ? 'border-red-500 focus:border-red-500 text-red-500' : 'border-white/10 focus:border-[#E50914] text-white'} rounded-xl px-4 py-3.5 text-sm text-center font-bold outline-none transition-colors mb-2 tracking-widest`}
                />
                {passwordError && <p className="text-red-500 text-[10px] font-bold text-center mb-4 uppercase tracking-widest animate-in slide-in-from-top-1">{passwordError}</p>}
                
@@ -162,18 +273,36 @@ export default function WatchPartyLobby({ navigate, user, onLogin }) {
           <p className="text-gray-400 text-xs md:text-sm uppercase tracking-widest font-bold">Tìm và tham gia cùng bạn bè</p>
         </div>
         
-        <form onSubmit={handleJoinById} className="w-full lg:w-[400px] relative">
-           <Icon.Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" size={18} />
-           <input 
-             value={searchTerm} 
-             onChange={(e) => setSearchTerm(e.target.value)}
-             placeholder="Tìm mã phòng, tên, phim..." 
-             className="w-full bg-black border border-white/10 rounded-2xl py-3.5 pl-12 pr-14 outline-none focus:border-[#E50914] transition text-sm text-white placeholder:text-gray-600"
-           />
-           <button type="submit" disabled={isJoining || !searchTerm.trim()} className="absolute right-2 top-1.5 bottom-1.5 px-3 bg-[#E50914] rounded-xl hover:bg-red-700 transition disabled:opacity-50 flex items-center justify-center">
-             {isJoining ? <Icon.Loader2 size={18} className="animate-spin" /> : <Icon.ArrowRight size={18} />}
-           </button>
-        </form>
+        <div className="flex items-center gap-4 w-full lg:w-auto">
+          <form onSubmit={handleJoinById} className="flex-1 lg:w-[350px] relative">
+             {/* FIX LỆCH ICON KÍNH LÚP: Dùng inset-y-0 flex items-center để giữa chuẩn 100% */}
+             <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
+               <Icon.Search className="text-gray-500" size={18} />
+             </div>
+             <input 
+               value={searchTerm} 
+               onChange={(e) => setSearchTerm(e.target.value)}
+               placeholder="Tìm mã phòng, tên..." 
+               className="w-full bg-black border border-white/10 rounded-2xl py-3.5 pl-11 pr-14 outline-none focus:border-[#E50914] transition text-sm text-white placeholder:text-gray-600 font-bold"
+             />
+             <button type="submit" disabled={isJoining || !searchTerm.trim()} className="absolute right-2 top-1.5 bottom-1.5 px-4 bg-[#E50914] rounded-xl hover:bg-red-700 transition disabled:opacity-50 flex items-center justify-center">
+               {isJoining ? <Icon.Loader2 size={18} className="animate-spin" /> : <Icon.ArrowRight size={18} />}
+             </button>
+          </form>
+          
+          <button 
+            onClick={() => setShowPartyModal(true)} 
+            className="hidden sm:flex bg-white/10 hover:bg-white/20 text-white px-6 py-3.5 rounded-2xl font-black uppercase tracking-widest text-xs items-center gap-2 transition whitespace-nowrap"
+          >
+            <Icon.Plus size={18} /> Tạo Phòng
+          </button>
+        </div>
+        <button 
+            onClick={() => setShowPartyModal(true)} 
+            className="sm:hidden w-full bg-white/10 hover:bg-white/20 text-white px-6 py-3.5 rounded-2xl font-black uppercase tracking-widest text-xs flex justify-center items-center gap-2 transition whitespace-nowrap mt-[-10px]"
+          >
+            <Icon.Plus size={18} /> Tạo Phòng Mới
+        </button>
       </div>
 
       {/* RENDER DANH SÁCH PHÒNG */}
@@ -185,9 +314,9 @@ export default function WatchPartyLobby({ navigate, user, onLogin }) {
               <Icon.Ghost size={40} className="text-gray-600" />
            </div>
            <h3 className="text-xl font-black text-white uppercase tracking-widest mb-2">Trống Trơn!</h3>
-           <p className="text-gray-400 text-sm uppercase tracking-widest mb-6">Không tìm thấy phòng nào đang mở.</p>
-           <button onClick={() => navigate({type: 'home'})} className="px-6 py-3 bg-white/5 hover:bg-[#E50914] text-white font-bold rounded-xl uppercase tracking-widest text-xs transition border border-white/10 hover:border-transparent">
-              Về Trang Chủ Chọn Phim
+           <p className="text-gray-400 text-sm uppercase tracking-widest mb-6 font-bold">Không tìm thấy phòng nào đang mở.</p>
+           <button onClick={() => setShowPartyModal(true)} className="px-8 py-3.5 bg-[#E50914] hover:bg-red-700 text-white font-black rounded-xl uppercase tracking-widest text-xs transition shadow-lg">
+              Tạo Phòng Ngay
            </button>
         </div>
       ) : (
@@ -198,7 +327,6 @@ export default function WatchPartyLobby({ navigate, user, onLogin }) {
               onClick={() => handleRoomClick(room)}
               className="bg-[#111] border border-white/5 hover:border-[#E50914]/50 rounded-2xl p-5 md:p-6 cursor-pointer transition-all duration-300 hover:shadow-[0_10px_30px_rgba(229,9,20,0.15)] hover:-translate-y-1 group relative flex flex-col h-full overflow-hidden"
             >
-              {/* Hiệu ứng ánh sáng góc chéo */}
               <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
 
               <div className="relative z-10 flex flex-col h-full">
@@ -218,7 +346,6 @@ export default function WatchPartyLobby({ navigate, user, onLogin }) {
                   )}
                 </div>
 
-                {/* THÔNG TIN CHÍNH */}
                 <h3 className="text-lg md:text-xl font-black mb-3 truncate group-hover:text-[#E50914] transition-colors tracking-tighter uppercase">{room.name}</h3>
                 
                 <div className="space-y-2 mb-6">
@@ -228,11 +355,10 @@ export default function WatchPartyLobby({ navigate, user, onLogin }) {
                    </div>
                    <div className="flex items-center gap-2.5 text-xs text-gray-400 p-1 px-2">
                       <Icon.Film size={14} className="text-[#E50914] shrink-0" />
-                      <span className="truncate uppercase tracking-widest">{String(room.movieId).replace(/-/g, ' ')}</span>
+                      <span className="truncate uppercase tracking-widest font-bold">{String(room.movieId).replace(/-/g, ' ')}</span>
                    </div>
                 </div>
                 
-                {/* FOOTER CARD */}
                 <div className="mt-auto pt-4 border-t border-white/5 flex justify-between items-center">
                   <div className="flex items-center gap-2 text-gray-400 text-xs font-bold bg-black px-2 py-1 rounded-md border border-white/5">
                     <Icon.Users size={12} className="text-gray-500" /> {room.viewerCount}

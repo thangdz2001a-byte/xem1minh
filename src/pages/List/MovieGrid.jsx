@@ -1,35 +1,90 @@
-import React, { useEffect, useRef } from "react";
+import React, { useRef, useEffect } from "react";
 import * as Icon from "lucide-react";
-import { safeText } from "../../utils/helpers";
 import MovieCard from "../../components/common/MovieCard";
 
-export default function MovieGrid({ movies, navigate, loading, title, onLoadMore, hasMore, loadingMore }) {
-  const observer = useRef();
-  const lastElementRef = useRef();
+export default function MovieGrid({
+  title,
+  movies,
+  loading,
+  navigate,
+  onLoadMore,
+  hasMore,
+  loadingMore,
+  onRemove
+}) {
+  // TẠO CẢM BIẾN CUỘN VÔ HẠN (Infinite Scroll Observer)
+  const observerTarget = useRef(null);
 
   useEffect(() => {
-    if (loading || loadingMore || !hasMore) return;
-    if (observer.current) observer.current.disconnect();
-    
-    observer.current = new IntersectionObserver((entries) => { 
-        if (entries[0].isIntersecting) onLoadMore(); 
-    }, {
-        rootMargin: '2000px' 
-    });
-    
-    if (lastElementRef.current) observer.current.observe(lastElementRef.current);
-  }, [loading, loadingMore, hasMore, onLoadMore]);
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Nếu chạm đến cái target ẩn ở dưới cùng, và còn phim, và đang không tải
+        if (entries[0].isIntersecting && hasMore && !loadingMore) {
+          if (onLoadMore) onLoadMore();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (observerTarget.current) {
+      observer.observe(observerTarget.current);
+    }
+
+    return () => {
+      if (observerTarget.current) {
+        observer.unobserve(observerTarget.current);
+      }
+    };
+  }, [hasMore, loadingMore, onLoadMore]);
 
   return (
-    <div className="max-w-[1400px] mx-auto px-4 md:px-12 pt-20 md:pt-32 pb-10 min-h-screen transform-gpu">
-      <h2 className="text-xl md:text-[28px] font-black text-white mb-8 uppercase tracking-tighter flex items-center gap-3">
-        <span className="w-[4px] h-6 md:h-9 bg-[#E50914] block" /> {safeText(title)}
-      </h2>
-      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-4 sm:gap-6">
-        {movies.map((m, idx) => <MovieCard key={`${m.slug || idx}-${idx}`} m={m} navigate={navigate} />)}
+    <div className="pt-20 md:pt-28 pb-10 w-full max-w-[1440px] mx-auto px-4 md:px-12 animate-in fade-in duration-500 min-h-screen">
+      <div className="flex items-center gap-3 mb-6 md:mb-8">
+        <div className="w-1.5 h-8 bg-[#E50914] rounded-full"></div>
+        <h1 className="text-2xl md:text-3xl font-black text-white uppercase tracking-wider">
+          {title}
+        </h1>
       </div>
-      {(loading || loadingMore) && <div className="py-12 flex justify-center"><Icon.Loader2 className="animate-spin text-[#E50914]" size={36} /></div>}
-      <div ref={lastElementRef} className="h-20" />
+
+      {loading && movies.length === 0 ? (
+        <div className="flex justify-center items-center py-20">
+          <Icon.Loader2 className="animate-spin text-[#E50914]" size={40} />
+        </div>
+      ) : movies.length === 0 ? (
+        <div className="flex flex-col justify-center items-center py-20 text-gray-500">
+          <Icon.Film size={64} className="mb-4 opacity-20" />
+          <p className="text-lg font-bold uppercase tracking-widest">
+            Chưa có phim nào
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4 lg:gap-5">
+            {movies.map((m, idx) => (
+              <MovieCard
+                key={`${m.slug}-${idx}`}
+                m={m}
+                navigate={navigate}
+                onRemove={onRemove}
+              />
+            ))}
+          </div>
+
+          {/* CỤC THEO DÕI CUỘN VÔ HẠN (ẨN ĐI VÀ TỰ ĐỘNG TRIGGER) */}
+          {hasMore && (
+            <div ref={observerTarget} className="mt-10 flex justify-center py-10">
+              {loadingMore ? (
+                <div className="flex items-center gap-3 text-[#E50914] font-bold uppercase tracking-widest text-sm">
+                  <Icon.Loader2 className="animate-spin" size={24} />
+                  Đang tải thêm phim...
+                </div>
+              ) : (
+                <div className="h-10 w-full"></div> /* Khoảng trống đệm để hứng Scroll */
+              )}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

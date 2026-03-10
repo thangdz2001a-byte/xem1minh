@@ -155,10 +155,12 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
   const vRef = useRef(null);
   const containerRef = useRef(null);
   const messagesEndRef = useRef(null);
+  
+  // Các biến tracking logic
   const isHostRef = useRef(false);
   const safeToDeleteRef = useRef(false);
-  const isChangingMovieRef = useRef(false); 
   const hasAutoOpenedModal = useRef(false);
+  const currentSlugRef = useRef(slug);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [volume, setVolume] = useState(1);
@@ -166,7 +168,10 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
   const [showViewerControls, setShowViewerControls] = useState(false);
   const hideControlsTimeoutRef = useRef(null);
 
-  // FETCH PHIM CHÍNH
+  // ĐỒNG BỘ SLUG VÀO REF ĐỂ DÙNG TRONG CLEANUP
+  useEffect(() => { currentSlugRef.current = slug; }, [slug]);
+
+  // 1. FETCH PHIM CHÍNH
   useEffect(() => {
     let isMounted = true;
 
@@ -211,7 +216,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
             }
             setLoadingPage(false);
             setLoadingPlayer(false);
-            isChangingMovieRef.current = false; 
         } catch (e) {
             if (isMounted) navigate({ type: 'watch-party-lobby' });
         }
@@ -232,7 +236,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
      }
   }, [roomData?.epIndex, movieData]);
 
-  // LOAD HLS
+  // 2. LOAD HLS CHO VIDEO (THẺ VIDEO LUÔN TỒN TẠI)
   useEffect(() => {
     if (!ep?.link_m3u8 || !vRef.current) return;
     const v = vRef.current;
@@ -254,72 +258,74 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
     return () => { if (hlsInstance) hlsInstance.destroy(); };
   }, [ep, loadingPlayer]);
 
-  // THUẬT TOÁN ĐỒNG BỘ MỚI NÂNG CẤP (TỰ ĐỘNG BÙ TRỪ VÀ ÉP TỐC ĐỘ ĐỂ BẮT KỊP HOST)
+  // 3. THUẬT TOÁN ĐỒNG BỘ "SOFT SYNC" ĐỈNH CAO CHO VIEWER
   useEffect(() => {
     const video = vRef.current;
     const isViewer = roomData && roomData.hostId !== user?.uid;
     
+    // Host không cần chạy Sync, Viewer xem phòng chờ cũng không cần Sync
     if (!video || !isViewer || slug === "dang-chon-phim" || roomData.movieId !== slug) return;
 
     const syncVideo = () => {
+        if (video.readyState < 1) return; // Đợi video load xong metadata mới tua
+
         let targetTime = roomData.currentTime || 0;
         
+        // Tính toán độ trễ cực chuẩn: Thời gian trôi qua từ lúc Host bấm nút + 1.5s bù trừ mạng
         if (roomData.isPlaying && roomData.updatedAt) {
-            // Khoảng thời gian đã trôi qua từ lúc host cập nhật
             const elapsedSeconds = (Date.now() - roomData.updatedAt) / 1000;
-            // Cộng thêm thời gian trôi qua và BÙ TRỪ 1.5 GIÂY (thời gian HLS buffer)
-            targetTime = targetTime + elapsedSeconds + 1.5;
+            targetTime = targetTime + elapsedSeconds + 1.5; 
         }
 
         const diff = targetTime - video.currentTime;
 
-        // Nếu lệch quá xa (> 3 giây), thì nhảy cóc (Hard Sync)
+        // Nhảy cóc nếu lệch quá xa (> 3 giây)
         if (Math.abs(diff) > 3) {
             video.currentTime = targetTime;
         } 
-        // Nếu bị chậm hơn Host (0.5s đến 3s) -> Cho video chạy nhanh lên 1.15x để đuổi theo
+        // Chạy nhanh 1.15x để đuổi theo Host nếu chậm (0.5 -> 3s)
         else if (diff > 0.5) {
             video.playbackRate = 1.15;
         } 
-        // Nếu bị chạy nhanh hơn Host -> Cho video chạy chậm lại 0.9x để chờ Host
+        // Chạy chậm lại 0.9x để đợi Host nếu nhanh hơn
         else if (diff < -0.5) {
             video.playbackRate = 0.9;
         } 
-        // Lệch rất ít (hoàn hảo) -> Trả về tốc độ chuẩn 1.0x
+        // Tốc độ bình thường
         else {
             video.playbackRate = 1.0;
         }
 
+        // Khớp trạng thái Play/Pause
         if (roomData.isPlaying && video.paused) {
-            video.play().catch(e => console.log("Lỗi tự động Play (Trình duyệt chặn):", e));
+            video.play().catch(e => console.log("Lỗi Play:", e));
         } else if (!roomData.isPlaying && !video.paused) {
             video.pause();
         }
     };
 
-    // Khi video vừa load xong, đồng bộ luôn
-    if (video.readyState >= 1) syncVideo();
-
+    // Bắt sự kiện khi video vừa tải xong lần đầu là ép Sync ngay lập tức
     video.addEventListener("canplay", syncVideo);
     video.addEventListener("loadedmetadata", syncVideo);
 
-    // VÒNG LẶP CHÉO: Check mỗi 2 giây để Viewer tự động chạy theo Host mà không cần đợi Host ấn gì
-    const interval = setInterval(() => {
+    // Vòng lặp ngầm: Mỗi 2 giây kiểm tra xem có bị trễ mạng không để tự đuổi theo
+    const syncInterval = setInterval(() => {
         if (video.readyState >= 1) syncVideo();
     }, 2000);
 
     return () => {
         video.removeEventListener("canplay", syncVideo);
         video.removeEventListener("loadedmetadata", syncVideo);
-        clearInterval(interval);
-        if (video) video.playbackRate = 1.0; // Reset tốc độ khi out
+        clearInterval(syncInterval);
+        if (video) video.playbackRate = 1.0; // Reset tốc độ khi thoat
     };
   }, [roomData, slug, user?.uid]);
 
-  // REALTIME ROOM LOGIC
+  // 4. REALTIME FIREBASE + AUTO CLEANUP (BẢN SỬA LỖI HOST THOÁT)
   useEffect(() => {
     if (!roomId || !user) return;
     
+    // Tải Avatar
     let currentCustomAvatar = null;
     getDoc(doc(db, "users", user.uid)).then(snap => {
         if(snap.exists() && snap.data().avatar) {
@@ -341,13 +347,14 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         setRoomData(data);
         isHostRef.current = data.hostId === user.uid; 
 
-        if (slug === "dang-chon-phim" && data.hostId === user.uid && !hasAutoOpenedModal.current) {
+        // CHỈ MỞ AUTO MODAL 1 LẦN DUY NHẤT LÚC MỚI TẠO PHÒNG
+        if (currentSlugRef.current === "dang-chon-phim" && data.hostId === user.uid && !hasAutoOpenedModal.current) {
            setShowMovieModal(true);
            hasAutoOpenedModal.current = true;
         }
 
-        if (data.movieId && data.movieId !== slug && !isChangingMovieRef.current) {
-            isChangingMovieRef.current = true;
+        // Host đổi phim => Tự động Navigate cả phòng
+        if (data.movieId && data.movieId !== currentSlugRef.current) {
             navigate({ type: 'watch-room', roomId, slug: data.movieId });
         }
       } else {
@@ -367,24 +374,23 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
        setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
+    // Hàm Dọn rác CHUẨN: Xóa phòng khi tab bị đóng hoặc chuyển đi chỗ khác
     const handleCleanup = () => {
-       if (isChangingMovieRef.current) return;
-       if (isHostRef.current) {
-           deleteDoc(roomRef).catch(()=>{}); 
-       } else {
-           deleteDoc(userRef).catch(()=>{}); 
+       if (safeToDeleteRef.current) {
+           if (isHostRef.current) deleteDoc(roomRef).catch(()=>{}); 
+           else deleteDoc(userRef).catch(()=>{}); 
        }
     };
-    
     window.addEventListener("beforeunload", handleCleanup);
 
+    // CHÚ Ý: useEffect này CHỈ chạy 1 lần khi vào phòng, không bị kích hoạt lại khi slug thay đổi!
     return () => {
       clearTimeout(strictModeTimer);
       unsubRoom(); unsubUsers(); unsubMessages();
       window.removeEventListener("beforeunload", handleCleanup);
       handleCleanup(); 
     };
-  }, [roomId, user, slug, navigate]);
+  }, [roomId, user]); // <--- RẤT QUAN TRỌNG: Bỏ slug ra khỏi dependency array
 
   useEffect(() => {
     if (roomClosed) {
@@ -513,10 +519,8 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
     const origin = m.origin_name || m.original_name || m.year || "Phim Mới";
 
     if (isHostRef.current) {
-        isChangingMovieRef.current = true;
         await updateDoc(doc(db, "rooms", roomId), { movieId: m.slug, currentTime: 0, isPlaying: false, epIndex: 0, updatedAt: Date.now() });
         await addDoc(collection(db, `rooms/${roomId}/messages`), { isSystem: true, text: `Chủ phòng đã đổi phim thành: ${m.name}`, createdAt: serverTimestamp() });
-        navigate({ type: 'watch-room', roomId, slug: m.slug });
     } else {
         await addDoc(collection(db, `rooms/${roomId}/messages`), {
            uid: user.uid, name: defaultName, avatar: defaultAvatar, customAvatarId: myAvatarId,
@@ -531,13 +535,11 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
 
   const executeHostChangeMovie = async () => {
      if (!hostConfirmRequest) return;
-     isChangingMovieRef.current = true;
      const { slug: newSlug, name: newName } = hostConfirmRequest;
      setHostConfirmRequest(null);
      
      await updateDoc(doc(db, "rooms", roomId), { movieId: newSlug, currentTime: 0, isPlaying: false, epIndex: 0, updatedAt: Date.now() });
      await addDoc(collection(db, `rooms/${roomId}/messages`), { isSystem: true, text: `Chủ phòng đã đồng ý đổi sang phim: ${newName}`, createdAt: serverTimestamp() });
-     navigate({ type: 'watch-room', roomId, slug: newSlug });
   };
 
   const handleSelectEpisode = async (index, epItem) => {
@@ -573,10 +575,9 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
   const epChunks = [];
   for (let i = 0; i < epList.length; i += chunkSize) epChunks.push(epList.slice(i, i + chunkSize));
 
-  if (loadingPage) return <div className="h-screen w-screen flex justify-center items-center bg-[#050505] overflow-hidden"><Icon.Loader2 className="animate-spin text-[#E50914]" size={40}/></div>;
-
   const isHost = roomData?.hostId === user?.uid;
 
+  // LƯU CẢ UPDATED_AT ĐỂ TÍNH TOÁN BÙ TRỪ MẠNG CHO VIEWER
   const handleHostPlay = () => { if (isHost && vRef.current) updateDoc(doc(db, "rooms", roomId), { isPlaying: true, currentTime: vRef.current.currentTime, updatedAt: Date.now() }).catch(()=>{}); };
   const handleHostPause = () => { if (isHost && vRef.current) updateDoc(doc(db, "rooms", roomId), { isPlaying: false, currentTime: vRef.current.currentTime, updatedAt: Date.now() }).catch(()=>{}); };
   const handleHostSeek = () => { if (isHost && vRef.current) updateDoc(doc(db, "rooms", roomId), { currentTime: vRef.current.currentTime, updatedAt: Date.now() }).catch(()=>{}); };
@@ -759,7 +760,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 md:gap-4 flex-1 min-h-0">
         
         {/* KHUNG VIDEO BÊN TRÁI */}
-        <div className="lg:col-span-3 flex flex-col gap-3 min-h-0 h-full">
+        <div className="lg:col-span-3 flex flex-col gap-3 min-h-0 h-full relative">
           <div className="shrink-0 flex flex-wrap items-center justify-between bg-[#111] p-3 md:px-4 rounded-xl border border-white/5 gap-3 shadow-lg">
             <div className="flex items-center gap-3">
               <h1 className="text-base md:text-lg font-black text-white uppercase tracking-tighter truncate max-w-[150px] sm:max-w-xs">{roomData?.name || "Đang tải..."}</h1>
@@ -780,61 +781,67 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
             </div>
           </div>
 
-          {slug === "dang-chon-phim" ? (
-             <div className="relative w-full flex-1 bg-[#111] shadow-2xl overflow-hidden flex flex-col justify-center items-center border border-white/5 rounded-2xl">
-                 <Icon.Film size={56} className="text-gray-600 mb-4 animate-pulse" />
-                 <p className="text-gray-400 font-bold uppercase tracking-widest text-sm md:text-base text-center px-4">
-                    {isHost ? "Phòng đã sẵn sàng. Vui lòng chọn phim!" : "Đang chờ chủ phòng chọn phim..."}
-                 </p>
-                 {isHost && (
-                    <button onClick={() => setShowMovieModal(true)} className="mt-6 bg-[#E50914] px-8 py-3 rounded-xl font-black text-white uppercase text-xs tracking-widest shadow-lg hover:bg-red-700 transition-colors">
-                       Chọn Phim Ngay
-                    </button>
-                 )}
-             </div>
-          ) : (
-             <div ref={containerRef} onMouseMove={!isHost ? handleViewerMouseMove : undefined} onMouseLeave={() => !isHost && setShowViewerControls(false)} className="flex-1 min-h-0 w-full bg-black rounded-xl overflow-hidden border border-white/5 relative group flex items-center justify-center shadow-2xl">
-                
-                <video 
-                   ref={vRef} 
-                   className={`w-full h-full object-contain bg-black ${loadingPlayer ? 'opacity-0 absolute' : 'opacity-100'}`} 
-                   onPlay={handleHostPlay} 
-                   onPause={handleHostPause} 
-                   onSeeked={handleHostSeek} 
-                   controls={isHost} 
-                   style={{ pointerEvents: isHost ? 'auto' : 'none' }} 
-                   playsInline 
-                />
-                
-                {loadingPlayer && (
-                   <Icon.Loader2 className="animate-spin text-[#E50914] absolute z-50" size={40} />
-                )}
-                
-                {!isHost && !loadingPlayer && (
-                  <>
-                    <div className="absolute inset-0 z-30 pointer-events-auto cursor-pointer" onDoubleClick={toggleFullscreen} />
-                    <div className={`absolute inset-0 z-40 flex flex-col justify-between pointer-events-none transition-opacity duration-300 ${showViewerControls ? 'opacity-100' : 'opacity-0'}`}>
-                       <div className="p-4 flex justify-between items-start">
-                          <div className="bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg text-[10px] font-bold text-white tracking-widest uppercase border border-white/10 flex items-center gap-2 shadow-lg">
-                             <Icon.Radio size={12} className="text-[#E50914] animate-pulse" /> Xem cùng Host
-                          </div>
-                       </div>
-                       <div className="p-4 flex justify-between items-center bg-gradient-to-t from-black/90 to-transparent pointer-events-auto">
-                          <div className="flex items-center gap-3 group/vol">
-                            <button onClick={() => { const newMuted = !isMuted; setIsMuted(newMuted); if (vRef.current) vRef.current.muted = newMuted; }} className="text-white hover:text-[#E50914] transition focus:outline-none">
-                               {isMuted || volume === 0 ? <Icon.VolumeX size={20}/> : <Icon.Volume2 size={20}/>}
-                            </button>
-                            <input type="range" min="0" max="1" step="0.05" value={isMuted ? 0 : volume} onChange={(e) => { const val = parseFloat(e.target.value); setVolume(val); setIsMuted(val === 0); if (vRef.current) { vRef.current.volume = val; vRef.current.muted = val === 0; } }} className="w-0 overflow-hidden group-hover/vol:w-20 transition-all duration-300 accent-[#E50914] h-1.5 bg-white/20 rounded-full cursor-pointer opacity-0 group-hover/vol:opacity-100"/>
-                          </div>
-                          <button onClick={toggleFullscreen} className="text-white hover:text-[#E50914] transition focus:outline-none">
-                             {isFullscreen ? <Icon.Minimize size={20}/> : <Icon.Maximize size={20}/>}
-                          </button>
+          <div ref={containerRef} className="flex-1 min-h-0 w-full bg-black rounded-xl overflow-hidden border border-white/5 relative group flex items-center justify-center shadow-2xl" onMouseMove={!isHost ? handleViewerMouseMove : undefined} onMouseLeave={() => !isHost && setShowViewerControls(false)}>
+             
+             {/* LUÔN RENDER THẺ VIDEO ĐỂ HLS BẮT ĐƯỢC LINK, CẢ KHI DANG-CHON-PHIM HAY LOADING */}
+             <video 
+                ref={vRef} 
+                className={`w-full h-full object-contain bg-black transition-opacity duration-500 ${(loadingPlayer || slug === "dang-chon-phim") ? 'opacity-0 pointer-events-none absolute' : 'opacity-100'}`} 
+                onPlay={handleHostPlay} 
+                onPause={handleHostPause} 
+                onSeeked={handleHostSeek} 
+                controls={isHost && slug !== "dang-chon-phim"} 
+                style={{ pointerEvents: isHost ? 'auto' : 'none' }} 
+                playsInline 
+             />
+
+             {/* LOADING SPINNER KHI ĐANG TẢI PHIM */}
+             {loadingPlayer && slug !== "dang-chon-phim" && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm z-40">
+                   <Icon.Loader2 className="animate-spin text-[#E50914]" size={48} />
+                </div>
+             )}
+
+             {/* MÀN HÌNH CHỜ CHỦ PHÒNG CHỌN PHIM */}
+             {slug === "dang-chon-phim" && (
+                 <div className="absolute inset-0 z-50 bg-[#111] flex flex-col justify-center items-center">
+                     <Icon.Film size={64} className="text-gray-600 mb-4 animate-pulse" />
+                     <p className="text-gray-400 font-bold uppercase tracking-widest text-sm md:text-base text-center px-4">
+                        {isHost ? "Phòng đã sẵn sàng. Vui lòng chọn phim!" : "Đang chờ chủ phòng chọn phim..."}
+                     </p>
+                     {isHost && (
+                        <button onClick={() => setShowMovieModal(true)} className="mt-6 bg-[#E50914] px-8 py-3.5 rounded-xl font-black text-white uppercase text-xs tracking-widest shadow-lg hover:bg-red-700 transition-colors">
+                           Chọn Phim Ngay
+                        </button>
+                     )}
+                 </div>
+             )}
+             
+             {/* VIEWER CONTROLS */}
+             {!isHost && !loadingPlayer && slug !== "dang-chon-phim" && (
+               <>
+                 <div className="absolute inset-0 z-30 pointer-events-auto cursor-pointer" onDoubleClick={toggleFullscreen} />
+                 <div className={`absolute inset-0 z-40 flex flex-col justify-between pointer-events-none transition-opacity duration-300 ${showViewerControls ? 'opacity-100' : 'opacity-0'}`}>
+                    <div className="p-4 flex justify-between items-start">
+                       <div className="bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg text-[10px] font-bold text-white tracking-widest uppercase border border-white/10 flex items-center gap-2 shadow-lg">
+                          <Icon.Radio size={12} className="text-[#E50914] animate-pulse" /> Xem cùng Host
                        </div>
                     </div>
-                  </>
-                )}
-             </div>
-          )}
+                    <div className="p-4 flex justify-between items-center bg-gradient-to-t from-black/90 to-transparent pointer-events-auto">
+                       <div className="flex items-center gap-3 group/vol">
+                         <button onClick={() => { const newMuted = !isMuted; setIsMuted(newMuted); if (vRef.current) vRef.current.muted = newMuted; }} className="text-white hover:text-[#E50914] transition focus:outline-none">
+                            {isMuted || volume === 0 ? <Icon.VolumeX size={20}/> : <Icon.Volume2 size={20}/>}
+                         </button>
+                         <input type="range" min="0" max="1" step="0.05" value={isMuted ? 0 : volume} onChange={(e) => { const val = parseFloat(e.target.value); setVolume(val); setIsMuted(val === 0); if (vRef.current) { vRef.current.volume = val; vRef.current.muted = val === 0; } }} className="w-0 overflow-hidden group-hover/vol:w-20 transition-all duration-300 accent-[#E50914] h-1.5 bg-white/20 rounded-full cursor-pointer opacity-0 group-hover/vol:opacity-100"/>
+                       </div>
+                       <button onClick={toggleFullscreen} className="text-white hover:text-[#E50914] transition focus:outline-none">
+                          {isFullscreen ? <Icon.Minimize size={20}/> : <Icon.Maximize size={20}/>}
+                       </button>
+                    </div>
+                 </div>
+               </>
+             )}
+          </div>
 
           <div className="shrink-0 bg-[#111] p-3 md:px-4 rounded-xl border border-white/5 flex items-center justify-between shadow-lg">
              <div className="min-w-0 pr-4">
@@ -889,11 +896,11 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                           <div key={msg.id} className="flex gap-2.5 animate-in slide-in-from-bottom-2 duration-300 mb-2">
                              {renderAvatar(msg.customAvatarId, msg.avatar, "w-8 h-8 md:w-10 md:h-10")}
                              <div className="flex flex-col w-full max-w-[85%] items-start">
-                               <div className="flex items-center gap-1.5 mb-1.5 px-1 flex-wrap">
+                               <div className="flex items-baseline gap-1.5 mb-1.5 px-1 flex-wrap">
                                  <span className="text-[10px] md:text-xs text-gray-300 font-black uppercase tracking-wider">{msg.name}</span>
                                  <span className="text-[10px] md:text-[11px] text-gray-500 font-medium italic">{msg.text}</span>
                                </div>
-                               <div className="p-3 bg-[#161616] border border-white/10 rounded-2xl rounded-tl-sm shadow-lg w-full max-w-sm">
+                               <div className="p-3 bg-[#161616] border border-white/10 rounded-2xl rounded-tl-sm shadow-lg w-full">
                                   <div className="flex gap-3 md:gap-4 mb-3 bg-black/40 p-2 md:p-3 rounded-xl border border-white/5">
                                     <img src={msg.requestMoviePoster} alt="Poster" className="w-16 h-24 md:w-24 md:h-36 rounded-lg object-cover border border-white/10 shadow-md shrink-0" />
                                     <div className="flex flex-col justify-center flex-1 min-w-0">

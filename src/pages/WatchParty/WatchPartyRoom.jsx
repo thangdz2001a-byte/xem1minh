@@ -254,7 +254,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
     return () => { if (hlsInstance) hlsInstance.destroy(); };
   }, [ep, loadingPlayer]);
 
-  // THUẬT TOÁN ĐỒNG BỘ CHO VIEWER - TÍNH TOÁN BÙ TRỪ ĐỘ TRỄ MỚI CHUẨN
+  // THUẬT TOÁN ĐỒNG BỘ MỚI NÂNG CẤP (TỰ ĐỘNG BÙ TRỪ VÀ ÉP TỐC ĐỘ ĐỂ BẮT KỊP HOST)
   useEffect(() => {
     const video = vRef.current;
     const isViewer = roomData && roomData.hostId !== user?.uid;
@@ -265,12 +265,29 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         let targetTime = roomData.currentTime || 0;
         
         if (roomData.isPlaying && roomData.updatedAt) {
+            // Khoảng thời gian đã trôi qua từ lúc host cập nhật
             const elapsedSeconds = (Date.now() - roomData.updatedAt) / 1000;
-            targetTime += elapsedSeconds;
+            // Cộng thêm thời gian trôi qua và BÙ TRỪ 1.5 GIÂY (thời gian HLS buffer)
+            targetTime = targetTime + elapsedSeconds + 1.5;
         }
 
-        if (Math.abs(video.currentTime - targetTime) > 2) {
+        const diff = targetTime - video.currentTime;
+
+        // Nếu lệch quá xa (> 3 giây), thì nhảy cóc (Hard Sync)
+        if (Math.abs(diff) > 3) {
             video.currentTime = targetTime;
+        } 
+        // Nếu bị chậm hơn Host (0.5s đến 3s) -> Cho video chạy nhanh lên 1.15x để đuổi theo
+        else if (diff > 0.5) {
+            video.playbackRate = 1.15;
+        } 
+        // Nếu bị chạy nhanh hơn Host -> Cho video chạy chậm lại 0.9x để chờ Host
+        else if (diff < -0.5) {
+            video.playbackRate = 0.9;
+        } 
+        // Lệch rất ít (hoàn hảo) -> Trả về tốc độ chuẩn 1.0x
+        else {
+            video.playbackRate = 1.0;
         }
 
         if (roomData.isPlaying && video.paused) {
@@ -280,16 +297,22 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         }
     };
 
-    if (video.readyState >= 1) { 
-        syncVideo();
-    }
+    // Khi video vừa load xong, đồng bộ luôn
+    if (video.readyState >= 1) syncVideo();
 
     video.addEventListener("canplay", syncVideo);
     video.addEventListener("loadedmetadata", syncVideo);
 
+    // VÒNG LẶP CHÉO: Check mỗi 2 giây để Viewer tự động chạy theo Host mà không cần đợi Host ấn gì
+    const interval = setInterval(() => {
+        if (video.readyState >= 1) syncVideo();
+    }, 2000);
+
     return () => {
         video.removeEventListener("canplay", syncVideo);
         video.removeEventListener("loadedmetadata", syncVideo);
+        clearInterval(interval);
+        if (video) video.playbackRate = 1.0; // Reset tốc độ khi out
     };
   }, [roomData, slug, user?.uid]);
 
@@ -636,7 +659,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                   <div className="absolute left-4 top-0 bottom-0 flex items-center pointer-events-none"><Icon.Search className="text-gray-500" size={16} /></div>
                   <input
                      type="text" value={modalSearchTerm} onChange={(e) => setModalSearchTerm(e.target.value)} placeholder="Tìm theo tên phim..."
-                     // ĐÃ SỬA: Đổi text-sm thành text-base md:text-sm chống zoom trên iOS
                      className="w-full bg-black border border-white/10 rounded-xl py-3 pl-11 pr-4 text-base md:text-sm text-white focus:outline-none focus:border-[#E50914] transition-colors placeholder:text-gray-600 font-bold tracking-wider"
                   />
                   <button type="submit" className="hidden">Tìm</button>
@@ -867,12 +889,11 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                           <div key={msg.id} className="flex gap-2.5 animate-in slide-in-from-bottom-2 duration-300 mb-2">
                              {renderAvatar(msg.customAvatarId, msg.avatar, "w-8 h-8 md:w-10 md:h-10")}
                              <div className="flex flex-col w-full max-w-[85%] items-start">
-                               <div className="flex items-baseline gap-1.5 mb-1.5 px-1 flex-wrap">
+                               <div className="flex items-center gap-1.5 mb-1.5 px-1 flex-wrap">
                                  <span className="text-[10px] md:text-xs text-gray-300 font-black uppercase tracking-wider">{msg.name}</span>
                                  <span className="text-[10px] md:text-[11px] text-gray-500 font-medium italic">{msg.text}</span>
                                </div>
-                               
-                               <div className="p-3 bg-[#161616] border border-white/10 rounded-2xl rounded-tl-sm shadow-lg w-full">
+                               <div className="p-3 bg-[#161616] border border-white/10 rounded-2xl rounded-tl-sm shadow-lg w-full max-w-sm">
                                   <div className="flex gap-3 md:gap-4 mb-3 bg-black/40 p-2 md:p-3 rounded-xl border border-white/5">
                                     <img src={msg.requestMoviePoster} alt="Poster" className="w-16 h-24 md:w-24 md:h-36 rounded-lg object-cover border border-white/10 shadow-md shrink-0" />
                                     <div className="flex flex-col justify-center flex-1 min-w-0">
@@ -937,7 +958,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
               </div>
 
               <form onSubmit={handleSendMessage} className="shrink-0 p-3 bg-black/60 border-t border-white/5 flex gap-2">
-                {/* ĐÃ SỬA LỖI ZOOM MÀN HÌNH IOS: Sửa text-xs thành text-base md:text-sm */}
                 <input type="text" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Nhập tin nhắn..." className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base md:text-sm text-white focus:outline-none focus:border-[#E50914] focus:bg-[#111] transition-all placeholder:text-gray-500 font-bold"/>
                 <button type="submit" disabled={!newMessage.trim()} className="bg-[#E50914] text-white px-5 rounded-xl hover:bg-red-700 disabled:opacity-50 transition transform-gpu active:scale-95 flex items-center justify-center shadow-lg">
                   <Icon.Send size={18} className="-ml-0.5" />

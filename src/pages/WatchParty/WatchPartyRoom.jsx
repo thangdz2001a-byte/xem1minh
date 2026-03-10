@@ -155,10 +155,9 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
   const vRef = useRef(null);
   const containerRef = useRef(null);
   const messagesEndRef = useRef(null);
-  
-  // Các biến tracking logic
   const isHostRef = useRef(false);
   const safeToDeleteRef = useRef(false);
+  const isChangingMovieRef = useRef(false); 
   const hasAutoOpenedModal = useRef(false);
   const currentSlugRef = useRef(slug);
 
@@ -168,10 +167,9 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
   const [showViewerControls, setShowViewerControls] = useState(false);
   const hideControlsTimeoutRef = useRef(null);
 
-  // ĐỒNG BỘ SLUG VÀO REF ĐỂ DÙNG TRONG CLEANUP
   useEffect(() => { currentSlugRef.current = slug; }, [slug]);
 
-  // 1. FETCH PHIM CHÍNH
+  // FETCH PHIM CHÍNH
   useEffect(() => {
     let isMounted = true;
 
@@ -216,6 +214,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
             }
             setLoadingPage(false);
             setLoadingPlayer(false);
+            isChangingMovieRef.current = false; 
         } catch (e) {
             if (isMounted) navigate({ type: 'watch-party-lobby' });
         }
@@ -236,7 +235,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
      }
   }, [roomData?.epIndex, movieData]);
 
-  // 2. LOAD HLS CHO VIDEO (THẺ VIDEO LUÔN TỒN TẠI)
+  // LOAD HLS
   useEffect(() => {
     if (!ep?.link_m3u8 || !vRef.current) return;
     const v = vRef.current;
@@ -258,45 +257,44 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
     return () => { if (hlsInstance) hlsInstance.destroy(); };
   }, [ep, loadingPlayer]);
 
-  // 3. THUẬT TOÁN ĐỒNG BỘ "SOFT SYNC" ĐỈNH CAO CHO VIEWER
+  // THUẬT TOÁN ĐỒNG BỘ "SOFT SYNC" ĐÃ FIX: CHÍNH XÁC ĐẾN TỪNG MILIGIÂY, TRẢ VỀ 1.0x NGAY
   useEffect(() => {
     const video = vRef.current;
     const isViewer = roomData && roomData.hostId !== user?.uid;
     
-    // Host không cần chạy Sync, Viewer xem phòng chờ cũng không cần Sync
     if (!video || !isViewer || slug === "dang-chon-phim" || roomData.movieId !== slug) return;
 
     const syncVideo = () => {
-        if (video.readyState < 1) return; // Đợi video load xong metadata mới tua
+        if (video.readyState < 1) return; 
 
         let targetTime = roomData.currentTime || 0;
         
-        // Tính toán độ trễ cực chuẩn: Thời gian trôi qua từ lúc Host bấm nút + 1.5s bù trừ mạng
+        // CHỈ cộng thời gian trôi qua, KHÔNG CỘNG BÙ TRỪ 1.5s NỮA (để không bị vượt quá Host)
         if (roomData.isPlaying && roomData.updatedAt) {
             const elapsedSeconds = (Date.now() - roomData.updatedAt) / 1000;
-            targetTime = targetTime + elapsedSeconds + 1.5; 
+            targetTime = targetTime + elapsedSeconds; 
         }
 
         const diff = targetTime - video.currentTime;
 
-        // Nhảy cóc nếu lệch quá xa (> 3 giây)
-        if (Math.abs(diff) > 3) {
+        // Nhảy thẳng nếu lệch quá xa (> 2s)
+        if (Math.abs(diff) > 2) {
             video.currentTime = targetTime;
+            video.playbackRate = 1.0; 
         } 
-        // Chạy nhanh 1.15x để đuổi theo Host nếu chậm (0.5 -> 3s)
-        else if (diff > 0.5) {
-            video.playbackRate = 1.15;
+        // Bị chậm hơn Host (0.3 -> 2s) => Tăng 1.1x để đuổi
+        else if (diff > 0.3) {
+            video.playbackRate = 1.1;
         } 
-        // Chạy chậm lại 0.9x để đợi Host nếu nhanh hơn
-        else if (diff < -0.5) {
+        // Bị nhanh hơn Host => Giảm 0.9x để đợi
+        else if (diff < -0.3) {
             video.playbackRate = 0.9;
         } 
-        // Tốc độ bình thường
+        // Lệch cực ít (Hoàn hảo) => Reset tốc độ chuẩn
         else {
             video.playbackRate = 1.0;
         }
 
-        // Khớp trạng thái Play/Pause
         if (roomData.isPlaying && video.paused) {
             video.play().catch(e => console.log("Lỗi Play:", e));
         } else if (!roomData.isPlaying && !video.paused) {
@@ -304,28 +302,28 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         }
     };
 
-    // Bắt sự kiện khi video vừa tải xong lần đầu là ép Sync ngay lập tức
+    if (video.readyState >= 1) syncVideo();
+
     video.addEventListener("canplay", syncVideo);
     video.addEventListener("loadedmetadata", syncVideo);
 
-    // Vòng lặp ngầm: Mỗi 2 giây kiểm tra xem có bị trễ mạng không để tự đuổi theo
+    // Kéo khoảng thời gian kiểm tra xuống còn 1000ms (1 giây) để nhạy hơn
     const syncInterval = setInterval(() => {
         if (video.readyState >= 1) syncVideo();
-    }, 2000);
+    }, 1000);
 
     return () => {
         video.removeEventListener("canplay", syncVideo);
         video.removeEventListener("loadedmetadata", syncVideo);
         clearInterval(syncInterval);
-        if (video) video.playbackRate = 1.0; // Reset tốc độ khi thoat
+        if (video) video.playbackRate = 1.0; 
     };
   }, [roomData, slug, user?.uid]);
 
-  // 4. REALTIME FIREBASE + AUTO CLEANUP (BẢN SỬA LỖI HOST THOÁT)
+  // REALTIME ROOM LOGIC VÀ DỌN RÁC
   useEffect(() => {
     if (!roomId || !user) return;
     
-    // Tải Avatar
     let currentCustomAvatar = null;
     getDoc(doc(db, "users", user.uid)).then(snap => {
         if(snap.exists() && snap.data().avatar) {
@@ -347,13 +345,11 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         setRoomData(data);
         isHostRef.current = data.hostId === user.uid; 
 
-        // CHỈ MỞ AUTO MODAL 1 LẦN DUY NHẤT LÚC MỚI TẠO PHÒNG
         if (currentSlugRef.current === "dang-chon-phim" && data.hostId === user.uid && !hasAutoOpenedModal.current) {
            setShowMovieModal(true);
            hasAutoOpenedModal.current = true;
         }
 
-        // Host đổi phim => Tự động Navigate cả phòng
         if (data.movieId && data.movieId !== currentSlugRef.current) {
             navigate({ type: 'watch-room', roomId, slug: data.movieId });
         }
@@ -374,8 +370,8 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
        setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
 
-    // Hàm Dọn rác CHUẨN: Xóa phòng khi tab bị đóng hoặc chuyển đi chỗ khác
     const handleCleanup = () => {
+       if (isChangingMovieRef.current) return;
        if (safeToDeleteRef.current) {
            if (isHostRef.current) deleteDoc(roomRef).catch(()=>{}); 
            else deleteDoc(userRef).catch(()=>{}); 
@@ -383,14 +379,13 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
     };
     window.addEventListener("beforeunload", handleCleanup);
 
-    // CHÚ Ý: useEffect này CHỈ chạy 1 lần khi vào phòng, không bị kích hoạt lại khi slug thay đổi!
     return () => {
       clearTimeout(strictModeTimer);
       unsubRoom(); unsubUsers(); unsubMessages();
       window.removeEventListener("beforeunload", handleCleanup);
       handleCleanup(); 
     };
-  }, [roomId, user]); // <--- RẤT QUAN TRỌNG: Bỏ slug ra khỏi dependency array
+  }, [roomId, user]); 
 
   useEffect(() => {
     if (roomClosed) {
@@ -519,8 +514,10 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
     const origin = m.origin_name || m.original_name || m.year || "Phim Mới";
 
     if (isHostRef.current) {
+        isChangingMovieRef.current = true;
         await updateDoc(doc(db, "rooms", roomId), { movieId: m.slug, currentTime: 0, isPlaying: false, epIndex: 0, updatedAt: Date.now() });
         await addDoc(collection(db, `rooms/${roomId}/messages`), { isSystem: true, text: `Chủ phòng đã đổi phim thành: ${m.name}`, createdAt: serverTimestamp() });
+        navigate({ type: 'watch-room', roomId, slug: m.slug });
     } else {
         await addDoc(collection(db, `rooms/${roomId}/messages`), {
            uid: user.uid, name: defaultName, avatar: defaultAvatar, customAvatarId: myAvatarId,
@@ -535,11 +532,13 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
 
   const executeHostChangeMovie = async () => {
      if (!hostConfirmRequest) return;
+     isChangingMovieRef.current = true;
      const { slug: newSlug, name: newName } = hostConfirmRequest;
      setHostConfirmRequest(null);
      
      await updateDoc(doc(db, "rooms", roomId), { movieId: newSlug, currentTime: 0, isPlaying: false, epIndex: 0, updatedAt: Date.now() });
      await addDoc(collection(db, `rooms/${roomId}/messages`), { isSystem: true, text: `Chủ phòng đã đồng ý đổi sang phim: ${newName}`, createdAt: serverTimestamp() });
+     navigate({ type: 'watch-room', roomId, slug: newSlug });
   };
 
   const handleSelectEpisode = async (index, epItem) => {
@@ -575,9 +574,10 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
   const epChunks = [];
   for (let i = 0; i < epList.length; i += chunkSize) epChunks.push(epList.slice(i, i + chunkSize));
 
+  if (loadingPage) return <div className="h-screen w-screen flex justify-center items-center bg-[#050505] overflow-hidden"><Icon.Loader2 className="animate-spin text-[#E50914]" size={40}/></div>;
+
   const isHost = roomData?.hostId === user?.uid;
 
-  // LƯU CẢ UPDATED_AT ĐỂ TÍNH TOÁN BÙ TRỪ MẠNG CHO VIEWER
   const handleHostPlay = () => { if (isHost && vRef.current) updateDoc(doc(db, "rooms", roomId), { isPlaying: true, currentTime: vRef.current.currentTime, updatedAt: Date.now() }).catch(()=>{}); };
   const handleHostPause = () => { if (isHost && vRef.current) updateDoc(doc(db, "rooms", roomId), { isPlaying: false, currentTime: vRef.current.currentTime, updatedAt: Date.now() }).catch(()=>{}); };
   const handleHostSeek = () => { if (isHost && vRef.current) updateDoc(doc(db, "rooms", roomId), { currentTime: vRef.current.currentTime, updatedAt: Date.now() }).catch(()=>{}); };
@@ -783,7 +783,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
 
           <div ref={containerRef} className="flex-1 min-h-0 w-full bg-black rounded-xl overflow-hidden border border-white/5 relative group flex items-center justify-center shadow-2xl" onMouseMove={!isHost ? handleViewerMouseMove : undefined} onMouseLeave={() => !isHost && setShowViewerControls(false)}>
              
-             {/* LUÔN RENDER THẺ VIDEO ĐỂ HLS BẮT ĐƯỢC LINK, CẢ KHI DANG-CHON-PHIM HAY LOADING */}
              <video 
                 ref={vRef} 
                 className={`w-full h-full object-contain bg-black transition-opacity duration-500 ${(loadingPlayer || slug === "dang-chon-phim") ? 'opacity-0 pointer-events-none absolute' : 'opacity-100'}`} 
@@ -795,14 +794,12 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                 playsInline 
              />
 
-             {/* LOADING SPINNER KHI ĐANG TẢI PHIM */}
              {loadingPlayer && slug !== "dang-chon-phim" && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm z-40">
                    <Icon.Loader2 className="animate-spin text-[#E50914]" size={48} />
                 </div>
              )}
 
-             {/* MÀN HÌNH CHỜ CHỦ PHÒNG CHỌN PHIM */}
              {slug === "dang-chon-phim" && (
                  <div className="absolute inset-0 z-50 bg-[#111] flex flex-col justify-center items-center">
                      <Icon.Film size={64} className="text-gray-600 mb-4 animate-pulse" />
@@ -817,7 +814,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                  </div>
              )}
              
-             {/* VIEWER CONTROLS */}
              {!isHost && !loadingPlayer && slug !== "dang-chon-phim" && (
                <>
                  <div className="absolute inset-0 z-30 pointer-events-auto cursor-pointer" onDoubleClick={toggleFullscreen} />
@@ -896,11 +892,11 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                           <div key={msg.id} className="flex gap-2.5 animate-in slide-in-from-bottom-2 duration-300 mb-2">
                              {renderAvatar(msg.customAvatarId, msg.avatar, "w-8 h-8 md:w-10 md:h-10")}
                              <div className="flex flex-col w-full max-w-[85%] items-start">
-                               <div className="flex items-baseline gap-1.5 mb-1.5 px-1 flex-wrap">
+                               <div className="flex items-center gap-1.5 mb-1.5 px-1 flex-wrap">
                                  <span className="text-[10px] md:text-xs text-gray-300 font-black uppercase tracking-wider">{msg.name}</span>
                                  <span className="text-[10px] md:text-[11px] text-gray-500 font-medium italic">{msg.text}</span>
                                </div>
-                               <div className="p-3 bg-[#161616] border border-white/10 rounded-2xl rounded-tl-sm shadow-lg w-full">
+                               <div className="p-3 bg-[#161616] border border-white/10 rounded-2xl rounded-tl-sm shadow-lg w-full max-w-sm">
                                   <div className="flex gap-3 md:gap-4 mb-3 bg-black/40 p-2 md:p-3 rounded-xl border border-white/5">
                                     <img src={msg.requestMoviePoster} alt="Poster" className="w-16 h-24 md:w-24 md:h-36 rounded-lg object-cover border border-white/10 shadow-md shrink-0" />
                                     <div className="flex flex-col justify-center flex-1 min-w-0">

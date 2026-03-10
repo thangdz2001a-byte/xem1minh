@@ -169,7 +169,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
   useEffect(() => {
     let isMounted = true;
 
-    // HIỆU ỨNG THÔNG MINH: Bỏ qua fetch dữ liệu nếu là phòng mới chưa chọn phim
     if (slug === "dang-chon-phim") {
         setLoadingPage(false);
         setLoadingPlayer(false);
@@ -279,7 +278,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         setRoomData(data);
         isHostRef.current = data.hostId === user.uid; 
 
-        // AUTO OPEN MODAL KHI TẠO PHÒNG
         if (slug === "dang-chon-phim" && data.hostId === user.uid) {
            setShowMovieModal(true);
         }
@@ -340,13 +338,24 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, activeTab]);
 
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) containerRef.current?.requestFullscreen?.().catch(()=>{});
+    else document.exitFullscreen?.().catch(()=>{});
+  };
+
+  // THÊM HÀM XỬ LÝ SỰ KIỆN CHUỘT CHO VIEWER
+  const handleViewerMouseMove = () => {
+    setShowViewerControls(true);
+    if (hideControlsTimeoutRef.current) clearTimeout(hideControlsTimeoutRef.current);
+    hideControlsTimeoutRef.current = setTimeout(() => setShowViewerControls(false), 3000);
+  };
+
   useEffect(() => {
     const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener("fullscreenchange", handleFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
 
-  // FETCH VÀ CUỘN VÔ HẠN MODAL ĐỔI PHIM
   const loadModalMovies = async (isSearch = false, pageNum = 1) => {
     if (pageNum === 1) {
         setIsFetchingModal(true);
@@ -419,11 +428,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
      if (modalObserverTarget.current) observer.observe(modalObserverTarget.current);
      return () => { if (modalObserverTarget.current) observer.unobserve(modalObserverTarget.current); }
   }, [modalHasMore, isLoadingMoreModal, isFetchingModal, modalSearchTerm]);
-
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) containerRef.current?.requestFullscreen?.().catch(()=>{});
-    else document.exitFullscreen?.().catch(()=>{});
-  };
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
@@ -633,7 +637,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                       {modalMovies.map(m => (
                         <div key={m.slug} onClick={() => handleSelectMovie(m)} className="group cursor-pointer bg-[#0a0a0a] rounded-xl p-2 border border-white/5 hover:border-[#E50914]/50 transition-all hover:bg-white/5">
                           <div className="w-full aspect-[2/3] rounded-lg overflow-hidden mb-3 relative">
-                            {/* XÓA LAZY LOAD ĐỂ ẢNH HIỆN NGAY LẬP TỨC */}
+                            {/* XÓA LAZY LOAD: Tải ảnh ngay lập tức */}
                             <img src={getImg(m.thumb_url || m.poster_url)} alt={m.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                             <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                <span className="bg-[#E50914] text-white text-[10px] font-black px-3 py-1.5 rounded-lg uppercase tracking-widest">Chọn phim</span>
@@ -721,7 +725,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
 
           {/* MÀN HÌNH CHỜ HOẶC PLAYER */}
           {slug === "dang-chon-phim" ? (
-             <div className="relative w-full aspect-video bg-[#111] shadow-2xl overflow-hidden flex flex-col justify-center items-center border border-white/5 rounded-2xl">
+             <div className="relative w-full flex-1 bg-[#111] shadow-2xl overflow-hidden flex flex-col justify-center items-center border border-white/5 rounded-2xl">
                  <Icon.Film size={56} className="text-gray-600 mb-4 animate-pulse" />
                  <p className="text-gray-400 font-bold uppercase tracking-widest text-sm md:text-base text-center px-4">
                     {isHost ? "Phòng đã sẵn sàng. Vui lòng chọn phim!" : "Đang chờ chủ phòng chọn phim..."}
@@ -783,7 +787,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
           </div>
         </div>
 
-        {/* KHUNG CHAT BÊN PHẢI (THIẾT KẾ MỚI) */}
+        {/* KHUNG CHAT BÊN PHẢI (THIẾT KẾ ĐÃ SỬA CỰC NÉT) */}
         <div className="bg-[#111] border border-white/5 rounded-xl flex flex-col h-full min-h-0 overflow-hidden shadow-2xl">
           <div className="shrink-0 flex border-b border-white/5 bg-black/20">
              <button onClick={() => setActiveTab("chat")} className={`flex-1 py-3.5 text-[10px] md:text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${activeTab === "chat" ? "text-white bg-white/5 border-b-2 border-[#E50914]" : "text-gray-500 hover:text-gray-300"}`}>
@@ -814,28 +818,32 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                         );
                     }
 
-                    // TÙY CHỈNH TIN NHẮN "YÊU CẦU ĐỔI PHIM" ĐẸP MẮT
+                    // TÙY CHỈNH TIN NHẮN "YÊU CẦU ĐỔI PHIM" MỚI (TÊN + TEXT TRÊN 1 DÒNG, ẢNH TO HƠN)
                     if (msg.type === 'request_movie') {
                         return (
                           <div key={msg.id} className="flex gap-2.5 animate-in slide-in-from-bottom-2 duration-300 mb-2">
                              {renderAvatar(msg.customAvatarId, msg.avatar, "w-8 h-8 md:w-10 md:h-10")}
                              <div className="flex flex-col w-full max-w-[85%] items-start">
-                               <div className="flex items-baseline gap-1.5 mb-1 px-1 flex-wrap">
+                               {/* Ghép tên và chữ "đã yêu cầu đổi phim" trên 1 dòng */}
+                               <div className="flex items-center gap-1.5 mb-1.5 px-1 flex-wrap">
                                  <span className="text-[10px] md:text-xs text-gray-300 font-black uppercase tracking-wider">{msg.name}</span>
-                                 <span className="text-[9px] md:text-[10px] text-gray-500 font-bold lowercase italic">{msg.text}</span>
+                                 <span className="text-[10px] md:text-[11px] text-gray-500 font-medium italic">{msg.text}</span>
                                </div>
-                               <div className="p-3 bg-[#161616] border border-white/10 rounded-2xl rounded-tl-sm shadow-lg w-full max-w-sm">
+
+                               <div className="p-3 bg-[#161616] border border-white/10 rounded-2xl rounded-tl-sm shadow-lg w-full">
+                                  {/* Tăng kích thước Poster và Tên Phim */}
                                   <div className="flex gap-3 md:gap-4 mb-3 bg-black/40 p-2 md:p-3 rounded-xl border border-white/5">
-                                    <img src={msg.requestMoviePoster} alt="Poster" className="w-16 h-24 md:w-20 md:h-[120px] rounded-lg object-cover border border-white/10 shadow-md shrink-0" />
+                                    <img src={msg.requestMoviePoster} alt="Poster" className="w-16 h-24 md:w-20 md:h-32 rounded-lg object-cover border border-white/10 shadow-md shrink-0" />
                                     <div className="flex flex-col justify-center flex-1 min-w-0">
-                                      <p className="text-[#E50914] font-black tracking-tight text-base md:text-lg leading-snug uppercase line-clamp-3">{msg.requestMovieName}</p>
-                                      <p className="text-gray-500 text-[10px] md:text-xs uppercase tracking-widest mt-1.5 font-bold line-clamp-2">{msg.requestMovieOrigin}</p>
+                                      <p className="text-[#E50914] font-black tracking-tight text-sm md:text-lg leading-snug uppercase line-clamp-3">{msg.requestMovieName}</p>
+                                      <p className="text-gray-500 text-[9px] md:text-xs uppercase tracking-widest mt-1.5 font-bold line-clamp-2">{msg.requestMovieOrigin}</p>
                                     </div>
                                   </div>
+
                                   {isHost && (
                                      <button 
                                         onClick={() => setHostConfirmRequest({slug: msg.requestMovieSlug, name: msg.requestMovieName})}
-                                        className="w-full bg-[#E50914] hover:bg-red-700 text-white font-black text-[10px] md:text-xs uppercase tracking-widest py-2 md:py-2.5 rounded-lg transition shadow-md"
+                                        className="w-full bg-[#E50914] hover:bg-red-700 text-white font-black text-[10px] md:text-xs uppercase tracking-widest py-2.5 rounded-xl transition shadow-md"
                                      >
                                         Đồng ý chuyển
                                      </button>
@@ -846,22 +854,21 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                         )
                     }
 
-                    // TÙY CHỈNH TIN NHẮN "YÊU CẦU ĐỔI TẬP"
                     if (msg.type === 'request_ep') {
                         return (
                           <div key={msg.id} className="flex gap-2.5 animate-in slide-in-from-bottom-2 duration-300 mb-2">
                              {renderAvatar(msg.customAvatarId, msg.avatar, "w-8 h-8 md:w-10 md:h-10")}
                              <div className="flex flex-col max-w-[85%] w-full items-start">
-                               <div className="flex items-baseline gap-1.5 mb-1 px-1 flex-wrap">
+                               <div className="flex items-center gap-1.5 mb-1.5 px-1 flex-wrap">
                                  <span className="text-[10px] md:text-xs text-gray-300 font-black uppercase tracking-wider">{msg.name}</span>
-                                 <span className="text-[9px] md:text-[10px] text-gray-500 font-bold lowercase italic">{msg.text}</span>
+                                 <span className="text-[10px] md:text-[11px] text-gray-500 font-medium italic">{msg.text}</span>
                                </div>
-                               <div className="p-3 md:p-4 bg-blue-500/10 border border-blue-500/30 rounded-2xl rounded-tl-sm shadow-lg w-full max-w-sm text-center">
+                               <div className="p-3 md:p-4 bg-blue-500/10 border border-blue-500/30 rounded-2xl rounded-tl-sm shadow-lg w-full text-center">
                                   <p className="text-blue-400 font-black tracking-tight mb-3 uppercase text-xl md:text-2xl">Tập {msg.requestEpName}</p>
                                   {isHost && (
                                      <button 
                                         onClick={() => setHostConfirmEpRequest({index: msg.requestEpIndex, name: msg.requestEpName})}
-                                        className="w-full bg-blue-500 hover:bg-blue-400 text-white font-black text-[10px] md:text-xs uppercase tracking-widest py-2 md:py-2.5 rounded-lg transition shadow-md"
+                                        className="w-full bg-blue-500 hover:bg-blue-400 text-white font-black text-[10px] md:text-xs uppercase tracking-widest py-2.5 rounded-xl transition shadow-md"
                                      >
                                         Đồng ý chuyển
                                      </button>
@@ -872,7 +879,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                         )
                     }
 
-                    // TIN NHẮN BÌNH THƯỜNG
                     const isMe = msg.uid === user?.uid;
                     return (
                       <div key={msg.id} className={`flex gap-2.5 mb-2 ${isMe ? 'flex-row-reverse' : 'flex-row'} animate-in slide-in-from-bottom-2 duration-300`}>

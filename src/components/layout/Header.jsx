@@ -466,7 +466,7 @@ export default function Header({ navigate, categories, countries, user, onLogin,
                   </button>
                   
                   <button onClick={() => { setShowProfile(false); navigate({ type: "history" }); }} className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-[#E50914] hover:bg-white/5 flex items-center gap-3 transition-colors">
-                    <Icon.Clock size={16} /> Phim đang xem
+                    <Icon.Clock size={16} /> Phim đã xem
                   </button>
                   
                   <button onClick={() => { setShowProfile(false); navigate({ type: "favorites" }); }} className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-[#E50914] hover:bg-white/5 flex items-center gap-3 transition-colors">

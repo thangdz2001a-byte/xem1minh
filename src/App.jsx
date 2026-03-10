@@ -478,7 +478,7 @@ export default function App() {
         <WatchPartyRoom roomId={view.roomId} slug={view.slug} navigate={navigate} user={user} />
       ) : view.type === "history" ? (
         <MovieGrid
-          title="Phim Đang Xem "
+          title="Phim Đã Xem "
           movies={Object.keys(progressData).filter((slug) => progressData[slug] && progressData[slug].percentage < 99).map((slug) => ({
               slug,
               name: progressData[slug].name,

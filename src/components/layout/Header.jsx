@@ -394,97 +394,100 @@ export default function Header({ navigate, categories, countries, user, onLogin,
         </div>
       )}
 
+      {/* ĐÃ THÊM pt-[env(safe-area-inset-top)] VÀO MỘT DIV BỌC TRONG HEADER ĐỂ TRÁNH GÂY LỖI PADDING CŨ CỦA SẾP */}
       <header className={`fixed top-0 w-full z-[100] transition-all duration-300 transform-gpu ${scrolled ? "bg-[#050505]/95 backdrop-blur-md border-b border-white/5 py-2 md:py-3 shadow-2xl" : "bg-transparent py-4 md:py-5"}`}>
-        <div className="max-w-[1440px] mx-auto px-4 md:px-12 flex justify-between items-center gap-4">
-          
-          <div 
-            className="text-[#E50914] font-[900] text-2xl md:text-[32px] tracking-widest cursor-pointer drop-shadow-md select-none shrink-0" 
-            onClick={() => { navigate({ type: "home" }); window.scrollTo(0, 0); }}
-          >
-            POLITE
-          </div>
-
-          <nav className="hidden md:flex items-center justify-center text-[11px] lg:text-[13px] text-gray-300 whitespace-nowrap gap-2 lg:gap-6">
-            <button onClick={() => navigate({ type: "home" })} className="relative font-black tracking-widest text-gray-300 hover:text-[#E50914] transition-colors duration-300 uppercase py-4 px-2 group">
-              Trang Chủ
-            </button>
-            <DropdownGrid label="Thể Loại" items={categories} navigate={navigate} mode="the-loai" />
-            <DropdownGrid label="Quốc Gia" items={countries} navigate={navigate} mode="quoc-gia" />
-            <DropdownGrid label="Năm Phát Hành" items={YEARS} navigate={navigate} mode="search" />
+        <div className="pt-[env(safe-area-inset-top)]">
+          <div className="max-w-[1440px] mx-auto px-4 md:px-12 flex justify-between items-center gap-4">
             
-            <button onClick={() => navigate({ type: "watch-party-lobby" })} className="relative font-black tracking-widest text-gray-300 hover:text-[#E50914] transition-colors duration-300 uppercase py-4 px-2 group flex items-center gap-1.5">
-              <Icon.Users size={16} /> <span className="hidden lg:inline">Xem Chung</span>
-            </button>
-          </nav>
-
-          <div className="flex items-center gap-3 md:gap-5 shrink-0">
-            <div onClick={() => setIsSearchOpen(true)} className="hidden lg:flex relative group cursor-pointer transform-gpu">
-              <div className="bg-black/30 border border-white/10 px-4 py-2 pl-10 rounded-full w-48 lg:w-72 text-xs lg:text-sm text-gray-400 group-hover:bg-black/60 transition-all backdrop-blur-md flex items-center">Tìm kiếm phim...</div>
-              <Icon.Search className="absolute left-3.5 top-2 lg:top-2.5 text-gray-400 group-hover:text-white transition" size={16} />
+            <div 
+              className="text-[#E50914] font-[900] text-2xl md:text-[32px] tracking-widest cursor-pointer drop-shadow-md select-none shrink-0" 
+              onClick={() => { navigate({ type: "home" }); window.scrollTo(0, 0); }}
+            >
+              POLITE
             </div>
-            <button onClick={() => setIsSearchOpen(true)} className="lg:hidden p-1.5"><Icon.Search size={20} className="text-white" /></button>
 
-            <div className="relative">
-              {user ? (
-                <div 
-                  className={`w-8 h-8 md:w-10 md:h-10 rounded-full border-2 border-[#E50914] overflow-hidden cursor-pointer flex items-center justify-center transition-transform hover:scale-110 ${activeAvatar ? activeAvatar.bgColor : 'bg-black'}`}
-                  onClick={() => setShowProfile(!showProfile)}
-                >
-                  {activeAvatar ? (
-                    <activeAvatar.Component className="w-[85%] h-[85%] object-contain drop-shadow-sm" />
-                  ) : (
-                    <img src={user.photoURL} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                  )}
-                </div>
-              ) : (
-                <button 
-                  onClick={onLogin} 
-                  className="bg-[#E50914] text-white text-[10px] md:text-xs font-bold px-3 py-1.5 md:px-4 md:py-2 rounded flex items-center gap-2 hover:bg-red-700 transition"
-                >
-                  <Icon.User size={14} /> <span className="hidden md:block">ĐĂNG NHẬP</span>
-                </button>
-              )}
+            <nav className="hidden md:flex items-center justify-center text-[11px] lg:text-[13px] text-gray-300 whitespace-nowrap gap-2 lg:gap-6">
+              <button onClick={() => navigate({ type: "home" })} className="relative font-black tracking-widest text-gray-300 hover:text-[#E50914] transition-colors duration-300 uppercase py-4 px-2 group">
+                Trang Chủ
+              </button>
+              <DropdownGrid label="Thể Loại" items={categories} navigate={navigate} mode="the-loai" />
+              <DropdownGrid label="Quốc Gia" items={countries} navigate={navigate} mode="quoc-gia" />
+              <DropdownGrid label="Năm Phát Hành" items={YEARS} navigate={navigate} mode="search" />
+              
+              <button onClick={() => navigate({ type: "watch-party-lobby" })} className="relative font-black tracking-widest text-gray-300 hover:text-[#E50914] transition-colors duration-300 uppercase py-4 px-2 group flex items-center gap-1.5">
+                <Icon.Users size={16} /> <span className="hidden lg:inline">Xem Chung</span>
+              </button>
+            </nav>
 
-              {user && showProfile && (
-                <div className="absolute right-0 top-full mt-2 w-56 bg-[#111] border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200">
-                  <div className="px-4 py-3 border-b border-white/10 bg-white/5 flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-full border border-white/20 overflow-hidden flex-shrink-0 flex items-center justify-center ${activeAvatar ? activeAvatar.bgColor : 'bg-black'}`}>
-                       {activeAvatar ? <activeAvatar.Component className="w-[85%] h-[85%] object-contain" /> : <img src={user.photoURL} className="w-full h-full object-cover" referrerPolicy="no-referrer" alt="Avatar" />}
-                    </div>
-                    <div className="overflow-hidden">
-                      <p className="text-sm font-bold text-white truncate">{user.displayName}</p>
-                      <p className="text-[10px] text-gray-400 truncate">{user.email}</p>
-                    </div>
-                  </div>
-                  
-                  <button onClick={handleOpenAvatarModal} className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 flex items-center gap-3 transition-colors">
-                    <Icon.Image size={16} /> Đổi Avatar 
-                  </button>
+            <div className="flex items-center gap-3 md:gap-5 shrink-0">
+              <div onClick={() => setIsSearchOpen(true)} className="hidden lg:flex relative group cursor-pointer transform-gpu">
+                <div className="bg-black/30 border border-white/10 px-4 py-2 pl-10 rounded-full w-48 lg:w-72 text-xs lg:text-sm text-gray-400 group-hover:bg-black/60 transition-all backdrop-blur-md flex items-center">Tìm kiếm phim...</div>
+                <Icon.Search className="absolute left-3.5 top-2 lg:top-2.5 text-gray-400 group-hover:text-white transition" size={16} />
+              </div>
+              <button onClick={() => setIsSearchOpen(true)} className="lg:hidden p-1.5"><Icon.Search size={20} className="text-white" /></button>
 
-                  <button onClick={handleOpenNameModal} className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 flex items-center gap-3 transition-colors">
-                    <Icon.Edit3 size={16} /> Đổi tên hiển thị
-                  </button>
-                  
-                  <button onClick={() => { setShowProfile(false); navigate({ type: "history" }); }} className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-[#E50914] hover:bg-white/5 flex items-center gap-3 transition-colors">
-                    <Icon.Clock size={16} /> Phim đã xem
-                  </button>
-                  
-                  <button onClick={() => { setShowProfile(false); navigate({ type: "favorites" }); }} className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-[#E50914] hover:bg-white/5 flex items-center gap-3 transition-colors">
-                    <Icon.Heart size={16} /> Phim yêu thích
-                  </button>
-
-                  <button onClick={() => { setShowProfile(false); navigate({ type: "watch-party-lobby" }); }} className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-[#E50914] hover:bg-white/5 flex md:hidden items-center gap-3 transition-colors border-t border-white/5">
-                    <Icon.Users size={16} /> Phòng xem chung
-                  </button>
-
-                  <button 
-                    onClick={() => { setShowProfile(false); onLogout(); }}
-                    className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-red-500 hover:bg-red-500/10 flex items-center gap-3 border-t border-white/10 transition-colors"
+              <div className="relative">
+                {user ? (
+                  <div 
+                    className={`w-8 h-8 md:w-10 md:h-10 rounded-full border-2 border-[#E50914] overflow-hidden cursor-pointer flex items-center justify-center transition-transform hover:scale-110 ${activeAvatar ? activeAvatar.bgColor : 'bg-black'}`}
+                    onClick={() => setShowProfile(!showProfile)}
                   >
-                    <Icon.LogOut size={16} /> Đăng xuất
+                    {activeAvatar ? (
+                      <activeAvatar.Component className="w-[85%] h-[85%] object-contain drop-shadow-sm" />
+                    ) : (
+                      <img src={user.photoURL} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    )}
+                  </div>
+                ) : (
+                  <button 
+                    onClick={onLogin} 
+                    className="bg-[#E50914] text-white text-[10px] md:text-xs font-bold px-3 py-1.5 md:px-4 md:py-2 rounded flex items-center gap-2 hover:bg-red-700 transition"
+                  >
+                    <Icon.User size={14} /> <span className="hidden md:block">ĐĂNG NHẬP</span>
                   </button>
-                </div>
-              )}
+                )}
+
+                {user && showProfile && (
+                  <div className="absolute right-0 top-full mt-2 w-56 bg-[#111] border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200">
+                    <div className="px-4 py-3 border-b border-white/10 bg-white/5 flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-full border border-white/20 overflow-hidden flex-shrink-0 flex items-center justify-center ${activeAvatar ? activeAvatar.bgColor : 'bg-black'}`}>
+                         {activeAvatar ? <activeAvatar.Component className="w-[85%] h-[85%] object-contain" /> : <img src={user.photoURL} className="w-full h-full object-cover" referrerPolicy="no-referrer" alt="Avatar" />}
+                      </div>
+                      <div className="overflow-hidden">
+                        <p className="text-sm font-bold text-white truncate">{user.displayName}</p>
+                        <p className="text-[10px] text-gray-400 truncate">{user.email}</p>
+                      </div>
+                    </div>
+                    
+                    <button onClick={handleOpenAvatarModal} className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 flex items-center gap-3 transition-colors">
+                      <Icon.Image size={16} /> Đổi Avatar 
+                    </button>
+
+                    <button onClick={handleOpenNameModal} className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-white hover:bg-white/5 flex items-center gap-3 transition-colors">
+                      <Icon.Edit3 size={16} /> Đổi tên hiển thị
+                    </button>
+                    
+                    <button onClick={() => { setShowProfile(false); navigate({ type: "history" }); }} className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-[#E50914] hover:bg-white/5 flex items-center gap-3 transition-colors">
+                      <Icon.Clock size={16} /> Phim đã xem
+                    </button>
+                    
+                    <button onClick={() => { setShowProfile(false); navigate({ type: "favorites" }); }} className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-[#E50914] hover:bg-white/5 flex items-center gap-3 transition-colors">
+                      <Icon.Heart size={16} /> Phim yêu thích
+                    </button>
+
+                    <button onClick={() => { setShowProfile(false); navigate({ type: "watch-party-lobby" }); }} className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-[#E50914] hover:bg-white/5 flex md:hidden items-center gap-3 transition-colors border-t border-white/5">
+                      <Icon.Users size={16} /> Phòng xem chung
+                    </button>
+
+                    <button 
+                      onClick={() => { setShowProfile(false); onLogout(); }}
+                      className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-red-500 hover:bg-red-500/10 flex items-center gap-3 border-t border-white/10 transition-colors"
+                    >
+                      <Icon.LogOut size={16} /> Đăng xuất
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

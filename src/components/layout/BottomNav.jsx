@@ -13,7 +13,8 @@ export default function BottomNav({ navigate, categories, countries, currentView
   return (
     <>
       <div className={`md:hidden fixed inset-0 bg-black/90 z-[110] backdrop-blur-sm transition-opacity duration-300 transform-gpu ${menuType ? "opacity-100" : "opacity-0 pointer-events-none"}`} onClick={() => setMenuType(null)}>
-        <div className={`absolute bottom-0 w-full bg-[#111] rounded-t-3xl p-6 transition-transform duration-500 delay-100 transform-gpu ${menuType ? "translate-y-0" : "translate-y-full"}`} onClick={(e) => e.stopPropagation()}>
+        {/* ĐÃ THÊM pb-[calc(env(safe-area-inset-bottom)+1.5rem)] ĐỂ KHI MỞ MENU LÊN NÓ KHÔNG BỊ ĐÈ VÀO THANH HOME */}
+        <div className={`absolute bottom-0 w-full bg-[#111] rounded-t-3xl p-6 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] transition-transform duration-500 delay-100 transform-gpu ${menuType ? "translate-y-0" : "translate-y-full"}`} onClick={(e) => e.stopPropagation()}>
           <div className="w-12 h-1 bg-white/20 rounded-full mx-auto mb-6" />
           <h3 className="text-lg font-black text-white mb-6 uppercase tracking-widest text-center">{menuTitle || "Chọn Năm"}</h3>
           <div className="grid grid-cols-2 gap-3 overflow-y-auto max-h-[50vh] pb-8 overscroll-contain">
@@ -29,7 +30,9 @@ export default function BottomNav({ navigate, categories, countries, currentView
           </div>
         </div>
       </div>
-      <div className="md:hidden fixed bottom-0 w-full bg-[#0a0a0a]/95 backdrop-blur-xl border-t border-white/5 pb-safe z-[100] transform-gpu">
+      
+      {/* ĐÃ ĐỔI class pb-safe (thường bị lỗi) THÀNH pb-[env(safe-area-inset-bottom)] NGUYÊN BẢN CỦA TAILWIND */}
+      <div className="md:hidden fixed bottom-0 w-full bg-[#0a0a0a]/95 backdrop-blur-xl border-t border-white/5 z-[100] transform-gpu pb-[env(safe-area-inset-bottom)]">
         <div className="flex justify-around items-center p-2.5">
           {[{ id: "home", icon: Icon.Home, label: "Trang chủ" }, { id: "cat", icon: Icon.LayoutGrid, label: "Thể loại" }, { id: "country", icon: Icon.Globe, label: "Quốc gia" }, { id: "watch-party-lobby", icon: Icon.Users, label: "Xem Chung" }].map((item) => (
             <button key={item.id} onClick={() => item.id === "home" ? navigate({ type: "home" }) : item.id === "watch-party-lobby" ? navigate({ type: "watch-party-lobby" }) : setMenuType(item.id)} className={`flex flex-col items-center gap-1 transition-colors ${currentView === item.id || (item.id === "home" && currentView === "home") ? "text-[#E50914]" : "text-gray-500"}`}>

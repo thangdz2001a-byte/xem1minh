@@ -20,6 +20,9 @@ jobs:
       
       - run: npm run build
       
+      # CHIÊU CUỐI: Xóa thư mục ios bị lỗi và bắt máy Mac tự đẻ ra cái mới tinh!
+      - run: rm -rf ios
+      - run: npx @capacitor/cli add ios
       - run: npx @capacitor/cli sync ios
       
       - name: Build Unsigned IPA

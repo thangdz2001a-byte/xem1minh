@@ -1,0 +1,43 @@
+name: Build iOS App
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          
+      - run: npm install
+      
+      - run: npm install @capacitor/cli@6 @capacitor/core@6 @capacitor/ios@6 --legacy-peer-deps
+      
+      - run: npm run build
+      
+      - run: rm -rf ios
+      
+      - run: npx cap add ios
+      
+      - name: Build Unsigned IPA
+        run: |
+          cd ios/App
+          pod install --repo-update
+          
+          # ÉP XCODE NHẢ FILE VÀO ĐÚNG THƯ MỤC BUILD CỦA MÌNH
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGNING_IDENTITY="" SYMROOT="$(PWD)/build" build
+          
+          cd build/Release-iphoneos
+          mkdir Payload
+          mv App.app Payload/
+          zip -r PoliteApp.ipa Payload
+          
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PoliteApp-IPA
+          path: ios/App/build/Release-iphoneos/PoliteApp.ipa

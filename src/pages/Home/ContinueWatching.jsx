@@ -7,7 +7,7 @@ export default function ContinueWatching({ navigate, progressData, hiddenSlugs =
   const [movies, setMovies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [popupMovie, setPopupMovie] = useState(null); 
-  const [dontShowAgain, setDontShowAgain] = useState(false); // Thêm state cho checkbox
+  const [dontShowAgain, setDontShowAgain] = useState(false);
   const scrollRef = useRef(null);
 
   const historySlugs = Object.keys(progressData || {})
@@ -44,7 +44,6 @@ export default function ContinueWatching({ navigate, progressData, hiddenSlugs =
             const prog = progressData[slug];
             const fallbackUrl = getMoviePoster(prog, {}, getImg);
             
-            // LẤY ẢNH TRỰC TIẾP TỪ DATABASE (Bọc getImg để cứu các link cũ bị cụt đầu)
             const safeThumb = prog.thumb ? getImg(prog.thumb) : fallbackUrl;
 
             const baseMovie = {
@@ -56,12 +55,10 @@ export default function ContinueWatching({ navigate, progressData, hiddenSlugs =
               poster_url: safeThumb
             };
 
-            // NẾU DB ĐÃ LƯU ĐẦY ĐỦ RỒI -> TRẢ VỀ LUÔN, KHÔNG CẦN GỌI API NỮA CHO NHẸ WEB
             if (baseMovie.name && baseMovie.thumb_url && !baseMovie.thumb_url.includes("placehold.co")) {
               return baseMovie;
             }
 
-            // CHỈ KHI NÀO DB BỊ MẤT DỮ LIỆU THÌ MỚI GỌI API ĐỂ BÙ VÀO
             let res = await fetchWithCache(`${API}/phim/${slug}`, 300000);
             let movie = res?.movie || res?.data?.item || res?.item;
 
@@ -96,15 +93,12 @@ export default function ContinueWatching({ navigate, progressData, hiddenSlugs =
     scrollRef.current.scrollTo({ left: scrollTo, behavior: "smooth" });
   };
 
-  // LOGIC ĐÁNH CHẶN POPUP NẾU ĐÃ TÍCH "KHÔNG HIỆN LẠI"
   const handleRemoveRequest = (movie) => {
     const skipPopup = localStorage.getItem("skip_remove_warning") === "true";
     if (skipPopup) {
-      // Nếu đã dặn không hỏi thì Xóa thẳng luôn
       onRemove(movie.slug);
     } else {
-      // Chưa dặn thì mở Popup lên để hỏi
-      setDontShowAgain(false); // Reset lại checkbox mỗi khi mở
+      setDontShowAgain(false);
       setPopupMovie(movie); 
     }
   };
@@ -112,7 +106,6 @@ export default function ContinueWatching({ navigate, progressData, hiddenSlugs =
   const confirmHide = () => {
     if (popupMovie) {
       if (dontShowAgain) {
-        // Lưu vào localStorage nếu user có tích
         localStorage.setItem("skip_remove_warning", "true");
       }
       onRemove(popupMovie.slug); 
@@ -120,13 +113,7 @@ export default function ContinueWatching({ navigate, progressData, hiddenSlugs =
     }
   };
 
-  const handleDirectWatchNavigate = (viewArgs) => {
-    if (viewArgs && viewArgs.type === "detail") {
-      navigate({ type: "watch", slug: viewArgs.slug });
-    } else {
-      navigate(viewArgs);
-    }
-  };
+  // ĐÃ XÓA hàm handleDirectWatchNavigate ở đây để không phá logic của MovieCard
 
   if (!isLoggedIn) return null;
   if (!loading && movies.length === 0) return null;
@@ -163,7 +150,7 @@ export default function ContinueWatching({ navigate, progressData, hiddenSlugs =
                 <MovieCard
                   key={m.slug}
                   m={m}
-                  navigate={handleDirectWatchNavigate}
+                  navigate={navigate} // TRUYỀN THẲNG navigate GỐC VÀO ĐÂY
                   progressData={progressData}
                   isRow={true}
                   useTmdb={true}
@@ -200,7 +187,6 @@ export default function ContinueWatching({ navigate, progressData, hiddenSlugs =
               Để xóa hẳn tiến trình xem vĩnh viễn, vui lòng vào mục <span className="font-bold text-white cursor-pointer hover:text-[#E50914] transition-colors" onClick={() => { setPopupMovie(null); navigate({ type: "history" }); }}>Phim Đã Xem</span>.
             </p>
 
-            {/* CHECKBOX TINH TẾ */}
             <div 
               className="flex items-center gap-2.5 mb-6 cursor-pointer group w-max"
               onClick={() => setDontShowAgain(!dontShowAgain)}

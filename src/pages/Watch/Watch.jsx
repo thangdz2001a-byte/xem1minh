@@ -84,17 +84,24 @@ async function fetchOphimDetail(slug) {
   return res?.data?.item || null;
 }
 
-function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieYear, forceIframe, serverSource, serverRawName, onServerTimeout, onWatchPartyClick, user, savedTime, onProgressSaved }) {
+function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieYear, forceIframe, serverSource, serverRawName, onServerTimeout, onWatchPartyClick, user, savedTime, onProgressSaved, autoFullscreen }) {
   const artRef = useRef(null);
   const lastLocalSaveRef = useRef(0);
   const lastDbSaveRef = useRef(0);
+  const hasAutoFullscreened = useRef(false);
+  const userRef = useRef(user);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
 
   const m3u8Link = ep?.link_m3u8;
   const embedLink = ep?.link_embed;
   const useIframe = forceIframe || !m3u8Link || m3u8Link.trim() === "";
 
   const saveCurrentProgress = async (currTime, totalDur, syncToDb = false) => {
-    if (!movieSlug || !ep?.slug || !user?.uid) return;
+    const currentUser = userRef.current;
+    if (!movieSlug || !ep?.slug || !currentUser?.uid) return;
     if (useIframe || currTime < 1) return;
 
     const pctRaw = totalDur > 0 ? (currTime / totalDur) * 100 : 0;
@@ -125,7 +132,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
 
     if (syncToDb) {
       const payload = {
-        user_id: user.uid,
+        user_id: currentUser.uid,
         movie_slug: movieSlug,
         episode_slug: ep.slug,
         episode_name: ep.name || "",
@@ -148,14 +155,14 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
   useEffect(() => {
     if (useIframe || !artRef.current || !m3u8Link) return;
 
-    // Tự động Fullscreen và xoay ngang màn hình (Landscape)
-    const enterImmersiveMode = (art) => {
-      try {
-        if (!art.fullscreen) art.fullscreen = true;
-        if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
-          window.screen.orientation.lock("landscape").catch(() => {});
-        }
-      } catch (err) {}
+    hasAutoFullscreened.current = false;
+
+    const attemptPlay = (video, art) => {
+      video.play().catch(() => {
+        video.muted = true;
+        video.play().catch(() => {});
+        art.notice.show = "Đã tắt tiếng để tự động phát. Chạm vào màn hình để bật lại âm.";
+      });
     };
 
     let artInstance = new Artplayer({
@@ -165,17 +172,17 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
       volume: 1,
       isLive: false,
       muted: false,
-      autoplay: true,
+      autoplay: false, 
       pip: true,
-      autoSize: true,
+      autoSize: false,
       autoMini: true,
       setting: true,
       loop: false,
       flip: true,
       playbackRate: true,
       aspectRatio: true,
-      fullscreen: true,
-      fullscreenWeb: true,
+      fullscreen: false, // Tắt nút mặc định để dùng nút xịn
+      fullscreenWeb: false, 
       subtitleOffset: true,
       miniProgressBar: true,
       mutex: true,
@@ -186,7 +193,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
       hotkey: false,
       lang: 'vi',
       i18n: {
-        'vi': { 'Play': 'Phát', 'Pause': 'Tạm dừng', 'Volume': 'Âm lượng', 'Mute': 'Tắt âm', 'Fullscreen': 'Toàn màn hình', 'Web Fullscreen': 'Tràn trình duyệt', 'Mini Player': 'Trình phát thu nhỏ', 'Settings': 'Cài đặt', 'Speed': 'Tốc độ phát', 'Normal': 'Bình thường', 'Quality': 'Chất lượng', 'Auto': 'Tự động', 'Notice': 'Thông báo' }
+        'vi': { 'Play': 'Phát', 'Pause': 'Tạm dừng', 'Volume': 'Âm lượng', 'Mute': 'Tắt âm', 'Settings': 'Cài đặt', 'Speed': 'Tốc độ phát', 'Normal': 'Bình thường', 'Quality': 'Chất lượng', 'Auto': 'Tự động', 'Notice': 'Thông báo' }
       },
       customType: {
         m3u8: function (video, url, art) {
@@ -202,8 +209,6 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
                 video.currentTime = savedTime;
                 art.notice.show = 'Đã khôi phục thời gian xem trước đó';
               }
-              video.play().catch(() => {});
-              enterImmersiveMode(art);
               
               if (data.levels && data.levels.length > 1) {
                  const qualityList = data.levels.map((level, index) => {
@@ -225,8 +230,6 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
                 video.currentTime = savedTime;
                 art.notice.show = 'Đã khôi phục thời gian xem trước đó';
               }
-              video.play().catch(() => {});
-              enterImmersiveMode(art);
             });
           }
         },
@@ -236,6 +239,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
         { position: 'left', index: 11, html: `<svg style="width:20px;height:20px;color:white;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 19 22 12 13 5 13 19"></polygon><polygon points="2 19 11 12 2 5 2 19"></polygon></svg>`, tooltip: 'Tua tới 10s', click: function () { if (artInstance) artInstance.seek = artInstance.currentTime + 10; } },
         { 
           position: 'right', 
+          index: 10,
           html: `
             <div class="watch-party-btn">
               <svg class="wp-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg> 
@@ -249,17 +253,52 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
           `, 
           tooltip: 'Mở phòng xem chung', 
           click: function () { if (onWatchPartyClick) onWatchPartyClick(); } 
+        },
+        // NÚT PHÓNG TO NATIVE FULLSCREEN (MỚI)
+        {
+          position: 'right',
+          index: 20,
+          html: `<svg style="width:20px;height:20px;color:white;margin-right:10px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>`,
+          tooltip: 'Toàn màn hình',
+          click: function () {
+            if (artInstance) {
+              if (artInstance.fullscreen) {
+                artInstance.fullscreen = false; // Thoát native
+                if (window.screen && window.screen.orientation && window.screen.orientation.unlock) {
+                  window.screen.orientation.unlock(); 
+                }
+              } else {
+                artInstance.fullscreen = true; // Ép gọi API Native
+                if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+                  window.screen.orientation.lock("landscape").catch(() => {});
+                }
+              }
+            }
+          }
         }
       ],
     });
 
     artInstance.on('ready', () => {
-      artInstance.play().catch(() => {});
-      enterImmersiveMode(artInstance);
-    });
+      if (autoFullscreen && !hasAutoFullscreened.current) {
+        hasAutoFullscreened.current = true;
+        
+        setTimeout(() => {
+          // GỌI THẲNG NATIVE FULLSCREEN CỦA HỆ ĐIỀU HÀNH
+          artInstance.fullscreen = true;
+          
+          if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+            window.screen.orientation.lock("landscape").catch(() => {});
+          }
 
-    artInstance.on('video:play', () => {
-       enterImmersiveMode(artInstance);
+          artInstance.muted = true;
+          artInstance.play().then(() => {
+            artInstance.notice.show = "Đã tự động phát (Tắt tiếng). Vui lòng chạm bật âm lượng!";
+          }).catch(() => {
+            console.log("Trình duyệt chặn autoplay hoàn toàn.");
+          });
+        }, 500); 
+      }
     });
 
     artInstance.on('video:timeupdate', () => {
@@ -287,7 +326,9 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
     const handleGlobalKeyDown = (e) => {
       if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
       switch(e.key.toLowerCase()) {
-        case 'f': artInstance.fullscreen = !artInstance.fullscreen; break;
+        case 'f': 
+          artInstance.fullscreen = !artInstance.fullscreen;
+          break;
         case ' ': e.preventDefault(); artInstance.toggle(); break;
         case 'arrowright': e.preventDefault(); artInstance.seek = artInstance.currentTime + 5; break;
         case 'arrowleft': e.preventDefault(); artInstance.seek = Math.max(0, artInstance.currentTime - 5); break;
@@ -295,7 +336,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
 
-    let fallbackTimer = setTimeout(() => { if (artInstance.video.readyState < 1 && onServerTimeout) { onServerTimeout(); } }, 6000);
+    let fallbackTimer = setTimeout(() => { if (artInstance.video && artInstance.video.readyState < 1 && onServerTimeout) { onServerTimeout(); } }, 6000);
     artInstance.on('video:canplay', () => clearTimeout(fallbackTimer));
 
     return () => {
@@ -310,10 +351,9 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
              videoEl.muted = true; videoEl.pause(); videoEl.removeAttribute('src'); videoEl.load();
           }
           if (artInstance.hls) { artInstance.hls.stopLoad(); artInstance.hls.destroy(); artInstance.hls = null; }
-          artInstance.destroy(true);
+          artInstance.destroy(false);
         } catch (e) {}
       }
-      if (artRef.current) artRef.current.innerHTML = "";
     };
   }, [m3u8Link, useIframe, ep, movieSlug]);
 
@@ -328,7 +368,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
   );
 }
 
-export default function Watch({ slug, movieData, navigate, user, onLogin, onProgressSaved, progressData }) {
+export default function Watch({ slug, movieData, navigate, user, onLogin, onProgressSaved, progressData, autoFullscreen }) {
   const [data, setData] = useState(movieData?.item || movieData || null);
   const [ep, setEp] = useState(null);
   const [serverList, setServerList] = useState([]);
@@ -554,6 +594,7 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
           user={user}
           savedTime={restoredTime}
           onProgressSaved={onProgressSaved}
+          autoFullscreen={autoFullscreen}
         />
       ) : loadingPlayer ? (
         <div className="relative w-full aspect-video bg-[#111] shadow-2xl overflow-hidden flex justify-center items-center animate-pulse"><Icon.Loader2 className="animate-spin text-[#E50914]" size={40} /></div>

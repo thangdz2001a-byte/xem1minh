@@ -38,7 +38,6 @@ const MovieCard = memo(function MovieCard({
 
   const prog = Math.max(0, Math.min(100, Number(localProgData?.percentage || 0)));
   
-  // Xóa số 0 khỏi phần đánh giá
   const voteAverage = m.tmdb?.vote_average;
   const numVote = Number(voteAverage);
   const hasVote = !isNaN(numVote) && numVote > 0;
@@ -119,13 +118,13 @@ const MovieCard = memo(function MovieCard({
         if (stored[m.slug]) latestProg = stored[m.slug];
       } catch (e) {}
 
-      // LOGIC FIX: Check currentTime > 0 để bắt chuẩn các phim mới xem vài giây (phần trăm bị = 0)
+      // LOGIC CHUẨN XÁC: Có history (>0s) và chưa xem xong (<99%) thì vào thẳng player
       const hasHistory = latestProg && latestProg.currentTime > 0;
       const percentage = Math.max(0, Math.min(100, Number(latestProg?.percentage || 0)));
 
       if (hasHistory && percentage < 99) {
-        // Có xem dở -> Phóng thẳng player (tự xoay ngang trên mobile theo web của ông)
-        navigate({ type: "watch", slug: m.slug });
+        // Có xem dở -> Phóng thẳng player và truyền cờ autoFullscreen
+        navigate({ type: "watch", slug: m.slug, autoFullscreen: true });
       } else {
         // Chưa xem bao giờ hoặc xem xong rồi -> Vào chi tiết bình thường
         navigate({ type: "detail", slug: m.slug, movieData: m });
@@ -140,7 +139,6 @@ const MovieCard = memo(function MovieCard({
     if (typeof onRemove === "function" && m.slug) onRemove(m.slug);
   };
 
-  // FORMAT LẠI TEXT: "T3 | 05:12" hoặc "FULL | 09:12"
   let epDisplay = "FULL";
   const epStr = String(localProgData?.episode_name || localProgData?.episodeSlug || "").trim();
   const numMatch = epStr.match(/\d+/);
@@ -239,10 +237,8 @@ const MovieCard = memo(function MovieCard({
           {/* HIỂN THỊ TIẾN TRÌNH XEM */}
           {localProgData?.currentTime > 0 && prog < 99 && (
             <>
-              {/* Lớp gradient mỏng để chống cháy chữ ở các ảnh nền sáng */}
               <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/60 to-transparent z-20 pointer-events-none" />
 
-              {/* Box hiển thị Tập | Phút siêu gọn, nằm ngay trên thanh tiến trình */}
               <div className="absolute bottom-[10px] left-0 w-full flex justify-center z-30 pointer-events-none">
                 <div className="bg-black/40 backdrop-blur-md border border-white/10 px-2 py-[2px] rounded-[6px] shadow-sm">
                   <span className="text-[10px] md:text-[11px] font-semibold text-white drop-shadow-md tracking-wide">
@@ -251,7 +247,6 @@ const MovieCard = memo(function MovieCard({
                 </div>
               </div>
 
-              {/* Thanh màu đỏ mỏng dưới đáy */}
               <div className="absolute bottom-0 left-0 w-full h-[4px] bg-white/20 z-30">
                 <div className="h-full bg-[#E50914]" style={{ width: `${Math.max(1, prog)}%` }} />
               </div>
@@ -280,7 +275,6 @@ const MovieCard = memo(function MovieCard({
             )}
           </div>
 
-          {/* Ẩn hoàn toàn nếu sao = 0 */}
           {hasVote ? (
             <span className="flex items-center gap-1 text-[#f5c518] text-[9px] md:text-[11px] font-bold">
               <Icon.Star fill="currentColor" size={10} />

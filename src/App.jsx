@@ -321,6 +321,8 @@ export default function App() {
         .order('updated_at', { ascending: true });
 
       const formattedProgress = {};
+      const dbHiddenSlugs = [];
+
       if (historyData) {
         historyData.forEach(item => {
           formattedProgress[item.movie_slug] = {
@@ -336,9 +338,17 @@ export default function App() {
             serverRawName: item.server_raw_name, 
             timestamp: new Date(item.updated_at).getTime()
           };
+
+          if (item.is_hidden === true) {
+            dbHiddenSlugs.push(item.movie_slug);
+          }
         });
       }
       setProgressData(formattedProgress);
+      
+      setHiddenContinueWatching(dbHiddenSlugs);
+      try { localStorage.setItem("hidden_continue_watching", JSON.stringify(dbHiddenSlugs)); } catch (e) {}
+
     } catch (e) { 
       setProgressData({}); 
     }
@@ -480,8 +490,9 @@ export default function App() {
     }
   };
 
-  const hideContinueWatching = (slug) => {
+  const hideContinueWatching = async (slug) => {
     if (!slug) { return; }
+    
     setHiddenContinueWatching((prev) => {
       if (prev.includes(slug)) {
         return prev;
@@ -491,6 +502,17 @@ export default function App() {
         return updated;
       }
     });
+
+    if (user && user.uid) {
+      try {
+        await supabase
+          .from('watch_history') 
+          .update({ is_hidden: true })
+          .match({ user_id: user.uid, movie_slug: slug });
+      } catch (error) {
+        console.error("Lỗi khi update is_hidden lên DB:", error);
+      }
+    }
   };
 
   const removeProgressPermanently = async (slug) => {
@@ -608,6 +630,15 @@ export default function App() {
               }
             }
             try { localStorage.setItem("hidden_continue_watching", JSON.stringify(updated)); } catch (e) {}
+            
+            if (user && user.uid) {
+              supabase
+                .from('watch_history')
+                .update({ is_hidden: false })
+                .match({ user_id: user.uid, movie_slug: currentSlug })
+                .then(); 
+            }
+
             return updated;
           } else {
             return prev;
@@ -615,7 +646,7 @@ export default function App() {
         });
       }
     }
-  }, [view.type, view.slug]);
+  }, [view.type, view.slug, user]);
 
   // XỬ LÝ NÚT BACK/FORWARD CỦA TRÌNH DUYỆT (Nhẹ nhàng)
   useEffect(() => {
@@ -968,8 +999,8 @@ export default function App() {
             </div>
           ) : view.type === "detail" ? (
             view.slug?.startsWith("tmdb-") ? <TmdbMatcher slug={view.slug} setView={setView} /> : <MovieDetail slug={view.slug} movieData={view.movieData} navigate={navigate} user={user} onLogin={handleLogin} favorites={favorites} setFavorites={setFavorites} syncToFirebase={syncToFirebase} />
-          ) : view.type === "watch" ? (
-            <Watch slug={view.slug} movieData={view.movieData} navigate={navigate} user={user} onLogin={handleLogin} onProgressSaved={handleProgressSaved} progressData={progressData} />
+          ) : view.type === "watch" ? (<Watch slug={view.slug} movieData={view.movieData} navigate={navigate} user={user} onLogin={handleLogin} onProgressSaved={handleProgressSaved} progressData={progressData} autoFullscreen={view.autoFullscreen} />
+            
           ) : view.type === "watch-party-lobby" ? (
             <WatchPartyLobby navigate={navigate} user={user} onLogin={handleLogin} />
           ) : view.type === "watch-room" ? (

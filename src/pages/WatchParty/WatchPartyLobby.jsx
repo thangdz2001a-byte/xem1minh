@@ -14,14 +14,13 @@ const cleanPassword = (str) => {
     .replace(/Đ/g, "D");
 };
 
-// DANH MỤC PHIM CHO MODAL
+// DANH MỤC PHIM CHO MODAL ĐÃ ĐƯỢC CẬP NHẬT
 const CATEGORIES = [
-  { name: 'Mới Cập Nhật', slug: 'phim-moi-cap-nhat', type: 'danh-sach' },
   { name: 'Hành Động', slug: 'hanh-dong', type: 'the-loai' },
-  { name: 'Hoạt Hình', slug: 'hoat-hinh', type: 'danh-sach' },
+  { name: 'Hoạt Hình', slug: 'hoat-hinh', type: 'the-loai' },
   { name: 'Tình Cảm', slug: 'tinh-cam', type: 'the-loai' },
   { name: 'Kinh Dị', slug: 'kinh-di', type: 'the-loai' },
-  { name: 'Hài Hước', slug: 'hai-huoc', type: 'the-loai' },
+  { name: 'Hài Hước', slug: 'hai-huoc', type: 'the-loai' }
 ];
 
 export default function WatchPartyLobby({ navigate, user, onLogin }) {
@@ -114,11 +113,8 @@ export default function WatchPartyLobby({ navigate, user, onLogin }) {
          ];
       } else {
          const { slug, type } = modalCat;
-         if (slug === 'phim-moi-cap-nhat') {
-             reqs = [
-                 fetch(`${API}/danh-sach/phim-moi-cap-nhat?page=${pageNum}`).then(r=>r.json())
-             ];
-         } else if (slug === 'hoat-hinh') {
+         // Đã dọn dẹp logic phim mới cập nhật ở đây
+         if (slug === 'hoat-hinh') {
              reqs = [
                  fetch(`${API}/danh-sach/hoat-hinh?page=${pageNum}`).then(r=>r.json()),
                  fetch(`${API}/the-loai/hoat-hinh?page=${pageNum}`).then(r=>r.json())

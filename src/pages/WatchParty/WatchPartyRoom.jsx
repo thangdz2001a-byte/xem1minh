@@ -1,12 +1,19 @@
 import React, { useState, useEffect, useRef } from "react";
 import * as Icon from "lucide-react";
 import { supabase } from "../../utils/supabaseClient"; 
-import { API, getImg, mergeDuplicateMovies } from "../../utils/helpers"; 
+import { API, API_TMDB, fetchWithCache, matchTmdbToOphim, getImg, mergeDuplicateMovies } from "../../utils/helpers"; 
 import MovieCard from "../../components/common/MovieCard";
-import useTmdbImage from "../../utils/useTmdbImage";
 
 import Artplayer from "artplayer";
 import Hls from "hls.js";
+
+const WORKER_URL = "https://polite-api.thangdz2001a.workers.dev";
+
+const proxyUrl = (url) => {
+  if (!url) return url;
+  if (url.includes("/proxy/")) return url;
+  return `${WORKER_URL}/proxy/${encodeURIComponent(url)}`;
+};
 
 // ==========================================
 // 1. CÁC COMPONENT SVG AVATAR ĐỘNG VẬT
@@ -47,18 +54,22 @@ const renderAvatar = (customId, photoUrl, sizeClass = "w-12 h-12") => {
   return <img src={photoUrl} alt="avt" className={`${sizeClass} rounded-full border-2 border-white/10 object-cover shrink-0 shadow-lg`} referrerPolicy="no-referrer" />;
 };
 
-const ChatPoster = ({ m, fallback }) => {
-    const { posterSrc } = useTmdbImage(m);
-    return <img src={posterSrc || fallback} alt="poster" className="w-full h-full object-cover" />;
-};
-
+// ĐÃ CẬP NHẬT CATEGORIES THEO HÌNH CỦA BẠN (Bỏ Mới Cập Nhật)
 const CATEGORIES = [
-  { name: 'Mới Cập Nhật', slug: 'phim-moi-cap-nhat', type: 'danh-sach' },
+  { name: 'Hoạt Hình', slug: 'hoat-hinh', type: 'the-loai' },
   { name: 'Hành Động', slug: 'hanh-dong', type: 'the-loai' },
-  { name: 'Hoạt Hình', slug: 'hoat-hinh', type: 'danh-sach' },
   { name: 'Tình Cảm', slug: 'tinh-cam', type: 'the-loai' },
-  { name: 'Kinh Dị', slug: 'kinh-di', type: 'the-loai' },
   { name: 'Hài Hước', slug: 'hai-huoc', type: 'the-loai' },
+  { name: 'Cổ Trang', slug: 'co-trang', type: 'the-loai' },
+  { name: 'Tâm Lý', slug: 'tam-ly', type: 'the-loai' },
+  { name: 'Hình Sự', slug: 'hinh-su', type: 'the-loai' },
+  { name: 'Chiến Tranh', slug: 'chien-tranh', type: 'the-loai' },
+  { name: 'Thể Thao', slug: 'the-thao', type: 'the-loai' },
+  { name: 'Võ Thuật', slug: 'vo-thuat', type: 'the-loai' },
+  { name: 'Viễn Tưởng', slug: 'vien-tuong', type: 'the-loai' },
+  { name: 'Phiêu Lưu', slug: 'phieu-luu', type: 'the-loai' },
+  { name: 'Khoa Học', slug: 'khoa-hoc', type: 'the-loai' },
+  { name: 'Kinh Dị', slug: 'kinh-di', type: 'the-loai' }
 ];
 
 const getMovieGenres = (m) => {
@@ -77,7 +88,6 @@ const getMovieGenres = (m) => {
 export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
   const [roomData, setRoomData] = useState(null);
   
-  // 🌟 FIX CORE: BIẾN TRẠNG THÁI XÁC ĐỊNH CHUẨN XÁC HOST (null = đang tải, true/false = đã biết)
   const [isHostState, setIsHostState] = useState(null);
 
   const [messages, setMessages] = useState([]); 
@@ -186,11 +196,17 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
     let isMounted = true;
     if (slug === "dang-chon-phim") { setLoadingPage(false); setLoadingPlayer(false); return; }
     
-    // DỌN DẸP SẠCH SẼ TÀN DƯ TRƯỚC KHI LOAD PHIM MỚI
     setEp(null);
     if (artInstanceRef.current) {
-        try { artInstanceRef.current.destroy(true); } catch(e){}
+        try { 
+            artInstanceRef.current.pause();
+            if (artInstanceRef.current.hls) artInstanceRef.current.hls.destroy();
+            artInstanceRef.current.destroy(false); 
+        } catch(e){}
         artInstanceRef.current = null;
+    }
+    if (artRef.current) {
+        artRef.current.innerHTML = '';
     }
 
     const fetchMovieData = async () => {
@@ -233,16 +249,22 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
      }
   }, [roomData?.epIndex, movieData, ep]); 
 
-  // 🌟 FIX LỖI VÒNG LẶP & LỖI CORS CỦA PLAYER
+  // KHỞI TẠO PLAYER
   useEffect(() => {
-    // CHỜ CHẮC CHẮN ĐÃ CÓ M3U8 VÀ ĐÃ BIẾT CHÍNH XÁC AI LÀ HOST THÌ MỚI ĐƯỢC TẠO PLAYER
     if (!ep?.link_m3u8 || !artRef.current || isHostState === null) return; 
 
     if (artInstanceRef.current) {
-        try { artInstanceRef.current.destroy(true); } catch(e){}
+        try { 
+            artInstanceRef.current.pause();
+            if (artInstanceRef.current.hls) artInstanceRef.current.hls.destroy();
+            artInstanceRef.current.destroy(false); 
+        } catch(e){}
+        artInstanceRef.current = null;
+    }
+    if (artRef.current) {
+        artRef.current.innerHTML = '';
     }
     
-    // Sử dụng thẳng State Host thay vì Ref dễ gây lỗi đè luồng
     const isHost = isHostState;
     const customControls = [];
     if (isHost) {
@@ -272,12 +294,10 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
             hls.loadSource(url); 
             hls.attachMedia(video); 
             
-            // XỬ LÝ LỖI CORS KHI FETCH M3U8 TỪ TRÌNH DUYỆT BỊ CHẶN
             hls.on(Hls.Events.ERROR, function (event, data) {
                 if (data.fatal) {
                     if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
                         artObj.notice.show = "Lỗi CORS / Mạng. Cài Extention 'Allow CORS' để test trên localhost!";
-                        console.error("Lỗi HLS Network:", data);
                     } else {
                         hls.destroy();
                     }
@@ -310,18 +330,23 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
     }
     
     return () => { 
-      if (art) { 
-        try { art.pause(); } catch(e){}
-        if (art.hls) { try { art.hls.stopLoad(); art.hls.destroy(); } catch(e){} } 
-        try { art.destroy(true); } catch(e){}
+      if (artInstanceRef.current) { 
+        try { 
+            artInstanceRef.current.pause();
+            if (artInstanceRef.current.hls) artInstanceRef.current.hls.destroy(); 
+            artInstanceRef.current.destroy(false); 
+        } catch(e){}
         artInstanceRef.current = null; 
-      } 
+      }
+      if (artRef.current) {
+          artRef.current.innerHTML = '';
+      }
     };
-  }, [ep?.link_m3u8, roomId, isHostState]); // Dùng isHostState thay vì roomData để né vòng lặp
+  }, [ep?.link_m3u8, roomId, isHostState]);
 
   // ĐỒNG BỘ: HOST LIÊN TỤC PING TRẠNG THÁI CHO NHỮNG NGƯỜI VÀO SAU
   useEffect(() => {
-      if (!isHostState) return; // Nếu không phải host thì cút luôn
+      if (!isHostState) return;
 
       const pingInterval = setInterval(() => {
           const art = artInstanceRef.current;
@@ -352,9 +377,8 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         const video = art.video; const rData = roomDataRef.current;
         if (!rData || rData.movieId !== currentSlugRef.current) return;
 
-        // Nếu Host đang play mà máy Viewer đang ngủ đông (chưa tải xong frame nào do trình duyệt chặn tự động chạy)
         if (video.readyState === 0 && rData.isPlaying) {
-            video.muted = true; // Ép tắt tiếng để lách luật chặn Autoplay của Google Chrome
+            video.muted = true;
             const p = video.play();
             if (p !== undefined) p.catch(()=>{});
             return;
@@ -450,7 +474,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         if (data) {
             const mappedData = { ...data, movieId: data.movie_id, epIndex: data.ep_index, isPlaying: data.is_playing, currentTime: data.current_time, hostId: data.host_id, hostName: data.host_name };
             
-            // XÁC NHẬN CHẮC CHẮN HOST RỒI MỚI CHO PLAYER CHẠY (TRỊ LỖI RACE CONDITION)
             isHostRef.current = mappedData.hostId === user.uid; 
             setIsHostState(mappedData.hostId === user.uid); 
 
@@ -499,34 +522,103 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
       setMessages(prev => [...prev, chatMsg]);
   };
 
+  // ==========================================
+  // HÀM TẢI PHIM ĐÃ ĐƯỢC TÍCH HỢP TMDB 
+  // ==========================================
   const loadModalMovies = async (isSearch = false, pageNum = 1, currentList = []) => {
     if (pageNum === 1) setIsFetchingModal(true); 
     else setIsLoadingMoreModal(true); 
     
     try {
-      let reqs = [];
+      let fetches = [];
+      let isFetchingFromTmdb = false;
+
       if (isSearch && modalSearchTerm.trim()) {
          const q = encodeURIComponent(modalSearchTerm.trim());
-         reqs = [ fetch(`${API}/tim-kiem?keyword=${q}&page=${pageNum}`).then(r=>r.json()) ];
+         fetches = [`${API}/tim-kiem?keyword=${q}&page=${pageNum}`];
       } else {
          const { slug, type } = modalCat;
-         if (slug === 'phim-moi-cap-nhat') {
-             reqs = [ fetch(`${API}/danh-sach/phim-moi-cap-nhat?page=${pageNum}`).then(r=>r.json()) ];
-         } else if (slug === 'hoat-hinh') {
-             reqs = [ fetch(`${API}/danh-sach/hoat-hinh?page=${pageNum}`).then(r=>r.json()), fetch(`${API}/the-loai/hoat-hinh?page=${pageNum}`).then(r=>r.json()) ];
+         const lang = `&language=vi&sort_by=popularity.desc&page=${pageNum}`;
+         let mGenres = "", tGenres = "", extra = "";
+
+         // Map các thể loại sang mã chuẩn của TMDB
+         switch (slug) {
+           case "hanh-dong": mGenres = "28"; tGenres = "10759"; break;
+           case "tinh-cam": mGenres = "10749"; tGenres = "10768"; break;
+           case "kinh-di": mGenres = "27"; tGenres = "9648"; break;
+           case "hai-huoc": mGenres = "35"; tGenres = "35"; break;
+           case "hoat-hinh": mGenres = "16"; tGenres = "16"; break;
+           case "co-trang": mGenres = "36"; tGenres = "10768"; extra = "&with_origin_country=CN|KR|JP"; break;
+           case "chien-tranh": mGenres = "10752"; tGenres = "10768"; break;
+           case "tam-ly": mGenres = "18"; tGenres = "18"; break;
+           case "hinh-su": mGenres = "80"; tGenres = "80"; break;
+           case "vien-tuong": mGenres = "878"; tGenres = "10765"; break;
+           case "phieu-luu": mGenres = "12"; tGenres = "10759"; break;
+           case "khoa-hoc": mGenres = "878"; tGenres = "10765"; break;
+           case "vo-thuat": mGenres = "28"; extra = "&with_keywords=779"; break;
+           case "the-thao": mGenres = "99"; break;
+           default: break;
+         }
+
+         if (mGenres || tGenres) {
+           isFetchingFromTmdb = true;
+           if (mGenres) fetches.push(`${API_TMDB}/discover/movie?with_genres=${mGenres}${extra}${lang}`);
+           if (tGenres) fetches.push(`${API_TMDB}/discover/tv?with_genres=${tGenres}${extra}${lang}`);
          } else {
-             reqs = [ fetch(`${API}/${type}/${slug}?page=${pageNum}`).then(r=>r.json()) ];
+           fetches = [`${API}/${type}/${slug}?page=${pageNum}`];
          }
       }
       
-      const results = await Promise.allSettled(reqs);
+      const results = await Promise.allSettled(
+        fetches.map(url => isFetchingFromTmdb ? fetchWithCache(url, 300000) : fetch(url).then(r => r.json()))
+      );
+
       let newItems = [];
-      results.forEach(res => { 
-          if (res.status === 'fulfilled') { 
-              const items = res.value?.items || res.value?.data?.items || []; 
-              if (Array.isArray(items)) newItems = [...newItems, ...items]; 
-          } 
-      });
+
+      if (isFetchingFromTmdb) {
+        let tmdbItems = [];
+        results.forEach((res, idx) => {
+          if (res.status === "fulfilled" && res.value && res.value.results) {
+            const isTv = fetches[idx].includes('/discover/tv');
+            const items = res.value.results.map(item => ({ ...item, media_type: item.media_type || (isTv ? "tv" : "movie") }));
+            tmdbItems = [...tmdbItems, ...items];
+          }
+        });
+
+        tmdbItems.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+
+        const matchPromises = tmdbItems.map(async (tItem) => {
+          const ophimMatch = await matchTmdbToOphim(tItem);
+          if (ophimMatch && ophimMatch.slug) {
+            let movieName = tItem.title || tItem.name || ophimMatch.name;
+            let originName = tItem.original_title || tItem.original_name || ophimMatch.origin_name;
+            let releaseYear = tItem.release_date ? tItem.release_date.split("-")[0] : (tItem.first_air_date ? tItem.first_air_date.split("-")[0] : "");
+
+            return {
+              ...ophimMatch,
+              slug: ophimMatch.slug,
+              name: movieName,
+              origin_name: originName,
+              poster_path: tItem.poster_path,
+              poster_url: ophimMatch.poster_url || ophimMatch.thumb_url,
+              thumb_url: ophimMatch.thumb_url || ophimMatch.poster_url,
+              year: releaseYear,
+              tmdb: { ...tItem, poster_path: tItem.poster_path }
+            };
+          }
+          return null;
+        });
+
+        const resolvedMatches = await Promise.all(matchPromises);
+        newItems = resolvedMatches.filter(Boolean);
+      } else {
+        results.forEach(res => { 
+            if (res.status === 'fulfilled') { 
+                const items = res.value?.items || res.value?.data?.items || []; 
+                if (Array.isArray(items)) newItems = [...newItems, ...items]; 
+            } 
+        });
+      }
       
       const allRawItems = pageNum === 1 ? newItems : [...currentList, ...newItems];
       const finalList = mergeDuplicateMovies(allRawItems);
@@ -745,25 +837,38 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         </div>
       )}
 
-      {/* POPUP: CONFIRM YÊU CẦU */}
+      {/* POPUP: CONFIRM YÊU CẦU ĐỔI PHIM */}
       {hostConfirmRequest && (
         <div className="fixed inset-0 z-[1001] bg-black/80 backdrop-blur-sm flex justify-center items-center p-4">
-           <div className="bg-[#111] border border-white/10 p-6 rounded-2xl max-w-sm text-center shadow-2xl animate-in zoom-in-95">
-              <Icon.HelpCircle size={48} className="text-[#E50914] mx-auto mb-4" />
-              <h3 className="text-lg font-black uppercase tracking-widest mb-2">Đồng ý yêu cầu?</h3>
-              <p className="text-gray-400 text-sm mb-6">Bạn sẽ đổi phòng sang phim: <strong className="text-[#E50914] mt-1 block">{hostConfirmRequest.name}</strong></p>
-              <div className="flex gap-3"><button onClick={() => setHostConfirmRequest(null)} className="flex-1 py-3 bg-white/5 text-white font-bold rounded-xl text-xs uppercase">Hủy</button><button onClick={executeHostChangeMovie} className="flex-1 py-3 bg-[#E50914] text-white font-bold rounded-xl text-xs uppercase shadow-lg">Đồng Ý</button></div>
+           <div className="bg-[#111] border border-white/10 w-[320px] aspect-square flex flex-col justify-center items-center p-6 rounded-3xl text-center shadow-[0_0_40px_rgba(229,9,20,0.15)] animate-in zoom-in-95">
+              <Icon.HelpCircle size={56} className="text-[#E50914] mx-auto mb-4 drop-shadow-[0_0_10px_rgba(229,9,20,0.5)]" />
+              <h3 className="text-xl font-black uppercase tracking-widest mb-2 text-white">Đồng ý yêu cầu?</h3>
+              <p className="text-gray-400 text-sm mb-auto flex-1 flex flex-col items-center justify-center">
+                Bạn sẽ đổi phòng sang phim:
+                <strong className="text-[#E50914] mt-2 block text-base line-clamp-2 leading-tight">{hostConfirmRequest.name}</strong>
+              </p>
+              <div className="flex gap-3 w-full mt-4">
+                  <button onClick={() => setHostConfirmRequest(null)} className="flex-1 py-3.5 bg-white/5 hover:bg-white/10 text-white font-black rounded-xl text-sm uppercase transition-colors">Hủy</button>
+                  <button onClick={executeHostChangeMovie} className="flex-1 py-3.5 bg-[#E50914] hover:bg-red-700 text-white font-black rounded-xl text-sm uppercase shadow-lg transition-colors">Đồng Ý</button>
+              </div>
            </div>
         </div>
       )}
 
+      {/* POPUP: CONFIRM YÊU CẦU ĐỔI TẬP */}
       {hostConfirmEpRequest && (
         <div className="fixed inset-0 z-[1001] bg-black/80 backdrop-blur-sm flex justify-center items-center p-4">
-           <div className="bg-[#111] border border-white/10 p-6 rounded-2xl max-w-sm text-center shadow-2xl animate-in zoom-in-95">
-              <Icon.HelpCircle size={48} className="text-[#E50914] mx-auto mb-4" />
-              <h3 className="text-lg font-black uppercase tracking-widest mb-2">Đồng ý yêu cầu?</h3>
-              <p className="text-gray-400 text-sm mb-6">Bạn sẽ chuyển phòng sang: <strong className="text-[#E50914] mt-1 block">Tập {hostConfirmEpRequest.name}</strong></p>
-              <div className="flex gap-3"><button onClick={() => setHostConfirmEpRequest(null)} className="flex-1 py-3 bg-white/5 text-white font-bold rounded-xl text-xs uppercase">Hủy</button><button onClick={executeHostChangeEpisode} className="flex-1 py-3 bg-[#E50914] text-white font-bold rounded-xl text-xs uppercase shadow-lg">Đồng Ý</button></div>
+           <div className="bg-[#111] border border-white/10 w-[320px] aspect-square flex flex-col justify-center items-center p-6 rounded-3xl text-center shadow-[0_0_40px_rgba(229,9,20,0.15)] animate-in zoom-in-95">
+              <Icon.HelpCircle size={56} className="text-[#E50914] mx-auto mb-4 drop-shadow-[0_0_10px_rgba(229,9,20,0.5)]" />
+              <h3 className="text-xl font-black uppercase tracking-widest mb-2 text-white">Đồng ý yêu cầu?</h3>
+              <p className="text-gray-400 text-sm mb-auto flex-1 flex flex-col items-center justify-center">
+                Bạn sẽ chuyển phòng sang:
+                <strong className="text-[#E50914] mt-2 block text-base leading-tight">Tập {hostConfirmEpRequest.name}</strong>
+              </p>
+              <div className="flex gap-3 w-full mt-4">
+                  <button onClick={() => setHostConfirmEpRequest(null)} className="flex-1 py-3.5 bg-white/5 hover:bg-white/10 text-white font-black rounded-xl text-sm uppercase transition-colors">Hủy</button>
+                  <button onClick={executeHostChangeEpisode} className="flex-1 py-3.5 bg-[#E50914] hover:bg-red-700 text-white font-black rounded-xl text-sm uppercase shadow-lg transition-colors">Đồng Ý</button>
+              </div>
            </div>
         </div>
       )}
@@ -844,8 +949,8 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                 <div key={msg.id} className={`animate-in fade-in slide-in-from-bottom-2 ${msg.type === 'chat' && msg.uid === user.uid ? 'text-right' : ''}`}>
                   
                   {msg.isSystem && (
-                    <div className="flex justify-center my-3">
-                        <span className="bg-white/5 text-gray-400 text-[10px] md:text-xs px-3 py-1.5 rounded-full uppercase font-bold text-center border border-white/10">
+                    <div className="flex justify-center my-4">
+                        <span className="bg-white/10 text-gray-300 text-sm px-5 py-2.5 rounded-full uppercase font-black text-center border border-white/20 shadow-md">
                             {msg.text}
                         </span>
                     </div>
@@ -855,8 +960,8 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                       <div className={`flex gap-3 items-start ${msg.uid === user.uid ? 'flex-row-reverse' : ''}`}>
                           {msg.uid !== user.uid && renderAvatar(msg.customAvatarId, msg.avatar, "w-8 h-8 shrink-0 mt-0.5")}
                           <div className={`flex flex-col ${msg.uid === user.uid ? 'items-end' : 'items-start'}`}>
-                              {msg.uid !== user.uid && <span className="text-[10px] text-gray-500 font-bold mb-1 ml-1">{msg.name}</span>}
-                              <div className={`px-4 py-2.5 rounded-2xl max-w-[250px] text-sm ${msg.uid === user.uid ? 'bg-[#E50914] text-white rounded-br-none' : 'bg-[#1a1a1a] text-gray-200 rounded-bl-none border border-white/5'}`}>
+                              {msg.uid !== user.uid && <span className="text-sm text-gray-400 font-bold mb-1 mx-1">{msg.name}</span>}
+                              <div className={`px-4 py-2.5 rounded-2xl max-w-[250px] text-base ${msg.uid === user.uid ? 'bg-[#E50914] text-white rounded-br-none' : 'bg-[#1a1a1a] text-gray-200 rounded-bl-none border border-white/5'}`}>
                                   {msg.text}
                               </div>
                           </div>
@@ -866,35 +971,35 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                   {(msg.type === 'request_movie' || msg.type === 'request_ep') && (
                       <div className="bg-[#1a1a1a] rounded-xl border border-white/5 overflow-hidden shadow-lg p-3 my-3">
                         <div className="flex items-center gap-3 mb-3 border-b border-white/5 pb-3">
-                            {renderAvatar(msg.customAvatarId, msg.avatar, "w-8 h-8")}
+                            {renderAvatar(msg.customAvatarId, msg.avatar, "w-10 h-10")}
                             <div>
-                                <span className="text-xs font-black text-white uppercase block leading-tight">{msg.name}</span>
-                                <span className="text-[9px] text-[#E50914] font-bold uppercase">{msg.text}</span>
+                                <span className="text-base font-black text-white uppercase block leading-tight">{msg.name}</span>
+                                <span className="text-sm text-[#E50914] font-bold uppercase mt-0.5 block">{msg.text}</span>
                             </div>
                         </div>
                         {msg.type === 'request_movie' && (
-                            <div className="flex gap-3 items-center">
-                                <div className="w-10 h-14 bg-black rounded shrink-0 overflow-hidden">
-                                    {msg.movieItem ? <ChatPoster m={msg.movieItem} fallback={msg.requestMoviePoster} /> : <img src={msg.requestMoviePoster} className="w-full h-full object-cover"/>}
+                            <div className="flex gap-4 items-center mt-2">
+                                <div className="w-[100px] h-[150px] bg-black rounded-lg shrink-0 overflow-hidden shadow-md border border-white/10">
+                                    {/* Sử dụng thằng thẻ <img> thay vì ChatPoster để triệt tiêu lỗi Infinite Loop */}
+                                    <img src={msg.requestMoviePoster} alt="poster" className="w-full h-full object-cover"/>
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                    <h4 className="text-xs font-bold text-white line-clamp-1 leading-tight">{msg.requestMovieName}</h4>
-                                    <p className="text-[9px] text-gray-400 font-bold uppercase truncate">{msg.requestMovieGenre}</p>
+                                <div className="flex-1 min-w-0 flex flex-col justify-center">
+                                    <h4 className="text-lg font-black text-white line-clamp-2 leading-snug mb-2">{msg.requestMovieName}</h4>
+                                    <p className="text-base text-gray-400 font-bold uppercase truncate">{msg.requestMovieGenre}</p>
                                 </div>
-                                {isHostRef.current && ( <button onClick={() => setHostConfirmRequest({slug: msg.requestMovieSlug, name: msg.requestMovieName})} className="shrink-0 bg-[#E50914] text-white text-[9px] font-black uppercase py-1.5 px-3 rounded transition-colors">Duyệt</button> )}
+                                {isHostRef.current && ( <button onClick={() => setHostConfirmRequest({slug: msg.requestMovieSlug, name: msg.requestMovieName})} className="shrink-0 bg-[#E50914] hover:bg-red-700 text-white text-base font-black uppercase py-3 px-6 rounded-xl transition-colors shadow-md">Duyệt</button> )}
                             </div>
                         )}
                         {msg.type === 'request_ep' && (
-                            <div className="flex items-center justify-between gap-3">
-                                <span className="text-sm font-black text-white flex items-center gap-2"><Icon.PlaySquare size={16} className="text-[#E50914]"/> Tập {msg.requestEpName}</span>
-                                {isHostRef.current && ( <button onClick={() => setHostConfirmEpRequest({index: msg.requestEpIndex, name: msg.requestEpName})} className="bg-[#E50914] text-white text-[9px] font-black uppercase py-1.5 px-3 rounded">Duyệt</button> )}
+                            <div className="flex items-center justify-between gap-3 mt-2">
+                                <span className="text-lg font-black text-white flex items-center gap-2"><Icon.PlaySquare size={24} className="text-[#E50914]"/> Tập {msg.requestEpName}</span>
+                                {isHostRef.current && ( <button onClick={() => setHostConfirmEpRequest({index: msg.requestEpIndex, name: msg.requestEpName})} className="bg-[#E50914] hover:bg-red-700 text-white text-base font-black uppercase py-3 px-6 rounded-xl shadow-md transition-colors">Duyệt</button> )}
                             </div>
                         )}
                       </div>
                   )}
                 </div>
-              ))
-            }
+              ))}
               <div ref={messagesEndRef} />
             </div>
 
@@ -906,7 +1011,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                     placeholder="Nhập nội dung..."
                     className="flex-1 bg-black border border-white/10 rounded-full px-5 py-2.5 text-sm text-white placeholder:text-gray-600 outline-none focus:border-[#E50914] font-bold transition-colors"
                 />
-                <button type="submit" disabled={!chatInput.trim()} className="w-10 h-10 shrink-0 bg-[#E50914] rounded-full flex items-center justify-center text-white disabled:opacity-40 disabled:bg-gray-700 transition active:scale-90">
+                <button type="submit" disabled={!chatInput.trim()} className="w-10 h-10 shrink-0 bg-[#E50914] hover:bg-red-700 rounded-full flex items-center justify-center text-white disabled:opacity-40 disabled:bg-gray-700 transition active:scale-90 shadow-lg">
                     <Icon.SendHorizontal size={18} />
                 </button>
             </form>

@@ -1,17 +1,26 @@
 name: Build iOS App
-on: workflow_dispatch
+
+on:
+  workflow_dispatch:
+
 jobs:
   build:
-    runs-on: macos-latest 
+    runs-on: macos-latest
+    
     steps:
       - uses: actions/checkout@v4
+      
       - uses: actions/setup-node@v4
         with:
-          node-version: '20' 
+          node-version: '20'
+          
       - run: npm install
+      
       - run: npm run build
+      
       - run: npx @capacitor/cli sync ios
-    - name: Build Unsigned IPA
+      
+      - name: Build Unsigned IPA
         run: |
           cd ios/App
           pod install --repo-update
@@ -20,6 +29,7 @@ jobs:
           mkdir Payload
           mv App.app Payload/
           zip -r PoliteApp.ipa Payload
+          
       - uses: actions/upload-artifact@v4
         with:
           name: PoliteApp-IPA

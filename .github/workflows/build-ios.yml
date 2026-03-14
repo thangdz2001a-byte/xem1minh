@@ -10,7 +10,7 @@ jobs:
           node-version: '20' 
       - run: npm install
       - run: npm run build
-      - run: npx cap sync ios
+      - run: npx @capacitor/cli sync ios
       - name: Build Unsigned IPA
         run: |
           cd ios/App

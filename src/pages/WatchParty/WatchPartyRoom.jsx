@@ -363,12 +363,12 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                   }
               });
           }
-      }, 1500); 
+      }, 3000); 
 
       return () => clearInterval(pingInterval);
   }, [isHostState, roomId]);
 
-  // TỐI ƯU HÓA: CƠ CHẾ ĐỒNG BỘ MƯỢT MÀ CHO VIEWER (Hạn chế giật lag)
+  // TỐI ƯU HÓA: CƠ CHẾ ĐỒNG BỘ MƯỢT MÀ CHO VIEWER (KHÔNG TỐN DATA SUPABASE)
   useEffect(() => {
     const syncInterval = setInterval(() => {
         if (isHostRef.current) return; 
@@ -386,7 +386,8 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         // Host Pause -> Viewer cũng Pause và ép sát thời gian
         if (!rData.isPlaying || rData.isBuffering) { 
             if (!video.paused) video.pause(); 
-            if (Math.abs(rData.currentTime - video.currentTime) > 1.5) video.currentTime = rData.currentTime; 
+            // Ép sát thời gian ngay khi Pause (giảm mức chịu đựng từ 1.5 xuống 0.5s)
+            if (Math.abs(rData.currentTime - video.currentTime) > 0.5) video.currentTime = rData.currentTime; 
             return; 
         }
         
@@ -413,14 +414,13 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                 });
             }
         } else {
-            // CHỈ NHẢY CÓC nếu chênh lệch QUÁ LỚN (> 3 GIÂY) để tránh vỡ tiếng, giật hình liên tục
-            if (Math.abs(diff) > 3) { 
+            // Giảm độ trễ nhảy cóc từ 3 giây xuống 1.5 giây
+            if (Math.abs(diff) > 1.5) { 
                 video.currentTime = expectedTime; 
             } 
-            // KHÔNG dùng thay đổi playbackRate liên tục nữa để triệt tiêu lỗi âm thanh méo/giật
             if (isInitialSyncing) setIsInitialSyncing(false);
         }
-    }, 2000); // Tăng giãn cách quét lên 2s cho player thở
+    }, 800); 
     return () => clearInterval(syncInterval);
   }, [slug, isInitialSyncing]);
 

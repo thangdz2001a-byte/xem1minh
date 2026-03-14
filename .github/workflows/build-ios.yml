@@ -16,6 +16,8 @@ jobs:
           
       - run: npm install
       
+      - run: npm install @capacitor/ios
+      
       - run: npm run build
       
       - run: npx @capacitor/cli sync ios

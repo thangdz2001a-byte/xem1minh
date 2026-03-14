@@ -1,0 +1,25 @@
+name: Build iOS App
+on: workflow_dispatch
+jobs:
+  build:
+    runs-on: macos-latest 
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20' 
+      - run: npm install
+      - run: npm run build
+      - run: npx cap sync ios
+      - name: Build Unsigned IPA
+        run: |
+          cd ios/App
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGNING_IDENTITY="" build
+          cd build/Release-iphoneos
+          mkdir Payload
+          mv App.app Payload/
+          zip -r PoliteApp.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PoliteApp-IPA
+          path: ios/App/build/Release-iphoneos/PoliteApp.ipa

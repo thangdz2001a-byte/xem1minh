@@ -16,14 +16,14 @@ jobs:
           
       - run: npm install
       
-      - run: npm install @capacitor/ios
+      # CÚ CHỐT: Ép cài bản v6 siêu ổn định để chống lỗi iOS
+      - run: npm install @capacitor/cli@6 @capacitor/core@6 @capacitor/ios@6 --legacy-peer-deps
       
       - run: npm run build
       
-      # CHIÊU CUỐI: Xóa thư mục ios bị lỗi và bắt máy Mac tự đẻ ra cái mới tinh!
       - run: rm -rf ios
-      - run: npx @capacitor/cli add ios
-      - run: npx @capacitor/cli sync ios
+      
+      - run: npx cap add ios
       
       - name: Build Unsigned IPA
         run: |

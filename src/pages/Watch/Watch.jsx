@@ -172,7 +172,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
       muted: false,
       autoplay: false, 
       pip: true,
-      airplay: true,
+      airplay: false, // ĐÃ XÓA AIRPLAY THEO LỆNH SẾP!
       autoSize: false,
       autoMini: true,
       setting: true,
@@ -180,8 +180,8 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
       flip: false,
       playbackRate: true,
       aspectRatio: false,
-      fullscreen: true, // BẬT LẠI NÚT MẶC ĐỊNH
-      fullscreenWeb: true, // BẬT LẠI NÚT MẶC ĐỊNH
+      fullscreen: true,
+      fullscreenWeb: true,
       subtitleOffset: false,
       miniProgressBar: true,
       mutex: true,
@@ -260,7 +260,6 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
     artInstance.on('video:canplay', () => setIsLoading(false));
     artInstance.on('video:playing', () => setIsLoading(false));
 
-    // BẮT SỰ KIỆN NÚT PHÓNG TO ĐỂ XOAY NGANG MÀN HÌNH ĐIỆN THOẠI
     artInstance.on('fullscreen', (state) => {
       try {
         if (state) {
@@ -545,16 +544,16 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
         if (savedProg?.episodeSlug) {
           let found = false;
           if (savedProg.serverSource) {
-            const sIdx = extractedServers.findIndex(s => s.source === savedProg.serverSource);
+            const sIdx = cached.serverList.findIndex(s => s.source === savedProg.serverSource);
             if (sIdx !== -1) {
-              const mEp = extractedServers[sIdx].server_data.find(e => e.slug === savedProg.episodeSlug);
-              if (mEp) { targetServerIdx = sIdx; targetEp = mEp; targetTabIdx = Math.floor(extractedServers[sIdx].server_data.indexOf(mEp) / 50); found = true; rTime = Number(savedProg.currentTime) || 0; }
+              const mEp = cached.serverList[sIdx].server_data.find(e => e.slug === savedProg.episodeSlug);
+              if (mEp) { targetServerIdx = sIdx; targetEp = mEp; targetTabIdx = Math.floor(cached.serverList[sIdx].server_data.indexOf(mEp) / 50); found = true; rTime = Number(savedProg.currentTime) || 0; }
             }
           }
           if (!found) {
-            for (let i = 0; i < extractedServers.length; i++) {
-              const mEp = extractedServers[i].server_data.find(e => e.slug === savedProg.episodeSlug);
-              if (mEp) { targetServerIdx = i; targetEp = mEp; targetTabIdx = Math.floor(extractedServers[i].server_data.indexOf(mEp) / 50); rTime = Number(savedProg.currentTime) || 0; break; }
+            for (let i = 0; i < cached.serverList.length; i++) {
+              const mEp = cached.serverList[i].server_data.find(e => e.slug === savedProg.episodeSlug);
+              if (mEp) { targetServerIdx = i; targetEp = mEp; targetTabIdx = Math.floor(cached.serverList[i].server_data.indexOf(mEp) / 50); rTime = Number(savedProg.currentTime) || 0; break; }
             }
           }
         }

@@ -293,9 +293,9 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
       muted: false, 
       autoplay: false, 
       pip: true, 
-      airplay: true, 
-      fullscreen: true, // BẬT LẠI NÚT MẶC ĐỊNH
-      fullscreenWeb: true, // BẬT LẠI NÚT MẶC ĐỊNH
+      airplay: false, // ĐÃ XÓA AIRPLAY
+      fullscreen: true,
+      fullscreenWeb: true,
       setting: true,
       playbackRate: isHost, 
       hotkey: false, 
@@ -337,7 +337,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
     art.on('video:canplay', () => setIsLoadingMedia(false));
     art.on('video:playing', () => setIsLoadingMedia(false));
 
-    // BẮT SỰ KIỆN NÚT PHÓNG TO ĐỂ XOAY NGANG MÀN HÌNH
     art.on('fullscreen', (state) => {
       try {
         if (state) {

@@ -11,9 +11,10 @@ jobs:
       - run: npm install
       - run: npm run build
       - run: npx @capacitor/cli sync ios
-      - name: Build Unsigned IPA
+    - name: Build Unsigned IPA
         run: |
           cd ios/App
+          pod install --repo-update
           xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGNING_IDENTITY="" build
           cd build/Release-iphoneos
           mkdir Payload

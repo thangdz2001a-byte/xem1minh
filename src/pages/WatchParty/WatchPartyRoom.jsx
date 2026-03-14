@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import * as Icon from "lucide-react";
 import { supabase } from "../../utils/supabaseClient"; 
 import { API, API_TMDB, fetchWithCache, matchTmdbToOphim, getImg, mergeDuplicateMovies } from "../../utils/helpers"; 
@@ -54,7 +54,6 @@ const renderAvatar = (customId, photoUrl, sizeClass = "w-12 h-12") => {
   return <img src={photoUrl} alt="avt" className={`${sizeClass} rounded-full border-2 border-white/10 object-cover shrink-0 shadow-lg`} referrerPolicy="no-referrer" />;
 };
 
-// ĐÃ CẬP NHẬT CATEGORIES THEO HÌNH CỦA BẠN (Bỏ Mới Cập Nhật)
 const CATEGORIES = [
   { name: 'Hoạt Hình', slug: 'hoat-hinh', type: 'the-loai' },
   { name: 'Hành Động', slug: 'hanh-dong', type: 'the-loai' },
@@ -369,7 +368,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
       return () => clearInterval(pingInterval);
   }, [isHostState, roomId]);
 
-  // FIX LỖI KHÁN GIẢ VÀO MUỘN BỊ ĐỨNG HÌNH DO TRÌNH DUYỆT CHẶN AUTOPLAY
+  // TỐI ƯU HÓA: CƠ CHẾ ĐỒNG BỘ MƯỢT MÀ CHO VIEWER (Hạn chế giật lag)
   useEffect(() => {
     const syncInterval = setInterval(() => {
         if (isHostRef.current) return; 
@@ -377,43 +376,51 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         const video = art.video; const rData = roomDataRef.current;
         if (!rData || rData.movieId !== currentSlugRef.current) return;
 
+        // Nếu video chưa sẵn sàng nhưng host đang play -> Mute và ép play để lách luật trình duyệt
         if (video.readyState === 0 && rData.isPlaying) {
             video.muted = true;
-            const p = video.play();
-            if (p !== undefined) p.catch(()=>{});
+            video.play().catch(()=>{});
             return;
         }
 
+        // Host Pause -> Viewer cũng Pause và ép sát thời gian
         if (!rData.isPlaying || rData.isBuffering) { 
             if (!video.paused) video.pause(); 
             if (Math.abs(rData.currentTime - video.currentTime) > 1.5) video.currentTime = rData.currentTime; 
             return; 
         }
         
+        // Host ĐANG PLAY: Tính toán thời gian thực tế của Host
         let expectedTime = rData.currentTime || 0; 
-        if (rData.updatedAt && rData.isPlaying) expectedTime += (Date.now() - rData.updatedAt) / 1000;
+        if (rData.updatedAt && rData.isPlaying) {
+            expectedTime += (Date.now() - rData.updatedAt) / 1000;
+        }
 
         const diff = expectedTime - video.currentTime;
+
         if (video.paused) { 
-            video.muted = true; 
+            // Nếu Viewer đang bị pause, nhảy tới thời gian hiện tại và Play
+            video.currentTime = expectedTime;
             const playPromise = video.play();
-            if (playPromise !== undefined) playPromise.then(() => { 
-                video.currentTime = expectedTime; 
-                setTimeout(() => { 
-                    video.muted = false; 
-                    if (video.paused) { video.muted = true; video.play().catch(()=>{}); } 
-                    else if (isInitialSyncing && art.notice) art.notice.show = "Đã đồng bộ Live!"; 
+            if (playPromise !== undefined) {
+                playPromise.then(() => { 
+                    if (isInitialSyncing && art.notice) art.notice.show = "Đã đồng bộ Live!"; 
                     if (isInitialSyncing) setIsInitialSyncing(false); 
-                }, 100); 
-            }).catch(()=>{});
+                }).catch(()=>{
+                    // Bị trình duyệt chặn AutoPlay (thiếu gesture) -> Mute r play
+                    video.muted = true;
+                    video.play().catch(()=>{});
+                });
+            }
         } else {
-            if (Math.abs(diff) > 2.5) { video.currentTime = expectedTime; video.playbackRate = 1.0; } 
-            else if (diff > 0.5) { video.playbackRate = 1.25; } 
-            else if (diff < -0.5) { video.playbackRate = 0.85; } 
-            else { video.playbackRate = 1.0; }
+            // CHỈ NHẢY CÓC nếu chênh lệch QUÁ LỚN (> 3 GIÂY) để tránh vỡ tiếng, giật hình liên tục
+            if (Math.abs(diff) > 3) { 
+                video.currentTime = expectedTime; 
+            } 
+            // KHÔNG dùng thay đổi playbackRate liên tục nữa để triệt tiêu lỗi âm thanh méo/giật
             if (isInitialSyncing) setIsInitialSyncing(false);
         }
-    }, 1000); 
+    }, 2000); // Tăng giãn cách quét lên 2s cho player thở
     return () => clearInterval(syncInterval);
   }, [slug, isInitialSyncing]);
 
@@ -541,7 +548,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
          const lang = `&language=vi&sort_by=popularity.desc&page=${pageNum}`;
          let mGenres = "", tGenres = "", extra = "";
 
-         // Map các thể loại sang mã chuẩn của TMDB
          switch (slug) {
            case "hanh-dong": mGenres = "28"; tGenres = "10759"; break;
            case "tinh-cam": mGenres = "10749"; tGenres = "10768"; break;
@@ -728,7 +734,9 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
   if (loadingPage) return <div className="h-screen w-screen flex justify-center items-center bg-[#050505] overflow-hidden"></div>;
 
   return (
-    <div className="pt-20 md:pt-[88px] pb-4 max-w-[1920px] mx-auto px-2 md:px-4 h-screen w-screen flex flex-col overflow-hidden animate-in fade-in duration-500 bg-[#050505] relative text-white">
+    // Đã thay đổi h-screen thành h-[100dvh] để fix lỗi bẹp giao diện trên Safari/Chrome Mobile
+    // Chuyển sang lg:overflow-hidden overflow-y-auto để trên đt có thể cuộn được
+    <div className="pt-20 md:pt-[88px] pb-4 max-w-[1920px] mx-auto px-2 md:px-4 h-[100dvh] w-full flex flex-col lg:overflow-hidden overflow-y-auto animate-in fade-in duration-500 bg-[#050505] relative text-white">
       
       {!isHostRef.current && ( <style>{`.art-control-playAndPause { display: none !important; } .art-progress { pointer-events: none !important; } .art-video { pointer-events: none !important; }`}</style> )}
 
@@ -873,11 +881,11 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         </div>
       )}
 
-      {/* MAIN LAYOUT: CHIA CỘT PLAYER VÀ CHAT */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 md:gap-4 flex-1 min-h-0">
+      {/* MAIN LAYOUT: Đã đổi lưới để đáp ứng di động mượt hơn */}
+      <div className="flex flex-col lg:grid lg:grid-cols-4 gap-3 md:gap-4 lg:flex-1 lg:min-h-0">
         
         {/* CỘT TRÁI: VIDEO PLAYER */}
-        <div className="lg:col-span-3 flex flex-col gap-3 min-h-0 h-full relative">
+        <div className="w-full flex flex-col gap-3 lg:col-span-3 lg:min-h-0 lg:h-full relative shrink-0">
           
           <div className="shrink-0 flex flex-wrap items-center justify-between bg-[#111] p-3 md:px-4 rounded-xl border border-white/5 gap-3 shadow-lg">
             <div className="flex items-center gap-3"><h1 className="text-base md:text-lg font-black uppercase tracking-tighter truncate max-w-[150px] sm:max-w-xs">{roomData?.name || "Đang tải..."}</h1><span className="text-[10px] text-gray-400 bg-white/5 px-2 py-1 rounded-md font-mono border border-white/10 shrink-0">ID: {roomId}</span></div>
@@ -888,7 +896,8 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
             </div>
           </div>
 
-          <div ref={containerRef} className="flex-1 min-h-0 w-full bg-black rounded-xl overflow-hidden border border-white/5 relative group flex items-center justify-center shadow-2xl">
+          {/* Sửa lại wrapper của player: aspect-video cho dt, flex-1 cho pc */}
+          <div ref={containerRef} className="w-full aspect-video lg:aspect-auto lg:flex-1 lg:min-h-0 bg-black rounded-xl overflow-hidden border border-white/5 relative group flex items-center justify-center shadow-2xl">
              <div ref={artRef} className={`w-full h-full object-contain ${loadingPlayer ? 'opacity-0' : 'opacity-100'}`}></div>
              {slug === "dang-chon-phim" && (
                  <div className="absolute inset-0 z-50 bg-[#111] flex flex-col justify-center items-center">
@@ -911,10 +920,11 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         </div>
 
         {/* CỘT PHẢI: KHUNG CHAT VÀ ONLINE */}
-        <div className="flex-1 flex flex-col gap-3 md:gap-4 min-h-0 h-full">
+        {/* Chat bây giờ sẽ co giãn hoặc có min-height trên đt để ko bị đè */}
+        <div className="flex-1 lg:flex-[none] flex flex-col gap-3 md:gap-4 lg:min-h-0 lg:h-full min-h-[400px]">
           
           {/* USER ONLINE */}
-          <div className="bg-[#111] p-4 rounded-xl border border-white/5 shadow-2xl">
+          <div className="bg-[#111] p-4 rounded-xl border border-white/5 shadow-2xl shrink-0">
               <div className="flex items-center justify-between mb-3 border-b border-white/5 pb-3">
                   <h3 className="text-xs md:text-sm font-black uppercase tracking-widest flex items-center gap-2"><Icon.Users size={16} className="text-[#E50914]"/> Người xem</h3>
                   <span className="text-xs font-mono font-bold text-gray-400 bg-white/5 px-2 py-1 rounded-md">{onlineUsers.length}</span>
@@ -980,7 +990,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                         {msg.type === 'request_movie' && (
                             <div className="flex gap-4 items-center mt-2">
                                 <div className="w-[100px] h-[150px] bg-black rounded-lg shrink-0 overflow-hidden shadow-md border border-white/10">
-                                    {/* Sử dụng thằng thẻ <img> thay vì ChatPoster để triệt tiêu lỗi Infinite Loop */}
                                     <img src={msg.requestMoviePoster} alt="poster" className="w-full h-full object-cover"/>
                                 </div>
                                 <div className="flex-1 min-w-0 flex flex-col justify-center">

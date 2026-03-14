@@ -98,6 +98,8 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
   
   const [loadingPage, setLoadingPage] = useState(true);
   const [loadingPlayer, setLoadingPlayer] = useState(true);
+  const [isLoadingMedia, setIsLoadingMedia] = useState(true); // Thêm state quản lý loading media
+
   const [roomClosed, setRoomClosed] = useState(false);
   
   const [showHostLeftPopup, setShowHostLeftPopup] = useState(false);
@@ -196,10 +198,15 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
     });
   }, [user?.uid]);
 
+  // CẬP NHẬT TRẠNG THÁI LOADING KHI CHUYỂN TẬP
+  useEffect(() => {
+    setIsLoadingMedia(true);
+  }, [ep?.link_m3u8]);
+
   // LOAD DATA PHIM
   useEffect(() => {
     let isMounted = true;
-    if (slug === "dang-chon-phim") { setLoadingPage(false); setLoadingPlayer(false); return; }
+    if (slug === "dang-chon-phim") { setLoadingPage(false); setLoadingPlayer(false); setIsLoadingMedia(false); return; }
     
     setEp(null);
     if (artInstanceRef.current) {
@@ -254,7 +261,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
      }
   }, [roomData?.epIndex, movieData, ep]); 
 
-  // KHỞI TẠO PLAYER
+  // KHỞI TẠO PLAYER (CẬP NHẬT GIAO DIỆN CHUẨN MỚI)
   useEffect(() => {
     if (!ep?.link_m3u8 || !artRef.current || isHostState === null) return; 
 
@@ -284,8 +291,31 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         });
     }
 
+    // Nút Fullscreen Native
+    customControls.push({
+      position: 'right',
+      index: 90,
+      html: `<svg style="width:20px;height:20px;color:white;margin-right:10px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>`,
+      tooltip: 'Toàn màn hình',
+      click: function () {
+        if (artInstanceRef.current) {
+          if (artInstanceRef.current.fullscreen) {
+            artInstanceRef.current.fullscreen = false; // Thoát native
+            if (window.screen && window.screen.orientation && window.screen.orientation.unlock) {
+              window.screen.orientation.unlock(); 
+            }
+          } else {
+            artInstanceRef.current.fullscreen = true; // Ép gọi API Native
+            if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+              window.screen.orientation.lock("landscape").catch(() => {});
+            }
+          }
+        }
+      }
+    });
+
     const art = new Artplayer({
-      container: artRef.current, url: ep.link_m3u8, volume: 1, isLive: false, muted: false, autoplay: false, pip: true, fullscreen: true, fullscreenWeb: true, setting: true,
+      container: artRef.current, url: ep.link_m3u8, volume: 1, isLive: false, muted: false, autoplay: false, pip: true, airplay: true, fullscreen: false, fullscreenWeb: false, setting: true,
       playbackRate: isHost, hotkey: false, backdrop: isHost, theme: '#E50914', lang: 'vi', lock: false, 
       i18n: { 'vi': { 'Play': 'Phát', 'Pause': 'Tạm dừng', 'Settings': 'Cài đặt', 'Speed': 'Tốc độ', 'Quality': 'Chất lượng', 'Auto': 'Tự động' } },
       controls: customControls,
@@ -301,6 +331,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
             
             hls.on(Hls.Events.ERROR, function (event, data) {
                 if (data.fatal) {
+                    setIsLoadingMedia(false); // Bỏ loading nếu lỗi
                     if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
                         artObj.notice.show = "Lỗi CORS / Mạng. Cài Extention 'Allow CORS' để test trên localhost!";
                     } else {
@@ -309,18 +340,17 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                 }
             });
 
-            hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
-              if (data.levels && data.levels.length > 1) {
-                 const qualityList = data.levels.map((level, index) => ({ html: level.height + 'p', level: index, default: false }));
-                 qualityList.unshift({ html: 'Tự động', level: -1, default: true });
-                 artObj.setting.add({ width: 200, html: 'Chất lượng', tooltip: 'Tự động', selector: qualityList, onSelect: (item) => { hls.currentLevel = item.level; return item.html; } });
-              }
-            });
+            // Lược bỏ cài đặt Chất Lượng (Quality) vì Watch Party cần ưu tiên tốc độ stream
+            hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {});
           } else if (video.canPlayType('application/vnd.apple.mpegurl')) { video.src = url; }
         },
       },
     });
     artInstanceRef.current = art;
+
+    art.on('video:waiting', () => setIsLoadingMedia(true));
+    art.on('video:canplay', () => setIsLoadingMedia(false));
+    art.on('video:playing', () => setIsLoadingMedia(false));
 
     if (isHost) {
         let syncTimeout;
@@ -915,9 +945,24 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
           </div>
 
           <div ref={containerRef} className="w-full aspect-video lg:aspect-auto lg:flex-1 lg:min-h-0 bg-black rounded-xl overflow-hidden border border-white/5 relative group flex items-center justify-center shadow-2xl">
+             <style>{`
+               @media (max-width: 640px) {
+                 .art-controls-right .art-control { margin: 0 4px !important; padding: 0 6px !important; }
+                 .art-controls-right .art-control svg { width: 22px !important; height: 22px !important; }
+               }
+               /* Ẩn Spinner mặc định */
+               .art-spinner { display: none !important; }
+             `}</style>
+             
+             {/* MÀN ĐEN CHE PHỦ KHI TẢI */}
+             <div className={`absolute inset-0 z-[150] bg-[#050505] flex flex-col justify-center items-center transition-opacity duration-300 ${isLoadingMedia ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+                <div className="w-12 h-12 md:w-16 md:h-16 border-[4px] border-white/10 border-t-[#E50914] rounded-full animate-spin"></div>
+             </div>
+
              <div ref={artRef} className={`w-full h-full object-contain ${loadingPlayer ? 'opacity-0' : 'opacity-100'}`}></div>
+             
              {slug === "dang-chon-phim" && (
-                 <div className="absolute inset-0 z-50 bg-[#111] flex flex-col justify-center items-center">
+                 <div className="absolute inset-0 z-[160] bg-[#111] flex flex-col justify-center items-center">
                      <Icon.Film size={64} className="text-gray-600 mb-4 animate-pulse" />
                      <p className="text-gray-400 font-bold uppercase tracking-widest text-sm text-center px-4">{isHostRef.current ? "Vui lòng chọn phim để bắt đầu!" : "Đang chờ chủ phòng chọn phim..."}</p>
                      {isHostRef.current && <button onClick={() => setShowMovieModal(true)} className="mt-6 bg-[#E50914] hover:bg-red-700 px-8 py-3.5 rounded-xl font-black uppercase tracking-widest text-xs transition shadow-[0_4px_15px_rgba(229,9,20,0.4)]">Chọn Phim Ngay</button>}

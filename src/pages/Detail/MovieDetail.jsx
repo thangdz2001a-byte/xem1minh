@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import * as Icon from "lucide-react";
-import { API, TMDB_API_KEY, safeText, safeJoin, fetchTMDB, getImg } from "../../utils/helpers";
+import { API, TMDB_API_KEY, safeText, safeJoin, fetchTMDB, getImg, verifyAndCleanTmdbId } from "../../utils/helpers";
 import useTmdbImage from "../../utils/useTmdbImage";
 
 // ==========================================
@@ -150,6 +150,9 @@ export default function MovieDetail({ slug, movieData, navigate, user, onLogin, 
           setError(true);
           return;
         }
+
+        // --- ĐÂY LÀ DÒNG CHÚNG TA THÊM VÀO ĐỂ LỘT MẶT NẠ ID FAKE ---
+        itemOphim = verifyAndCleanTmdbId(itemOphim);
 
         setM(prev => {
           const oldItem = prev?.item || movieData || {};

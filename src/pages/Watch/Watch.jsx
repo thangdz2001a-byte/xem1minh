@@ -84,12 +84,18 @@ async function fetchOphimDetail(slug) {
   return res?.data?.item || null;
 }
 
-function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieYear, forceIframe, serverSource, serverRawName, onServerTimeout, onWatchPartyClick, user, savedTime, onProgressSaved, autoFullscreen }) {
+function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieYear, forceIframe, serverSource, serverRawName, onServerTimeout, onWatchPartyClick, user, savedTime, onProgressSaved, autoFullscreen, isSwitchingServer }) {
   const artRef = useRef(null);
   const lastLocalSaveRef = useRef(0);
   const lastDbSaveRef = useRef(0);
   const hasAutoFullscreened = useRef(false);
   const userRef = useRef(user);
+
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    setIsLoading(true);
+  }, [ep?.link_m3u8, ep?.link_embed]);
 
   useEffect(() => {
     userRef.current = user;
@@ -174,16 +180,17 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
       muted: false,
       autoplay: false, 
       pip: true,
+      airplay: true,
       autoSize: false,
       autoMini: true,
       setting: true,
       loop: false,
-      flip: true,
+      flip: false,
       playbackRate: true,
-      aspectRatio: true,
+      aspectRatio: false,
       fullscreen: false, // Tắt nút mặc định để dùng nút xịn
       fullscreenWeb: false, 
-      subtitleOffset: true,
+      subtitleOffset: false,
       miniProgressBar: true,
       mutex: true,
       backdrop: true,
@@ -209,19 +216,15 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
                 video.currentTime = savedTime;
                 art.notice.show = 'Đã khôi phục thời gian xem trước đó';
               }
-              
-              if (data.levels && data.levels.length > 1) {
-                 const qualityList = data.levels.map((level, index) => {
-                     let name = level.height + 'p';
-                     if (level.height >= 2160) name = '4K';
-                     return { html: name, level: index, default: false };
-                 });
-                 qualityList.unshift({ html: 'Tự động', level: -1, default: true });
-                 art.setting.add({ width: 200, html: 'Chất lượng', tooltip: 'Tự động', selector: qualityList, onSelect: function (item) { hls.currentLevel = item.level; return item.html; } });
-              }
             });
             
-            hls.on(Hls.Events.ERROR, function (event, data) { if (data.fatal) { art.notice.show = 'Máy chủ quá tải, đang đổi Server...'; if (onServerTimeout) onServerTimeout(); } });
+            hls.on(Hls.Events.ERROR, function (event, data) { 
+                if (data.fatal) { 
+                    setIsLoading(false);
+                    art.notice.show = 'Máy chủ quá tải, đang đổi Server...'; 
+                    if (onServerTimeout) onServerTimeout(); 
+                } 
+            });
             art.on('destroy', () => { if (art.hls) { art.hls.stopLoad(); art.hls.destroy(); art.hls = null; } });
           } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
             video.src = url;
@@ -237,7 +240,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
       controls: [
         { position: 'left', index: 10, html: `<svg style="width:20px;height:20px;color:white;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 19 2 12 11 5 11 19"></polygon><polygon points="22 19 13 12 22 5 22 19"></polygon></svg>`, tooltip: 'Tua lùi 10s', click: function () { if (artInstance) artInstance.seek = Math.max(0, artInstance.currentTime - 10); } },
         { position: 'left', index: 11, html: `<svg style="width:20px;height:20px;color:white;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 19 22 12 13 5 13 19"></polygon><polygon points="2 19 11 12 2 5 2 19"></polygon></svg>`, tooltip: 'Tua tới 10s', click: function () { if (artInstance) artInstance.seek = artInstance.currentTime + 10; } },
-        { 
+        ...(serverSource === "ophim" ? [{ 
           position: 'right', 
           index: 10,
           html: `
@@ -253,11 +256,11 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
           `, 
           tooltip: 'Mở phòng xem chung', 
           click: function () { if (onWatchPartyClick) onWatchPartyClick(); } 
-        },
-        // NÚT PHÓNG TO NATIVE FULLSCREEN (MỚI)
+        }] : []),
+        // NÚT PHÓNG TO NATIVE FULLSCREEN (MỚI) - Căn index ra sau cùng
         {
           position: 'right',
-          index: 20,
+          index: 90,
           html: `<svg style="width:20px;height:20px;color:white;margin-right:10px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>`,
           tooltip: 'Toàn màn hình',
           click: function () {
@@ -278,6 +281,10 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
         }
       ],
     });
+
+    artInstance.on('video:waiting', () => setIsLoading(true));
+    artInstance.on('video:canplay', () => setIsLoading(false));
+    artInstance.on('video:playing', () => setIsLoading(false));
 
     artInstance.on('ready', () => {
       if (autoFullscreen && !hasAutoFullscreened.current) {
@@ -359,8 +366,29 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
 
   return (
     <div className="relative w-full aspect-video bg-[#050505] shadow-[0_20px_50px_rgba(0,0,0,0.5)] md:rounded-2xl overflow-hidden border border-white/5 flex justify-center items-center">
+      <style>{`
+        @media (max-width: 640px) {
+          .art-controls-right .art-control {
+            margin: 0 4px !important;
+            padding: 0 6px !important;
+          }
+          .art-controls-right .art-control svg {
+            width: 22px !important;
+            height: 22px !important;
+          }
+        }
+        /* Ẩn Spinner mặc định của trình phát để nhường chỗ cho Màn Đen tuỳ chỉnh */
+        .art-spinner { display: none !important; }
+      `}</style>
+
+      {/* MÀN ĐEN CHE PHỦ KHI TẢI (ĐÃ ĐỔI TỪ TRƯỢT SANG MỜ DẦN ĐỂ ĐỠ GIẬT LAG CHO MÁY YẾU) */}
+      <div className={`absolute inset-0 z-[150] bg-[#050505] flex flex-col justify-center items-center transition-opacity duration-300 ${isLoading || isSwitchingServer ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+         <div className="w-12 h-12 md:w-16 md:h-16 border-[4px] border-white/10 border-t-[#E50914] rounded-full animate-spin"></div>
+         {isSwitchingServer && <span className="mt-4 text-white text-[10px] md:text-xs font-bold uppercase tracking-widest animate-pulse">Đang đổi máy chủ...</span>}
+      </div>
+
       {useIframe && embedLink ? (
-        <iframe src={embedLink} className="w-full h-full object-contain bg-black" frameBorder="0" allowFullScreen title="Video Player" />
+        <iframe onLoad={() => setIsLoading(false)} src={embedLink} className="w-full h-full object-contain bg-black" frameBorder="0" allowFullScreen title="Video Player" />
       ) : (
         <div ref={artRef} className="w-full h-full object-contain"></div>
       )}
@@ -575,8 +603,6 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
 
   return (
     <div className="pt-16 md:pt-28 pb-10 w-full max-w-[1440px] mx-auto px-0 sm:px-4 md:px-12 animate-in fade-in duration-500 bg-[#050505]">
-      {isSwitchingServer && ( <div className="fixed top-20 right-4 bg-[#E50914] text-white px-5 py-3 rounded-xl z-[200] font-bold flex items-center gap-3"><Icon.Loader2 className="animate-spin" size={18} /> Đang đổi server...</div> )}
-
       {ep ? (
         <Player
           ep={ep}
@@ -595,6 +621,7 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
           savedTime={restoredTime}
           onProgressSaved={onProgressSaved}
           autoFullscreen={autoFullscreen}
+          isSwitchingServer={isSwitchingServer}
         />
       ) : loadingPlayer ? (
         <div className="relative w-full aspect-video bg-[#111] shadow-2xl overflow-hidden flex justify-center items-center animate-pulse"><Icon.Loader2 className="animate-spin text-[#E50914]" size={40} /></div>

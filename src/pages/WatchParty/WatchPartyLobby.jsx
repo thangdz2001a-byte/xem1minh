@@ -1,30 +1,65 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import * as Icon from "lucide-react";
-import { collection, query, onSnapshot, doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "../../config/firebase";
-import { generateRoomId } from "../../utils/helpers";
+import { supabase } from "../../utils/supabaseClient"; 
+import { generateRoomId, API, mergeDuplicateMovies } from "../../utils/helpers";
+import MovieCard from "../../components/common/MovieCard";
 
-// HÀM LÀM SẠCH MẬT KHẨU: Xóa khoảng trắng và dấu tiếng Việt
+// HÀM LÀM SẠCH MẬT KHẨU
 const cleanPassword = (str) => {
   return str
-    .replace(/\s/g, "") // Xóa mọi khoảng trắng
-    .normalize("NFD") // Tách dấu ra khỏi chữ
-    .replace(/[\u0300-\u036f]/g, "") // Xóa dấu
+    .replace(/\s/g, "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/đ/g, "d")
     .replace(/Đ/g, "D");
 };
+
+// DANH MỤC PHIM CHO MODAL
+const CATEGORIES = [
+  { name: 'Mới Cập Nhật', slug: 'phim-moi-cap-nhat', type: 'danh-sach' },
+  { name: 'Hành Động', slug: 'hanh-dong', type: 'the-loai' },
+  { name: 'Hoạt Hình', slug: 'hoat-hinh', type: 'danh-sach' },
+  { name: 'Tình Cảm', slug: 'tinh-cam', type: 'the-loai' },
+  { name: 'Kinh Dị', slug: 'kinh-di', type: 'the-loai' },
+  { name: 'Hài Hước', slug: 'hai-huoc', type: 'the-loai' },
+];
 
 export default function WatchPartyLobby({ navigate, user, onLogin }) {
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   
-  // State Tạo phòng
+  // STATE TẠO PHÒNG BƯỚC 1
   const [showPartyModal, setShowPartyModal] = useState(false);
   const [roomName, setRoomName] = useState("");
   const [isPublic, setIsPublic] = useState(true);
   const [password, setPassword] = useState("");
+
+  // STATE TẠO PHÒNG BƯỚC 2 (POPUP CHỌN PHIM)
+  const [showMovieModal, setShowMovieModal] = useState(false);
+  const [modalCat, setModalCat] = useState(CATEGORIES[0]);
+  const [modalSearchTerm, setModalSearchTerm] = useState("");
+  const [modalMovies, setModalMovies] = useState([]);
+  const [isFetchingModal, setIsFetchingModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+
+  const createLockRef = useRef(false);
+
+  // STATE PHÂN TRANG
+  const [modalPage, setModalPage] = useState(1);
+  const [modalHasMore, setModalHasMore] = useState(false);
+  const [isLoadingMoreModal, setIsLoadingMoreModal] = useState(false);
+  const observerTarget = useRef(null);
+
+  const catScrollRef = useRef(null);
+  const [isDraggingCat, setIsDraggingCat] = useState(false);
+  const [startXCat, setStartXCat] = useState(0);
+  const [scrollLeftCat, setScrollLeftCat] = useState(0);
+
+  const handleMouseDownCat = (e) => { setIsDraggingCat(true); setStartXCat(e.pageX - catScrollRef.current.offsetLeft); setScrollLeftCat(catScrollRef.current.scrollLeft); };
+  const handleMouseLeaveCat = () => setIsDraggingCat(false);
+  const handleMouseUpCat = () => setIsDraggingCat(false);
+  const handleMouseMoveCat = (e) => { if (!isDraggingCat) return; e.preventDefault(); const x = e.pageX - catScrollRef.current.offsetLeft; catScrollRef.current.scrollLeft = scrollLeftCat - (x - startXCat) * 2; };
 
   // State Vào phòng Private
   const [selectedPrivateRoom, setSelectedPrivateRoom] = useState(null);
@@ -33,61 +68,166 @@ export default function WatchPartyLobby({ navigate, user, onLogin }) {
   const [isJoining, setIsJoining] = useState(false);
 
   useEffect(() => {
-    if (!user) {
-      setLoading(false);
-      return;
-    }
+    if (!user) { setLoading(false); return; }
     setLoading(true);
-    const q = query(collection(db, "rooms"));
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      let roomList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      roomList.sort((a, b) => {
-         const timeA = a.createdAt?.toMillis() || 0;
-         const timeB = b.createdAt?.toMillis() || 0;
-         return timeB - timeA;
-      });
-      setRooms(roomList);
-      setLoading(false);
-    }, (error) => {
-      console.error("Lỗi tải phòng:", error);
-      setLoading(false);
+
+    const mapRoom = (r) => ({
+        id: r.id, roomId: r.id, name: r.name, movieId: r.movie_id,
+        hostId: r.host_id, hostName: r.host_name, isPublic: r.is_public,
+        password: r.password, viewerCount: r.viewer_count,
+        createdAt: r.created_at
     });
 
-    return () => unsubscribe();
+    const fetchRooms = async () => {
+        const { data } = await supabase.from('rooms').select('*').order('created_at', { ascending: false });
+        if (data) setRooms(data.map(mapRoom));
+        setLoading(false);
+    };
+
+    fetchRooms();
+
+    const subscription = supabase.channel('public:rooms')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'rooms' }, payload => {
+            setRooms(prev => [mapRoom(payload.new), ...prev]);
+        })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms' }, payload => {
+            setRooms(prev => prev.map(r => r.id === payload.new.id ? mapRoom(payload.new) : r));
+        })
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'rooms' }, payload => {
+            setRooms(prev => prev.filter(r => r.id !== payload.old.id));
+        })
+        .subscribe();
+
+    return () => { supabase.removeChannel(subscription); };
   }, [user]);
 
-  const handleCreateRoom = async (e) => {
-    e.preventDefault();
-    if (!user) {
-      onLogin();
-      return;
-    }
-    if (!roomName.trim()) return alert("Vui lòng nhập tên phòng");
+  const loadModalMovies = async (isSearch = false, pageNum = 1, currentList = []) => {
+    if (pageNum === 1) setIsFetchingModal(true); 
+    else setIsLoadingMoreModal(true); 
+    
+    try {
+      let reqs = [];
+      if (isSearch && modalSearchTerm.trim()) {
+         const q = encodeURIComponent(modalSearchTerm.trim());
+         reqs = [
+             fetch(`${API}/tim-kiem?keyword=${q}&page=${pageNum}`).then(r=>r.json())
+         ];
+      } else {
+         const { slug, type } = modalCat;
+         if (slug === 'phim-moi-cap-nhat') {
+             reqs = [
+                 fetch(`${API}/danh-sach/phim-moi-cap-nhat?page=${pageNum}`).then(r=>r.json())
+             ];
+         } else if (slug === 'hoat-hinh') {
+             reqs = [
+                 fetch(`${API}/danh-sach/hoat-hinh?page=${pageNum}`).then(r=>r.json()),
+                 fetch(`${API}/the-loai/hoat-hinh?page=${pageNum}`).then(r=>r.json())
+             ];
+         } else {
+             reqs = [
+                 fetch(`${API}/${type}/${slug}?page=${pageNum}`).then(r=>r.json())
+             ];
+         }
+      }
+      
+      const results = await Promise.allSettled(reqs);
+      let newItems = [];
+      results.forEach(res => { 
+          if (res.status === 'fulfilled') { 
+              const items = res.value?.items || res.value?.data?.items || []; 
+              if (Array.isArray(items)) newItems = [...newItems, ...items]; 
+          } 
+      });
+      
+      const allRawItems = pageNum === 1 ? newItems : [...currentList, ...newItems];
+      const finalList = mergeDuplicateMovies(allRawItems);
+      
+      setModalMovies(finalList);
+      setModalHasMore(newItems.length > 0);
 
+      if (finalList.length < 10 && newItems.length > 0 && pageNum < 10) {
+          const nextP = pageNum + 1;
+          setModalPage(nextP);
+          loadModalMovies(isSearch, nextP, finalList);
+          return; 
+      }
+
+    } catch(e) { 
+        if(pageNum === 1) setModalMovies([]); 
+        setModalHasMore(false); 
+    }
+    
+    setIsFetchingModal(false); 
+    setIsLoadingMoreModal(false);
+  };
+
+  useEffect(() => { 
+      if (showMovieModal) { 
+          setModalPage(1); 
+          loadModalMovies(!!modalSearchTerm, 1, []); 
+      } 
+  }, [showMovieModal, modalCat]);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && modalHasMore && !isFetchingModal && !isLoadingMoreModal) {
+          const nextPage = modalPage + 1;
+          setModalPage(nextPage);
+          loadModalMovies(!!modalSearchTerm, nextPage, modalMovies);
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (observerTarget.current) {
+      observer.observe(observerTarget.current);
+    }
+
+    return () => {
+      if (observerTarget.current) observer.unobserve(observerTarget.current);
+    };
+  }, [modalHasMore, isFetchingModal, isLoadingMoreModal, modalPage, modalSearchTerm, modalMovies]);
+
+  const handleNextToMovieSelection = (e) => {
+    e.preventDefault();
+    if (!user) return onLogin();
+    if (!roomName.trim()) return alert("Vui lòng nhập tên phòng");
+    setShowPartyModal(false);
+    setShowMovieModal(true);
+  };
+
+  const handleCreateFinalRoom = async (movie) => {
+    if (createLockRef.current) return;
+    createLockRef.current = true;
     setIsCreating(true);
+
     try {
       const roomId = generateRoomId();
-      const roomRef = doc(db, "rooms", roomId);
-      await setDoc(roomRef, {
-        roomId: roomId || "unknown_id",
+      
+      const { error } = await supabase.from('rooms').insert([{
+        id: roomId,
         name: roomName.trim(),
-        movieId: "dang-chon-phim", // Default
-        hostId: user?.uid || "unknown_uid",
-        hostName: user?.displayName || user?.email || "Khách",
-        isPublic: isPublic,
+        movie_id: movie.slug,
+        host_id: user?.uid || "unknown_uid",
+        host_name: user?.displayName || user?.email?.split('@')[0] || "Khách",
+        is_public: isPublic,
         password: isPublic ? null : password,
-        currentTime: 0,
-        isPlaying: false,
-        createdAt: serverTimestamp(),
-        viewerCount: 1
-      });
-      setShowPartyModal(false);
+        current_time: 0,
+        is_playing: false,
+        ep_index: 0,
+        viewer_count: 1
+      }]);
+
+      if (error) throw error;
+
+      setShowMovieModal(false);
       setIsCreating(false);
-      navigate({ type: "watch-room", roomId, slug: "dang-chon-phim" });
+      navigate({ type: "watch-room", roomId, slug: movie.slug }); 
     } catch (err) {
       alert("Lỗi tạo phòng: " + err.message);
       setIsCreating(false);
+      createLockRef.current = false; 
     }
   };
 
@@ -104,25 +244,26 @@ export default function WatchPartyLobby({ navigate, user, onLogin }) {
   const handleJoinById = async (e) => {
     e.preventDefault();
     if (!searchTerm.trim()) return;
-    
     const cleanId = searchTerm.trim().toUpperCase();
     const foundRoom = rooms.find(r => r.roomId === cleanId);
-    
-    if (foundRoom) {
-       return handleRoomClick(foundRoom);
-    }
+    if (foundRoom) return handleRoomClick(foundRoom);
 
     setIsJoining(true);
     try {
-        const roomRef = doc(db, "rooms", cleanId);
-        const snap = await getDoc(roomRef);
-        if (!snap.exists()) {
+        const { data, error } = await supabase.from('rooms').select('*').eq('id', cleanId).single();
+        
+        if (error || !data) {
             alert("Không tìm thấy phòng có mã này!");
         } else {
-            handleRoomClick(snap.data());
+            const mappedData = {
+                id: data.id, roomId: data.id, name: data.name, movieId: data.movie_id,
+                hostId: data.host_id, hostName: data.host_name, isPublic: data.is_public,
+                password: data.password, viewerCount: data.viewer_count
+            };
+            handleRoomClick(mappedData);
         }
-    } catch(err) {
-        alert("Lỗi kết nối!");
+    } catch(err) { 
+        alert("Lỗi kết nối!"); 
     }
     setIsJoining(false);
   };
@@ -130,12 +271,9 @@ export default function WatchPartyLobby({ navigate, user, onLogin }) {
   const handlePasswordSubmit = (e) => {
      e.preventDefault();
      if (!selectedPrivateRoom) return;
-
      if (passwordInput === selectedPrivateRoom.password) {
         navigate({ type: "watch-room", roomId: selectedPrivateRoom.roomId, slug: selectedPrivateRoom.movieId });
-     } else {
-        setPasswordError("Mật khẩu không chính xác!");
-     }
+     } else setPasswordError("Mật khẩu không chính xác!");
   };
 
   const filteredRooms = rooms.filter(r => 
@@ -165,10 +303,10 @@ export default function WatchPartyLobby({ navigate, user, onLogin }) {
   return (
     <div className="pt-24 md:pt-32 pb-20 max-w-[1400px] mx-auto px-4 md:px-12 text-white animate-in fade-in duration-500 min-h-screen relative">
       
-      {/* POPUP TẠO PHÒNG */}
+      {/* BƯỚC 1: POPUP NHẬP THÔNG TIN PHÒNG */}
       {showPartyModal && (
         <div className="fixed inset-0 z-[500] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 shadow-2xl">
-          <form onSubmit={handleCreateRoom} className="bg-[#111] p-6 md:p-8 rounded-3xl w-full max-w-md border border-white/10 shadow-2xl animate-in zoom-in-95 duration-300 relative">
+          <form onSubmit={handleNextToMovieSelection} className="bg-[#111] p-6 md:p-8 rounded-3xl w-full max-w-md border border-white/10 shadow-2xl animate-in zoom-in-95 duration-300 relative">
             <button type="button" onClick={() => setShowPartyModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white bg-black/50 p-2 rounded-full transition">
               <Icon.X size={20} />
             </button>
@@ -217,11 +355,82 @@ export default function WatchPartyLobby({ navigate, user, onLogin }) {
               <button type="button" onClick={() => setShowPartyModal(false)} className="px-6 py-3 text-xs font-bold text-gray-400 hover:text-white transition uppercase tracking-widest bg-white/5 hover:bg-white/10 rounded-xl">
                 Hủy
               </button>
-              <button type="submit" disabled={isCreating} className="px-8 py-3 bg-[#E50914] hover:bg-red-700 disabled:bg-gray-700 text-white rounded-xl font-black uppercase text-xs transition shadow-[0_4px_15px_rgba(229,9,20,0.4)]">
-                {isCreating ? "ĐANG TẠO..." : "TẠO PHÒNG"}
+              <button type="submit" className="px-8 py-3 bg-[#E50914] hover:bg-red-700 text-white rounded-xl font-black uppercase text-xs transition shadow-[0_4px_15px_rgba(229,9,20,0.4)] flex items-center gap-2">
+                CHỌN PHIM  <Icon.ArrowRight size={16}/>
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* BƯỚC 2: MODAL CHỌN PHIM Ở SẢNH */}
+      {showMovieModal && (
+        <div className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-sm flex justify-center items-center p-4">
+          <div className="bg-[#111] border border-white/10 rounded-2xl w-full max-w-5xl h-[85vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom-5 duration-300">
+            
+            <div className="p-4 md:p-5 flex justify-between items-center shrink-0 border-b border-white/5">
+               <div className="flex items-center gap-4">
+                   <button onClick={() => { setShowMovieModal(false); setShowPartyModal(true); }} className="p-2 bg-white/5 hover:bg-white/10 rounded-full transition text-gray-400 hover:text-white"><Icon.ArrowLeft size={20}/></button>
+                   <h2 className="text-lg md:text-xl font-black uppercase tracking-widest text-white flex items-center gap-2">Chọn Phim Cho Phòng</h2>
+               </div>
+               <button onClick={() => setShowMovieModal(false)} className="p-2 bg-white/5 hover:bg-white/10 rounded-full transition text-gray-400 hover:text-white"><Icon.X size={20}/></button>
+            </div>
+
+            <div className="p-4 md:px-5 flex flex-col lg:flex-row gap-4 shrink-0 bg-[#0a0a0a]/50 border-b border-white/5 items-start lg:items-center">
+               <form onSubmit={(e) => {e.preventDefault(); setModalPage(1); loadModalMovies(true, 1, []);}} className="relative w-full lg:w-72 shrink-0">
+                  <div className="absolute left-4 top-0 bottom-0 flex items-center pointer-events-none"><Icon.Search className="text-gray-500" size={16} /></div>
+                  <input type="text" value={modalSearchTerm} onChange={(e) => setModalSearchTerm(e.target.value)} placeholder="Tìm theo tên phim..." className="w-full bg-black border border-white/10 rounded-xl py-3 pl-11 pr-4 text-base md:text-sm text-white focus:outline-none focus:border-[#E50914] font-bold tracking-wider" />
+               </form>
+               {/* Đã thêm CSS xóa viền trắng scrollbar */}
+               <div ref={catScrollRef} onMouseDown={handleMouseDownCat} onMouseLeave={handleMouseLeaveCat} onMouseUp={handleMouseUpCat} onMouseMove={handleMouseMoveCat} className="flex gap-2.5 overflow-x-auto pb-1 lg:pb-0 select-none cursor-grab [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                 {CATEGORIES.map(cat => (
+                   <button key={cat.slug} onClick={() => { setModalCat(cat); setModalSearchTerm(""); }} className={`px-4 py-2.5 text-xs font-bold rounded-xl uppercase tracking-widest whitespace-nowrap shrink-0 transition-colors ${!modalSearchTerm && modalCat.slug === cat.slug ? 'bg-[#E50914] text-white shadow-[0_0_15px_rgba(229,9,20,0.4)]' : 'bg-white/5 border border-white/5 text-gray-400 hover:bg-white/10 hover:text-white'}`}>{cat.name}</button>
+                 ))}
+               </div>
+            </div>
+
+            {/* Đã thêm CSS xóa viền trắng scrollbar vùng list phim */}
+            <div className="flex-1 overflow-y-auto p-4 md:p-5 relative [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              {isCreating && (
+                 <div className="absolute inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center">
+                    <Icon.Loader2 className="animate-spin text-[#E50914] mb-4" size={48}/>
+                    <span className="text-white font-bold uppercase tracking-widest text-sm animate-pulse">Đang thiết lập phòng...</span>
+                 </div>
+              )}
+              {isFetchingModal ? <div className="h-full flex items-center justify-center"><Icon.Loader2 className="animate-spin text-[#E50914]" size={40}/></div> : (
+                 <>
+                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4 lg:gap-5">
+                      {modalMovies.map((m, idx) => (
+                        <div key={`${m.slug}-${idx}`} className="group relative">
+                          <MovieCard 
+                            m={m} 
+                            isRow={false} 
+                            onClickOverride={() => handleCreateFinalRoom(m)} 
+                          />
+                          <div className="absolute inset-0 z-30 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none rounded-xl">
+                            <span className="bg-[#E50914] text-white text-[10px] font-black px-3 py-1.5 rounded-lg uppercase tracking-widest shadow-2xl scale-90 group-hover:scale-100 transition-transform">
+                              Tạo Phòng
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                   </div>
+                   
+                   {modalHasMore && (
+                     <div ref={observerTarget} className="mt-8 flex justify-center py-8">
+                       {isLoadingMoreModal ? (
+                         <div className="flex items-center gap-3 text-[#E50914] font-bold uppercase tracking-widest text-sm">
+                           <Icon.Loader2 className="animate-spin" size={24} /> Đang tải thêm...
+                         </div>
+                       ) : (
+                         <div className="h-10 w-full"></div>
+                       )}
+                     </div>
+                   )}
+                 </>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -275,7 +484,6 @@ export default function WatchPartyLobby({ navigate, user, onLogin }) {
         
         <div className="flex items-center gap-4 w-full lg:w-auto">
           <form onSubmit={handleJoinById} className="flex-1 lg:w-[350px] relative">
-             {/* FIX LỆCH ICON KÍNH LÚP: Dùng inset-y-0 flex items-center để giữa chuẩn 100% */}
              <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
                <Icon.Search className="text-gray-500" size={18} />
              </div>
@@ -330,7 +538,6 @@ export default function WatchPartyLobby({ navigate, user, onLogin }) {
               <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
 
               <div className="relative z-10 flex flex-col h-full">
-                {/* BADGES */}
                 <div className="flex justify-between items-start mb-5 gap-2">
                   <div className="bg-black border border-white/10 px-2.5 py-1 rounded-md text-[10px] font-mono text-gray-300 font-bold">
                     ID: <span className="text-white">{room.roomId}</span>

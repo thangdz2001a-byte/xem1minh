@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import * as Icon from "lucide-react";
-import { doc, getDoc, setDoc } from "firebase/firestore";
-import { db } from "../../config/firebase";
+import { supabase } from "../../utils/supabaseClient"; 
 import { YEARS } from "../../utils/helpers";
 import SearchModal from "../common/SearchModal";
 import DropdownGrid from "../common/DropdownGrid";
@@ -179,7 +178,6 @@ const FrogAvatar = ({ className }) => (
   </svg>
 );
 
-// Danh sách 10 con vật
 const avatarsList = [
   { id: 'shiba', name: 'Shiba', Component: ShibaAvatar, bgColor: 'bg-yellow-200' },
   { id: 'husky', name: 'Husky', Component: HuskyAvatar, bgColor: 'bg-blue-200' },
@@ -201,24 +199,27 @@ export default function Header({ navigate, categories, countries, user, onLogin,
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   
-  // State Đổi Tên Hiển Thị
   const [showNameModal, setShowNameModal] = useState(false);
   const [editName, setEditName] = useState("");
 
-  // State Chọn Avatar
   const [showAvatarModal, setShowAvatarModal] = useState(false);
-  const [customAvatarId, setCustomAvatarId] = useState(null); // Cái đang lưu thật trên db
-  const [tempAvatarId, setTempAvatarId] = useState(null); // Cái đang chọn tạm thời trong popup
+  const [customAvatarId, setCustomAvatarId] = useState(null); 
+  const [tempAvatarId, setTempAvatarId] = useState(null); 
 
-  // ĐỒNG BỘ AVATAR TỪ FIREBASE
+  // FIX LỖI 406 CHÍ MẠNG: Dùng .limit(1) thay vì single()
   useEffect(() => {
-    const fetchAvatarFromFirebase = async () => {
-      if (user) {
+    const fetchAvatarFromSupabase = async () => {
+      // BỘ LỌC CHẶN: CHỈ GỌI KHI CÓ USER ID
+      if (user && user.uid) {
         try {
-          const docRef = doc(db, "users", user.uid);
-          const snap = await getDoc(docRef);
-          if (snap.exists() && snap.data().avatar) {
-            setCustomAvatarId(snap.data().avatar);
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('avatar')
+            .eq('user_id', user.uid)
+            .limit(1); // Cứu tinh chống lỗi 406
+            
+          if (data && data.length > 0 && data[0].avatar) {
+            setCustomAvatarId(data[0].avatar);
           } else {
             setCustomAvatarId(null);
           }
@@ -229,7 +230,7 @@ export default function Header({ navigate, categories, countries, user, onLogin,
         setCustomAvatarId(null);
       }
     };
-    fetchAvatarFromFirebase();
+    fetchAvatarFromSupabase();
   }, [user]);
 
   useEffect(() => {
@@ -252,22 +253,21 @@ export default function Header({ navigate, categories, countries, user, onLogin,
     setShowNameModal(false);
   };
 
-  // Mở modal Avatar: gán state tạm bằng state hiện tại
   const handleOpenAvatarModal = () => {
     setTempAvatarId(customAvatarId);
     setShowProfile(false);
     setShowAvatarModal(true);
   };
 
-  // NÚT XÁC NHẬN LƯU AVATAR
   const handleConfirmAvatar = async () => {
     setCustomAvatarId(tempAvatarId);
     setShowAvatarModal(false);
     
-    if (user) {
+    if (user && user.uid) {
       try {
-        const docRef = doc(db, "users", user.uid);
-        await setDoc(docRef, { avatar: tempAvatarId || null }, { merge: true });
+        await supabase
+          .from('profiles')
+          .upsert({ user_id: user.uid, avatar: tempAvatarId || null }, { onConflict: 'user_id' });
       } catch (error) {
         console.error("Lỗi đồng bộ avatar:", error);
       }

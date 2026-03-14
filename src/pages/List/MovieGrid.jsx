@@ -1,6 +1,8 @@
 import React, { useRef, useEffect } from "react";
 import * as Icon from "lucide-react";
 import MovieCard from "../../components/common/MovieCard";
+// 🌟 1. IMPORT HÀM GỘP PHIM TỪ HELPERS
+import { mergeDuplicateMovies } from "../../utils/helpers";
 
 export default function MovieGrid({
   title,
@@ -10,8 +12,13 @@ export default function MovieGrid({
   onLoadMore,
   hasMore,
   loadingMore,
-  onRemove
+  onRemove,
+  progressData // 🌟 Bổ sung: Nhận dữ liệu tiến trình từ App.jsx
 }) {
+  // 🌟 2. BỌC DỮ LIỆU QUA MÀNG LỌC TRƯỚC KHI HIỂN THỊ
+  // Tất cả phim truyền vào đây sẽ bị ép gộp lại nếu trùng lặp
+  const displayMovies = mergeDuplicateMovies(movies || []);
+
   // TẠO CẢM BIẾN CUỘN VÔ HẠN (Infinite Scroll Observer)
   const observerTarget = useRef(null);
 
@@ -46,11 +53,11 @@ export default function MovieGrid({
         </h1>
       </div>
 
-      {loading && movies.length === 0 ? (
+      {loading && displayMovies.length === 0 ? (
         <div className="flex justify-center items-center py-20">
           <Icon.Loader2 className="animate-spin text-[#E50914]" size={40} />
         </div>
-      ) : movies.length === 0 ? (
+      ) : displayMovies.length === 0 ? (
         <div className="flex flex-col justify-center items-center py-20 text-gray-500">
           <Icon.Film size={64} className="mb-4 opacity-20" />
           <p className="text-lg font-bold uppercase tracking-widest">
@@ -60,12 +67,14 @@ export default function MovieGrid({
       ) : (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4 lg:gap-5">
-            {movies.map((m, idx) => (
+            {/* 🌟 3. MAP QUA MẢNG ĐÃ LỌC (displayMovies) THAY VÌ MẢNG GỐC */}
+            {displayMovies.map((m, idx) => (
               <MovieCard
                 key={`${m.slug}-${idx}`}
                 m={m}
                 navigate={navigate}
                 onRemove={onRemove}
+                progressData={progressData} // 🌟 Bổ sung: Truyền dữ liệu tiến trình xuống MovieCard
               />
             ))}
           </div>

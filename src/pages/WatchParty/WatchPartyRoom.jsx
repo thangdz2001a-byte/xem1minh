@@ -1,8 +1,12 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import * as Icon from "lucide-react";
-import { doc, setDoc, getDoc, onSnapshot, collection, updateDoc, deleteDoc, addDoc, query, orderBy, serverTimestamp } from "firebase/firestore";
-import { db } from "../../config/firebase";
-import { API, API_NGUONC, API_NGUONC_DETAIL, getImg } from "../../utils/helpers"; 
+import { supabase } from "../../utils/supabaseClient"; 
+import { API, getImg, mergeDuplicateMovies } from "../../utils/helpers"; 
+import MovieCard from "../../components/common/MovieCard";
+import useTmdbImage from "../../utils/useTmdbImage";
+
+import Artplayer from "artplayer";
+import Hls from "hls.js";
 
 // ==========================================
 // 1. CÁC COMPONENT SVG AVATAR ĐỘNG VẬT
@@ -31,71 +35,40 @@ const avatarsList = [
   { id: 'frog', name: 'Ếch Xanh', Component: FrogAvatar, bgColor: 'bg-emerald-200' }
 ];
 
-const renderAvatar = (customId, photoUrl, sizeClass = "w-8 h-8") => {
+const renderAvatar = (customId, photoUrl, sizeClass = "w-12 h-12") => {
   const avt = avatarsList.find(a => a.id === customId);
   if (avt) {
       return (
-        <div className={`${sizeClass} rounded-full flex items-center justify-center flex-shrink-0 ${avt.bgColor} border border-white/10 overflow-hidden shadow-md`}>
+        <div className={`${sizeClass} rounded-full flex items-center justify-center flex-shrink-0 ${avt.bgColor} border-2 border-white/10 overflow-hidden shadow-lg`}>
           <avt.Component className="w-[85%] h-[85%] object-contain drop-shadow-sm" />
         </div>
       );
   }
-  return <img src={photoUrl} alt="avt" className={`${sizeClass} rounded-full border border-white/10 object-cover shrink-0 shadow-md`} referrerPolicy="no-referrer" />;
+  return <img src={photoUrl} alt="avt" className={`${sizeClass} rounded-full border-2 border-white/10 object-cover shrink-0 shadow-lg`} referrerPolicy="no-referrer" />;
+};
+
+const ChatPoster = ({ m, fallback }) => {
+    const { posterSrc } = useTmdbImage(m);
+    return <img src={posterSrc || fallback} alt="poster" className="w-full h-full object-cover" />;
 };
 
 const CATEGORIES = [
   { name: 'Mới Cập Nhật', slug: 'phim-moi-cap-nhat', type: 'danh-sach' },
   { name: 'Hành Động', slug: 'hanh-dong', type: 'the-loai' },
-  { name: 'Hoạt Hình', slug: 'hoat-hinh', type: 'the-loai' },
+  { name: 'Hoạt Hình', slug: 'hoat-hinh', type: 'danh-sach' },
   { name: 'Tình Cảm', slug: 'tinh-cam', type: 'the-loai' },
   { name: 'Kinh Dị', slug: 'kinh-di', type: 'the-loai' },
   { name: 'Hài Hước', slug: 'hai-huoc', type: 'the-loai' },
 ];
 
-async function fetchJsonCached(url, { signal, ttl = 3 * 60 * 1000 } = {}) {
-  const promise = fetch(url, { signal }).then(async (r) => {
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    return await r.json();
-  });
-  try { return await promise; } catch (err) { throw err; }
-}
-
-function normalizeForMatch(str) {
-  return String(str || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
-}
-
-function isCrossMatch(m1, m2) {
-  if (!m1 || !m2) return false;
-  const n1 = normalizeForMatch(m1.name);
-  const n2 = normalizeForMatch(m2.name);
-  const o1 = normalizeForMatch(m1.origin_name || m1.original_name);
-  const o2 = normalizeForMatch(m2.origin_name || m2.original_name);
-  if (o1 && o2 && (o1 === o2 || o1.includes(o2) || o2.includes(o1))) return true;
-  if (n1 && n2 && (n1 === n2 || n1.includes(n2) || n2.includes(n1))) return true;
-  return false;
-}
-
-async function fetchNguoncSearch(keyword) {
-  const res = await fetchJsonCached(`${API_NGUONC}/search?keyword=${encodeURIComponent(keyword)}`);
-  return res?.items || res?.data?.items || res?.data || [];
-}
-
-async function fetchOphimSearch(keyword) {
-  const res = await fetchJsonCached(`${API}/tim-kiem?keyword=${encodeURIComponent(keyword)}`);
-  return res?.data?.items || [];
-}
-
-async function fetchNguoncDetail(slug) {
-  const res = await fetchJsonCached(`${API_NGUONC_DETAIL}/${slug}`);
-  let item = res?.movie || res?.item || res;
-  if (item) item.episodes = item.episodes || res?.episodes || [];
-  return item || null;
-}
-
-async function fetchOphimDetail(slug) {
-  const res = await fetchJsonCached(`${API}/phim/${slug}`);
-  return res?.data?.item || null;
-}
+const getMovieGenres = (m) => {
+    if (!m) return "Đang cập nhật";
+    const cats = m.category || m.categories || m.v1_category || [];
+    if (Array.isArray(cats) && cats.length > 0) {
+        return cats.map(c => typeof c === 'object' ? (c.name || "") : c).filter(Boolean).join(', ');
+    }
+    return "Phim Mới";
+};
 
 /* =========================
    WATCH ROOM ROOT
@@ -103,34 +76,46 @@ async function fetchOphimDetail(slug) {
 
 export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
   const [roomData, setRoomData] = useState(null);
-  const [usersInRoom, setUsersInRoom] = useState([]);
-  const [messages, setMessages] = useState([]);
-  const [newMessage, setNewMessage] = useState("");
-  const [activeTab, setActiveTab] = useState("chat"); 
+  
+  // 🌟 FIX CORE: BIẾN TRẠNG THÁI XÁC ĐỊNH CHUẨN XÁC HOST (null = đang tải, true/false = đã biết)
+  const [isHostState, setIsHostState] = useState(null);
+
+  const [messages, setMessages] = useState([]); 
+  const [onlineUsers, setOnlineUsers] = useState([]); 
   const [myAvatarId, setMyAvatarId] = useState(null);
   
   const [movieData, setMovieData] = useState(null);
   const [ep, setEp] = useState(null);
+  
   const [loadingPage, setLoadingPage] = useState(true);
   const [loadingPlayer, setLoadingPlayer] = useState(true);
   const [roomClosed, setRoomClosed] = useState(false);
+  
+  const [showHostLeftPopup, setShowHostLeftPopup] = useState(false);
+  const [isInitialSyncing, setIsInitialSyncing] = useState(true); 
 
   const [showMovieModal, setShowMovieModal] = useState(false);
   const [modalCat, setModalCat] = useState(CATEGORIES[0]);
   const [modalSearchTerm, setModalSearchTerm] = useState("");
   const [modalMovies, setModalMovies] = useState([]);
   const [isFetchingModal, setIsFetchingModal] = useState(false);
-  const [hostConfirmRequest, setHostConfirmRequest] = useState(null); 
   
+  const [hostConfirmRequest, setHostConfirmRequest] = useState(null); 
+  const [hostConfirmEpRequest, setHostConfirmEpRequest] = useState(null);
+
+  const [chatInput, setChatInput] = useState(""); 
+
+  const isWritingRef = useRef(false);
+  const channelRef = useRef(null); 
+
   const [modalPage, setModalPage] = useState(1);
   const [modalHasMore, setModalHasMore] = useState(false);
   const [isLoadingMoreModal, setIsLoadingMoreModal] = useState(false);
-  const modalObserverTarget = useRef(null);
+  const observerTarget = useRef(null);
 
   const [showEpModal, setShowEpModal] = useState(false);
   const [epChunkIndex, setEpChunkIndex] = useState(0);
   const [currentEpIndex, setCurrentEpIndex] = useState(0);
-  const [hostConfirmEpRequest, setHostConfirmEpRequest] = useState(null);
 
   const epScrollRef = useRef(null);
   const [isDraggingEp, setIsDraggingEp] = useState(false);
@@ -152,489 +137,546 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
   const handleMouseUpCat = () => setIsDraggingCat(false);
   const handleMouseMoveCat = (e) => { if (!isDraggingCat) return; e.preventDefault(); const x = e.pageX - catScrollRef.current.offsetLeft; catScrollRef.current.scrollLeft = scrollLeftCat - (x - startXCat) * 2; };
 
-  const vRef = useRef(null);
+  const artRef = useRef(null);
+  const artInstanceRef = useRef(null);
   const containerRef = useRef(null);
   const messagesEndRef = useRef(null);
+  
   const isHostRef = useRef(false);
   const safeToDeleteRef = useRef(false);
   const isChangingMovieRef = useRef(false); 
   const hasAutoOpenedModal = useRef(false);
   const currentSlugRef = useRef(slug);
+  const roomDataRef = useRef(null);
 
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [volume, setVolume] = useState(1);
-  const [isMuted, setIsMuted] = useState(false);
-  const [showViewerControls, setShowViewerControls] = useState(false);
-  const hideControlsTimeoutRef = useRef(null);
+  const navigateRef = useRef(navigate);
+  useEffect(() => { navigateRef.current = navigate; }, [navigate]);
 
   useEffect(() => { currentSlugRef.current = slug; }, [slug]);
+  useEffect(() => { roomDataRef.current = roomData; }, [roomData]);
 
-  // FETCH PHIM CHÍNH
+  // BẮT PHÍM TẮT
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+        const art = artInstanceRef.current;
+        if (!art) return;
+        if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+        const isHost = isHostRef.current;
+        switch(e.key.toLowerCase()) {
+            case 'f': e.preventDefault(); art.fullscreen = !art.fullscreen; break;
+            case ' ': e.preventDefault(); if (isHost) { art.toggle(); } else { if (art.video) { if (art.video.paused) art.video.play().catch(()=>{}); if (art.video.muted) art.video.muted = false; } } break;
+            case 'arrowright': if (isHost) { e.preventDefault(); art.seek = art.currentTime + 5; } break;
+            case 'arrowleft': if (isHost) { e.preventDefault(); art.seek = Math.max(0, art.currentTime - 5); } break;
+        }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // LẤY AVATAR
+  useEffect(() => {
+    if (!user?.uid) return;
+    supabase.from('profiles').select('avatar').eq('user_id', user.uid).single().then(({data}) => {
+        if (data && data.avatar) setMyAvatarId(data.avatar);
+    });
+  }, [user?.uid]);
+
+  // LOAD DATA PHIM
   useEffect(() => {
     let isMounted = true;
-
-    if (slug === "dang-chon-phim") {
-        setLoadingPage(false);
-        setLoadingPlayer(false);
-        return;
+    if (slug === "dang-chon-phim") { setLoadingPage(false); setLoadingPlayer(false); return; }
+    
+    // DỌN DẸP SẠCH SẼ TÀN DƯ TRƯỚC KHI LOAD PHIM MỚI
+    setEp(null);
+    if (artInstanceRef.current) {
+        try { artInstanceRef.current.destroy(true); } catch(e){}
+        artInstanceRef.current = null;
     }
 
     const fetchMovieData = async () => {
+        setLoadingPage(true); setLoadingPlayer(true); 
         try {
-            setLoadingPage(true);
-            setLoadingPlayer(true);
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 8000);
-            
-            const [resOphim, resNguonc] = await Promise.allSettled([
-                fetch(`${API}/phim/${slug}`, { signal: controller.signal }).then(r => r.json()),
-                fetch(`${API_NGUONC_DETAIL}/${slug}`, { signal: controller.signal }).then(r => r.json())
-            ]);
+            const res = await fetch(`${API}/phim/${slug}`, { signal: controller.signal }).then(r => r.json());
             clearTimeout(timeoutId);
-
-            let oItem = resOphim.status === 'fulfilled' ? resOphim.value?.data?.item : null;
-            let nItem = null;
-
-            if (resNguonc.status === 'fulfilled') {
-                let nData = resNguonc.value;
-                nItem = nData?.movie || nData?.item || nData;
-                if (nItem && nData?.episodes) nItem.episodes = nData.episodes;
-            }
-
+            
+            let oItem = res?.status || res?.item ? (res.item || res.data?.item) : null;
             if (!isMounted) return;
-            if (!oItem && !nItem) return navigate({ type: 'watch-party-lobby' });
-
-            const baseItem = oItem || nItem;
-            setMovieData(baseItem);
-
-            let targetList = baseItem?.episodes?.[0]?.server_data || baseItem?.episodes?.[0]?.items || [];
-            if(targetList.length > 0) {
-               setEp({ name: targetList[0].name, link_m3u8: targetList[0].link_m3u8 || targetList[0].m3u8 || targetList[0].m3u8_url || "" });
-               setCurrentEpIndex(0);
+            if (!oItem) {
+                alert("Phim này hiện chưa hỗ trợ! Vui lòng chọn phim khác.");
+                return navigateRef.current({ type: 'watch-party-lobby' });
             }
-            setLoadingPage(false);
-            setLoadingPlayer(false);
+            
+            setMovieData(oItem);
+            setLoadingPage(false); 
+            setLoadingPlayer(false); 
             isChangingMovieRef.current = false; 
         } catch (e) {
-            if (isMounted) navigate({ type: 'watch-party-lobby' });
+            if (isMounted) { navigateRef.current({ type: 'watch-party-lobby' }); }
         }
     };
     fetchMovieData();
     return () => { isMounted = false; };
-  }, [slug, navigate]);
+  }, [slug]); 
 
+  // ĐỒNG BỘ TẬP PHIM
   useEffect(() => {
      if (!movieData || !roomData) return;
      const epList = movieData?.episodes?.[0]?.server_data || movieData?.episodes?.[0]?.items || [];
      const rIndex = roomData.epIndex || 0; 
-
-     if (epList[rIndex] && currentEpIndex !== rIndex) {
+     
+     if (epList[rIndex] && (currentEpIndex !== rIndex || !ep)) {
          setCurrentEpIndex(rIndex);
          const targetEp = epList[rIndex];
          setEp({ name: targetEp.name, link_m3u8: targetEp.link_m3u8 || targetEp.m3u8 || targetEp.m3u8_url || "" });
      }
-  }, [roomData?.epIndex, movieData]);
+  }, [roomData?.epIndex, movieData, ep]); 
 
-  // LOAD HLS
+  // 🌟 FIX LỖI VÒNG LẶP & LỖI CORS CỦA PLAYER
   useEffect(() => {
-    if (!ep?.link_m3u8 || !vRef.current) return;
-    const v = vRef.current;
-    let hlsInstance = null;
+    // CHỜ CHẮC CHẮN ĐÃ CÓ M3U8 VÀ ĐÃ BIẾT CHÍNH XÁC AI LÀ HOST THÌ MỚI ĐƯỢC TẠO PLAYER
+    if (!ep?.link_m3u8 || !artRef.current || isHostState === null) return; 
 
-    if (v.canPlayType("application/vnd.apple.mpegurl")) {
-       v.src = ep.link_m3u8;
-    } else {
-       const loadHls = async () => {
-         await ensureHlsScript();
-         if (window.Hls) {
-            hlsInstance = new window.Hls();
-            hlsInstance.loadSource(ep.link_m3u8);
-            hlsInstance.attachMedia(v);
-         }
-       };
-       loadHls();
+    if (artInstanceRef.current) {
+        try { artInstanceRef.current.destroy(true); } catch(e){}
     }
-    return () => { if (hlsInstance) hlsInstance.destroy(); };
-  }, [ep, loadingPlayer]);
-
-  // THUẬT TOÁN ĐỒNG BỘ "SOFT SYNC" ĐÃ FIX: CHÍNH XÁC ĐẾN TỪNG MILIGIÂY, TRẢ VỀ 1.0x NGAY
-  useEffect(() => {
-    const video = vRef.current;
-    const isViewer = roomData && roomData.hostId !== user?.uid;
     
-    if (!video || !isViewer || slug === "dang-chon-phim" || roomData.movieId !== slug) return;
+    // Sử dụng thẳng State Host thay vì Ref dễ gây lỗi đè luồng
+    const isHost = isHostState;
+    const customControls = [];
+    if (isHost) {
+        customControls.push({
+          position: 'left', index: 10,
+          html: `<svg style="width:20px;height:20px;color:white;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 19 2 12 11 5 11 19"></polygon><polygon points="22 19 13 12 22 5 22 19"></polygon></svg>`,
+          tooltip: 'Tua lùi 10s', click: () => artInstanceRef.current && (artInstanceRef.current.seek = Math.max(0, artInstanceRef.current.currentTime - 10))
+        }, {
+          position: 'left', index: 11,
+          html: `<svg style="width:20px;height:20px;color:white;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 19 22 12 13 5 13 19"></polygon><polygon points="2 19 11 12 2 5 2 19"></polygon></svg>`,
+          tooltip: 'Tua tới 10s', click: () => artInstanceRef.current && (artInstanceRef.current.seek = artInstanceRef.current.currentTime + 10)
+        });
+    }
 
-    const syncVideo = () => {
-        if (video.readyState < 1) return; 
+    const art = new Artplayer({
+      container: artRef.current, url: ep.link_m3u8, volume: 1, isLive: false, muted: false, autoplay: false, pip: true, fullscreen: true, fullscreenWeb: true, setting: true,
+      playbackRate: isHost, hotkey: false, backdrop: isHost, theme: '#E50914', lang: 'vi', lock: false, 
+      i18n: { 'vi': { 'Play': 'Phát', 'Pause': 'Tạm dừng', 'Settings': 'Cài đặt', 'Speed': 'Tốc độ', 'Quality': 'Chất lượng', 'Auto': 'Tự động' } },
+      controls: customControls,
+      plugins: [ function (art) { art.on('ready', () => { if (!isHost && art.template.$playAndPause) art.template.$playAndPause.style.display = 'none'; }); } ],
+      customType: {
+        m3u8: function (video, url, artObj) {
+          if (Hls.isSupported()) {
+            if (artObj.hls) artObj.hls.destroy();
+            const hls = new Hls({ enableWorker: true, backBufferLength: 30 });
+            artObj.hls = hls;
+            hls.loadSource(url); 
+            hls.attachMedia(video); 
+            
+            // XỬ LÝ LỖI CORS KHI FETCH M3U8 TỪ TRÌNH DUYỆT BỊ CHẶN
+            hls.on(Hls.Events.ERROR, function (event, data) {
+                if (data.fatal) {
+                    if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                        artObj.notice.show = "Lỗi CORS / Mạng. Cài Extention 'Allow CORS' để test trên localhost!";
+                        console.error("Lỗi HLS Network:", data);
+                    } else {
+                        hls.destroy();
+                    }
+                }
+            });
 
-        let targetTime = roomData.currentTime || 0;
-        
-        // CHỈ cộng thời gian trôi qua, KHÔNG CỘNG BÙ TRỪ 1.5s NỮA (để không bị vượt quá Host)
-        if (roomData.isPlaying && roomData.updatedAt) {
-            const elapsedSeconds = (Date.now() - roomData.updatedAt) / 1000;
-            targetTime = targetTime + elapsedSeconds; 
-        }
+            hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
+              if (data.levels && data.levels.length > 1) {
+                 const qualityList = data.levels.map((level, index) => ({ html: level.height + 'p', level: index, default: false }));
+                 qualityList.unshift({ html: 'Tự động', level: -1, default: true });
+                 artObj.setting.add({ width: 200, html: 'Chất lượng', tooltip: 'Tự động', selector: qualityList, onSelect: (item) => { hls.currentLevel = item.level; return item.html; } });
+              }
+            });
+          } else if (video.canPlayType('application/vnd.apple.mpegurl')) { video.src = url; }
+        },
+      },
+    });
+    artInstanceRef.current = art;
 
-        const diff = targetTime - video.currentTime;
-
-        // Nhảy thẳng nếu lệch quá xa (> 2s)
-        if (Math.abs(diff) > 2) {
-            video.currentTime = targetTime;
-            video.playbackRate = 1.0; 
-        } 
-        // Bị chậm hơn Host (0.3 -> 2s) => Tăng 1.1x để đuổi
-        else if (diff > 0.3) {
-            video.playbackRate = 1.1;
-        } 
-        // Bị nhanh hơn Host => Giảm 0.9x để đợi
-        else if (diff < -0.3) {
-            video.playbackRate = 0.9;
-        } 
-        // Lệch cực ít (Hoàn hảo) => Reset tốc độ chuẩn
-        else {
-            video.playbackRate = 1.0;
-        }
-
-        if (roomData.isPlaying && video.paused) {
-            video.play().catch(e => console.log("Lỗi Play:", e));
-        } else if (!roomData.isPlaying && !video.paused) {
-            video.pause();
-        }
+    if (isHost) {
+        let syncTimeout;
+        const syncHost = (eventType, forcePlayingState = null, isBuffering = false) => {
+            clearTimeout(syncTimeout);
+            syncTimeout = setTimeout(() => {
+                channelRef.current?.send({ type: 'broadcast', event: 'sync_player', payload: { movieId: currentSlugRef.current, isPlaying: forcePlayingState !== null ? forcePlayingState : art.playing, isBuffering, currentTime: art.currentTime, updatedAt: Date.now(), action: eventType } });
+            }, 150); 
+        };
+        art.on('video:play', () => syncHost('play', true, false)); art.on('video:pause', () => syncHost('pause', false, false)); art.on('video:seeked', () => syncHost('seeked', null, false));
+        art.on('video:waiting', () => syncHost('waiting', false, true)); art.on('video:playing', () => syncHost('playing', true, false));
+    }
+    
+    return () => { 
+      if (art) { 
+        try { art.pause(); } catch(e){}
+        if (art.hls) { try { art.hls.stopLoad(); art.hls.destroy(); } catch(e){} } 
+        try { art.destroy(true); } catch(e){}
+        artInstanceRef.current = null; 
+      } 
     };
+  }, [ep?.link_m3u8, roomId, isHostState]); // Dùng isHostState thay vì roomData để né vòng lặp
 
-    if (video.readyState >= 1) syncVideo();
+  // ĐỒNG BỘ: HOST LIÊN TỤC PING TRẠNG THÁI CHO NHỮNG NGƯỜI VÀO SAU
+  useEffect(() => {
+      if (!isHostState) return; // Nếu không phải host thì cút luôn
 
-    video.addEventListener("canplay", syncVideo);
-    video.addEventListener("loadedmetadata", syncVideo);
+      const pingInterval = setInterval(() => {
+          const art = artInstanceRef.current;
+          if (art && channelRef.current) {
+              channelRef.current.send({
+                  type: 'broadcast',
+                  event: 'sync_player',
+                  payload: {
+                      movieId: currentSlugRef.current,
+                      isPlaying: art.playing,
+                      isBuffering: false,
+                      currentTime: art.currentTime,
+                      updatedAt: Date.now(),
+                      action: 'ping'
+                  }
+              });
+          }
+      }, 3000); 
 
-    // Kéo khoảng thời gian kiểm tra xuống còn 1000ms (1 giây) để nhạy hơn
+      return () => clearInterval(pingInterval);
+  }, [isHostState, roomId]);
+
+  // FIX LỖI KHÁN GIẢ VÀO MUỘN BỊ ĐỨNG HÌNH DO TRÌNH DUYỆT CHẶN AUTOPLAY
+  useEffect(() => {
     const syncInterval = setInterval(() => {
-        if (video.readyState >= 1) syncVideo();
-    }, 1000);
+        if (isHostRef.current) return; 
+        const art = artInstanceRef.current; if (!art || !art.video) return;
+        const video = art.video; const rData = roomDataRef.current;
+        if (!rData || rData.movieId !== currentSlugRef.current) return;
 
-    return () => {
-        video.removeEventListener("canplay", syncVideo);
-        video.removeEventListener("loadedmetadata", syncVideo);
-        clearInterval(syncInterval);
-        if (video) video.playbackRate = 1.0; 
-    };
-  }, [roomData, slug, user?.uid]);
-
-  // REALTIME ROOM LOGIC VÀ DỌN RÁC
-  useEffect(() => {
-    if (!roomId || !user) return;
-    
-    let currentCustomAvatar = null;
-    getDoc(doc(db, "users", user.uid)).then(snap => {
-        if(snap.exists() && snap.data().avatar) {
-            currentCustomAvatar = snap.data().avatar;
-            setMyAvatarId(currentCustomAvatar);
+        // Nếu Host đang play mà máy Viewer đang ngủ đông (chưa tải xong frame nào do trình duyệt chặn tự động chạy)
+        if (video.readyState === 0 && rData.isPlaying) {
+            video.muted = true; // Ép tắt tiếng để lách luật chặn Autoplay của Google Chrome
+            const p = video.play();
+            if (p !== undefined) p.catch(()=>{});
+            return;
         }
-        const defaultName = user.displayName || user.email?.split('@')[0] || "Khách";
-        const defaultAvatar = user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(defaultName)}&background=E50914&color=fff`;
-        setDoc(doc(db, `rooms/${roomId}/users`, user.uid), { uid: user.uid, name: defaultName, avatar: defaultAvatar, customAvatarId: currentCustomAvatar }).catch(()=>{});
-    });
 
-    const roomRef = doc(db, "rooms", roomId);
-    const userRef = doc(db, `rooms/${roomId}/users`, user.uid);
+        if (!rData.isPlaying || rData.isBuffering) { 
+            if (!video.paused) video.pause(); 
+            if (Math.abs(rData.currentTime - video.currentTime) > 1.5) video.currentTime = rData.currentTime; 
+            return; 
+        }
+        
+        let expectedTime = rData.currentTime || 0; 
+        if (rData.updatedAt && rData.isPlaying) expectedTime += (Date.now() - rData.updatedAt) / 1000;
+
+        const diff = expectedTime - video.currentTime;
+        if (video.paused) { 
+            video.muted = true; 
+            const playPromise = video.play();
+            if (playPromise !== undefined) playPromise.then(() => { 
+                video.currentTime = expectedTime; 
+                setTimeout(() => { 
+                    video.muted = false; 
+                    if (video.paused) { video.muted = true; video.play().catch(()=>{}); } 
+                    else if (isInitialSyncing && art.notice) art.notice.show = "Đã đồng bộ Live!"; 
+                    if (isInitialSyncing) setIsInitialSyncing(false); 
+                }, 100); 
+            }).catch(()=>{});
+        } else {
+            if (Math.abs(diff) > 2.5) { video.currentTime = expectedTime; video.playbackRate = 1.0; } 
+            else if (diff > 0.5) { video.playbackRate = 1.25; } 
+            else if (diff < -0.5) { video.playbackRate = 0.85; } 
+            else { video.playbackRate = 1.0; }
+            if (isInitialSyncing) setIsInitialSyncing(false);
+        }
+    }, 1000); 
+    return () => clearInterval(syncInterval);
+  }, [slug, isInitialSyncing]);
+
+  useEffect(() => {
+    if (!roomId || !user?.uid) return;
+    const roomChannel = supabase.channel(`room_${roomId}`, { config: { presence: { key: user.uid } } });
+    channelRef.current = roomChannel;
+
+    roomChannel
+      .on('broadcast', { event: 'sync_player' }, (payload) => { if (!isHostRef.current) roomDataRef.current = { ...roomDataRef.current, ...payload.payload }; })
+      .on('broadcast', { event: 'new_message' }, (payload) => { setMessages(prev => [...prev, payload.payload]); })
+      .on('presence', { event: 'sync' }, () => {
+          const newState = roomChannel.presenceState();
+          const users = [];
+          for (const uid in newState) {
+              if (newState[uid][0]) users.push({ uid, ...newState[uid][0] });
+          }
+          setOnlineUsers(users); 
+      })
+      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
+          if (newPresences[0]) {
+              const joinMsg = { id: `join_${key}_${Date.now()}`, isSystem: true, text: `${newPresences[0].name} đã tham gia phòng.` };
+              setMessages(prev => [...prev, joinMsg]); 
+          }
+      })
+      .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+          if (leftPresences[0]) {
+              const leaveMsg = { id: `leave_${key}_${Date.now()}`, isSystem: true, text: `${leftPresences[0].name} đã rời phòng.` };
+              setMessages(prev => [...prev, leaveMsg]); 
+          }
+      });
+
+    roomChannel
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, (payload) => {
+          const data = payload.new;
+          const mappedData = { ...data, movieId: data.movie_id, epIndex: data.ep_index, isPlaying: data.is_playing, currentTime: data.current_time, hostId: data.host_id, hostName: data.host_name, isPublic: data.is_public };
+          setRoomData(mappedData);
+          if (data.movie_id && data.movie_id !== currentSlugRef.current) { isChangingMovieRef.current = true; navigateRef.current({ type: 'watch-room', roomId, slug: data.movie_id }); }
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, () => {
+          if (!isHostRef.current) { setRoomClosed(true); setShowHostLeftPopup(true); } else { navigateRef.current({ type: 'watch-party-lobby' }); }
+      })
+      .subscribe(async (status) => {
+          if (status === 'SUBSCRIBED') {
+              const { data } = await supabase.from('profiles').select('avatar').eq('user_id', user.uid).single();
+              const avatarId = data ? data.avatar : null;
+              await roomChannel.track({
+                  name: user.displayName || user.email?.split('@')[0] || "Khách",
+                  avatar: user.photoURL,
+                  customAvatarId: avatarId,
+                  onlineAt: new Date().toISOString()
+              });
+          }
+      });
+
+    const fetchInitialRoom = async () => {
+        const { data } = await supabase.from('rooms').select('*').eq('id', roomId).single();
+        if (data) {
+            const mappedData = { ...data, movieId: data.movie_id, epIndex: data.ep_index, isPlaying: data.is_playing, currentTime: data.current_time, hostId: data.host_id, hostName: data.host_name };
+            
+            // XÁC NHẬN CHẮC CHẮN HOST RỒI MỚI CHO PLAYER CHẠY (TRỊ LỖI RACE CONDITION)
+            isHostRef.current = mappedData.hostId === user.uid; 
+            setIsHostState(mappedData.hostId === user.uid); 
+
+            roomDataRef.current = mappedData;
+            setRoomData(mappedData); 
+            if (currentSlugRef.current === "dang-chon-phim" && mappedData.hostId === user.uid && !hasAutoOpenedModal.current) { setShowMovieModal(true); hasAutoOpenedModal.current = true; }
+        } else if (!isHostRef.current) { setRoomClosed(true); setShowHostLeftPopup(true); }
+    };
+    fetchInitialRoom();
+
     const strictModeTimer = setTimeout(() => { safeToDeleteRef.current = true; }, 800);
+    const destroyRoomInstantly = async () => { if (safeToDeleteRef.current && isHostRef.current && !isChangingMovieRef.current) await supabase.from('rooms').delete().eq('id', roomId); };
+    window.addEventListener("beforeunload", destroyRoomInstantly); window.addEventListener("pagehide", destroyRoomInstantly);
+    return () => { clearTimeout(strictModeTimer); supabase.removeChannel(roomChannel); window.removeEventListener("beforeunload", destroyRoomInstantly); window.removeEventListener("pagehide", destroyRoomInstantly); destroyRoomInstantly(); };
+  }, [roomId, user?.uid]); 
 
-    const unsubRoom = onSnapshot(roomRef, (docSnap) => {
-      if(docSnap.exists()) {
-        const data = docSnap.data();
-        setRoomData(data);
-        isHostRef.current = data.hostId === user.uid; 
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-        if (currentSlugRef.current === "dang-chon-phim" && data.hostId === user.uid && !hasAutoOpenedModal.current) {
-           setShowMovieModal(true);
-           hasAutoOpenedModal.current = true;
-        }
-
-        if (data.movieId && data.movieId !== currentSlugRef.current) {
-            navigate({ type: 'watch-room', roomId, slug: data.movieId });
-        }
-      } else {
-        if (!isHostRef.current) setRoomClosed(true); 
-        else navigate({ type: 'watch-party-lobby' }); 
+  const getGuaranteedAvatar = async () => {
+      if (myAvatarId) return myAvatarId;
+      if (user?.uid) {
+          const { data } = await supabase.from('profiles').select('avatar').eq('user_id', user.uid).single();
+          if (data && data.avatar) {
+              setMyAvatarId(data.avatar);
+              return data.avatar;
+          }
       }
-    });
-
-    const unsubUsers = onSnapshot(collection(db, `rooms/${roomId}/users`), (snap) => {
-       const users = snap.docs.map(d => d.data());
-       setUsersInRoom(users);
-       updateDoc(roomRef, { viewerCount: users.length }).catch(()=>{});
-    });
-
-    const qMessages = query(collection(db, `rooms/${roomId}/messages`), orderBy("createdAt", "asc"));
-    const unsubMessages = onSnapshot(qMessages, (snap) => {
-       setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-
-    const handleCleanup = () => {
-       if (isChangingMovieRef.current) return;
-       if (safeToDeleteRef.current) {
-           if (isHostRef.current) deleteDoc(roomRef).catch(()=>{}); 
-           else deleteDoc(userRef).catch(()=>{}); 
-       }
-    };
-    window.addEventListener("beforeunload", handleCleanup);
-
-    return () => {
-      clearTimeout(strictModeTimer);
-      unsubRoom(); unsubUsers(); unsubMessages();
-      window.removeEventListener("beforeunload", handleCleanup);
-      handleCleanup(); 
-    };
-  }, [roomId, user]); 
-
-  useEffect(() => {
-    if (roomClosed) {
-      const timer = setTimeout(() => navigate({ type: 'watch-party-lobby' }), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [roomClosed, navigate]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, activeTab]);
-
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) containerRef.current?.requestFullscreen?.().catch(()=>{});
-    else document.exitFullscreen?.().catch(()=>{});
+      return null;
   };
 
-  const handleViewerMouseMove = () => {
-    setShowViewerControls(true);
-    if (hideControlsTimeoutRef.current) clearTimeout(hideControlsTimeoutRef.current);
-    hideControlsTimeoutRef.current = setTimeout(() => setShowViewerControls(false), 3000);
+  const handleSendChatMessage = async (e) => {
+      e.preventDefault();
+      if (!chatInput.trim() || !channelRef.current) return;
+      
+      const { data } = await supabase.from('profiles').select('avatar').eq('user_id', user.uid).single();
+      const avatarId = data ? data.avatar : null;
+      
+      const text = chatInput.trim();
+      setChatInput(""); 
+      const chatMsg = { 
+          id: `chat_${user.uid}_${Date.now()}`, uid: user.uid, text, type: 'chat',
+          name: user.displayName || user.email?.split('@')[0] || "Khách", 
+          avatar: user.photoURL, customAvatarId: avatarId, createdAt: Date.now() 
+      };
+      channelRef.current.send({ type: 'broadcast', event: 'new_message', payload: chatMsg });
+      setMessages(prev => [...prev, chatMsg]);
   };
 
-  useEffect(() => {
-    const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
-    document.addEventListener("fullscreenchange", handleFullscreenChange);
-    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
-  }, []);
-
-  const loadModalMovies = async (isSearch = false, pageNum = 1) => {
-    if (pageNum === 1) {
-        setIsFetchingModal(true);
-        setModalMovies([]);
-    } else {
-        setIsLoadingMoreModal(true);
-    }
-
+  const loadModalMovies = async (isSearch = false, pageNum = 1, currentList = []) => {
+    if (pageNum === 1) setIsFetchingModal(true); 
+    else setIsLoadingMoreModal(true); 
+    
     try {
       let reqs = [];
       if (isSearch && modalSearchTerm.trim()) {
          const q = encodeURIComponent(modalSearchTerm.trim());
-         reqs = [
-           fetch(`${API}/tim-kiem?keyword=${q}&page=${pageNum}`).then(r=>r.json()),
-           fetch(`${API_NGUONC}/search?keyword=${q}&page=${pageNum}`).then(r=>r.json())
-         ];
+         reqs = [ fetch(`${API}/tim-kiem?keyword=${q}&page=${pageNum}`).then(r=>r.json()) ];
       } else {
-         if (modalCat.slug === 'phim-moi-cap-nhat') {
-            reqs = [fetch(`${API}/danh-sach/phim-moi-cap-nhat?page=${pageNum}`).then(r=>r.json()), fetch(`${API_NGUONC}/phim-moi-cap-nhat?page=${pageNum}`).then(r=>r.json())];
-         } else if (modalCat.slug === 'hoat-hinh') {
-            reqs = [fetch(`${API}/the-loai/hoat-hinh?page=${pageNum}`).then(r=>r.json()), fetch(`${API}/danh-sach/hoat-hinh?page=${pageNum}`).then(r=>r.json()), fetch(`${API_NGUONC}/danh-sach/hoathinh?page=${pageNum}`).then(r=>r.json())];
+         const { slug, type } = modalCat;
+         if (slug === 'phim-moi-cap-nhat') {
+             reqs = [ fetch(`${API}/danh-sach/phim-moi-cap-nhat?page=${pageNum}`).then(r=>r.json()) ];
+         } else if (slug === 'hoat-hinh') {
+             reqs = [ fetch(`${API}/danh-sach/hoat-hinh?page=${pageNum}`).then(r=>r.json()), fetch(`${API}/the-loai/hoat-hinh?page=${pageNum}`).then(r=>r.json()) ];
          } else {
-            reqs = [fetch(`${API}/${modalCat.type}/${modalCat.slug}?page=${pageNum}`).then(r=>r.json()), fetch(`${API_NGUONC}/${modalCat.type}/${modalCat.slug}?page=${pageNum}`).then(r=>r.json())];
+             reqs = [ fetch(`${API}/${type}/${slug}?page=${pageNum}`).then(r=>r.json()) ];
          }
       }
-
+      
       const results = await Promise.allSettled(reqs);
       let newItems = [];
-      results.forEach(res => {
-          if (res.status === 'fulfilled') {
-              const items = res.value?.items || res.value?.data?.items || [];
-              if (Array.isArray(items)) newItems = [...newItems, ...items];
-          }
+      results.forEach(res => { 
+          if (res.status === 'fulfilled') { 
+              const items = res.value?.items || res.value?.data?.items || []; 
+              if (Array.isArray(items)) newItems = [...newItems, ...items]; 
+          } 
       });
-
-      const uniqueItems = Array.from(new Map(newItems.map(item => [item.slug || item.name, item])).values());
       
-      if (pageNum === 1) setModalMovies(uniqueItems);
-      else setModalMovies(prev => Array.from(new Map([...prev, ...uniqueItems].map(item => [item.slug || item.name, item])).values()));
+      const allRawItems = pageNum === 1 ? newItems : [...currentList, ...newItems];
+      const finalList = mergeDuplicateMovies(allRawItems);
       
+      setModalMovies(finalList);
       setModalHasMore(newItems.length > 0);
+
+      if (finalList.length < 10 && newItems.length > 0 && pageNum < 10) {
+          const nextP = pageNum + 1;
+          setModalPage(nextP);
+          loadModalMovies(isSearch, nextP, finalList);
+          return; 
+      }
     } catch(e) { 
         if(pageNum === 1) setModalMovies([]); 
-        setModalHasMore(false);
+        setModalHasMore(false); 
     }
-    
-    setIsFetchingModal(false);
+    setIsFetchingModal(false); 
     setIsLoadingMoreModal(false);
   };
 
-  useEffect(() => {
-    if (showMovieModal) {
-        setModalPage(1);
-        loadModalMovies(!!modalSearchTerm, 1);
-    }
+  useEffect(() => { 
+      if (showMovieModal) { 
+          setModalPage(1); 
+          loadModalMovies(!!modalSearchTerm, 1, []); 
+      } 
   }, [showMovieModal, modalCat]);
 
-  const handleModalSearchSubmit = (e) => {
-     e.preventDefault();
-     if (modalSearchTerm.trim()) { setModalPage(1); loadModalMovies(true, 1); }
-  };
-
   useEffect(() => {
-     const observer = new IntersectionObserver((entries) => {
-         if (entries[0].isIntersecting && modalHasMore && !isLoadingMoreModal && !isFetchingModal) {
-             setModalPage(p => { const next = p + 1; loadModalMovies(!!modalSearchTerm, next); return next; });
-         }
-     }, { threshold: 0.1 });
-
-     if (modalObserverTarget.current) observer.observe(modalObserverTarget.current);
-     return () => { if (modalObserverTarget.current) observer.unobserve(modalObserverTarget.current); }
-  }, [modalHasMore, isLoadingMoreModal, isFetchingModal, modalSearchTerm]);
-
-  const handleSendMessage = async (e) => {
-    e.preventDefault();
-    if (!newMessage.trim() || !user) return;
-    const text = newMessage.trim();
-    setNewMessage(""); 
-    
-    const defaultName = user.displayName || user.email?.split('@')[0] || "Khách";
-    const defaultAvatar = user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(defaultName)}&background=E50914&color=fff`;
-
-    try {
-      await addDoc(collection(db, `rooms/${roomId}/messages`), {
-        uid: user.uid, name: defaultName, avatar: defaultAvatar, customAvatarId: myAvatarId,
-        text: text, createdAt: serverTimestamp(), type: 'text'
-      });
-    } catch (err) {}
-  };
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && modalHasMore && !isFetchingModal && !isLoadingMoreModal) {
+          const nextPage = modalPage + 1;
+          setModalPage(nextPage);
+          loadModalMovies(!!modalSearchTerm, nextPage, modalMovies);
+        }
+      },
+      { threshold: 0.1 }
+    );
+    if (observerTarget.current) observer.observe(observerTarget.current);
+    return () => { if (observerTarget.current) observer.unobserve(observerTarget.current); };
+  }, [modalHasMore, isFetchingModal, isLoadingMoreModal, modalPage, modalSearchTerm, modalMovies]);
 
   const handleSelectMovie = async (m) => {
-    setShowMovieModal(false);
-    const defaultName = user.displayName || user.email?.split('@')[0] || "Khách";
-    const defaultAvatar = user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(defaultName)}&background=E50914&color=fff`;
-
-    const poster = getImg(m.poster_url || m.thumb_url || "https://placehold.co/400x225/1a1a1a/e50914?text=No+Image");
-    const origin = m.origin_name || m.original_name || m.year || "Phim Mới";
-
-    if (isHostRef.current) {
-        isChangingMovieRef.current = true;
-        await updateDoc(doc(db, "rooms", roomId), { movieId: m.slug, currentTime: 0, isPlaying: false, epIndex: 0, updatedAt: Date.now() });
-        await addDoc(collection(db, `rooms/${roomId}/messages`), { isSystem: true, text: `Chủ phòng đã đổi phim thành: ${m.name}`, createdAt: serverTimestamp() });
-        navigate({ type: 'watch-room', roomId, slug: m.slug });
-    } else {
-        await addDoc(collection(db, `rooms/${roomId}/messages`), {
-           uid: user.uid, name: defaultName, avatar: defaultAvatar, customAvatarId: myAvatarId,
-           text: `đã yêu cầu đổi phim:`, type: 'request_movie',
-           requestMovieSlug: m.slug, requestMovieName: m.name,
-           requestMoviePoster: poster, requestMovieOrigin: origin,
-           createdAt: serverTimestamp()
-        });
-        setActiveTab("chat");
-    }
+    if (isWritingRef.current) return; isWritingRef.current = true; setShowMovieModal(false);
+    try {
+        if (isHostRef.current) {
+            isChangingMovieRef.current = true;
+            await supabase.from('rooms').update({ movie_id: m.slug, current_time: 0, is_playing: false, ep_index: 0, updated_at: new Date().toISOString() }).eq('id', roomId);
+            if (currentSlugRef.current !== "dang-chon-phim") {
+                const msg = { id: Date.now().toString(), isSystem: true, text: `Chủ phòng đổi phim: ${m.name}` };
+                channelRef.current?.send({ type: 'broadcast', event: 'new_message', payload: msg });
+                setMessages(prev => [...prev, msg]);
+            }
+            navigateRef.current({ type: 'watch-room', roomId, slug: m.slug }); 
+        } else {
+            const genres = getMovieGenres(m); const finalAvatar = await getGuaranteedAvatar(); 
+            const poster = getImg(m.poster_url || m.thumb_url);
+            const reqMsg = { id: Date.now().toString(), uid: user.uid, name: user.displayName || "Khách", avatar: user.photoURL, customAvatarId: finalAvatar, text: `Yêu cầu đổi phim:`, type: 'request_movie', requestMovieSlug: m.slug, requestMovieName: m.name, requestMoviePoster: poster, movieItem: m, requestMovieOrigin: m.origin_name || m.original_name || "", requestMovieGenre: genres, createdAt: Date.now() };
+            channelRef.current?.send({ type: 'broadcast', event: 'new_message', payload: reqMsg }); setMessages(prev => [...prev, reqMsg]);
+        }
+    } catch (e) {} finally { setTimeout(() => { isWritingRef.current = false; }, 1000); }
   };
 
   const executeHostChangeMovie = async () => {
-     if (!hostConfirmRequest) return;
-     isChangingMovieRef.current = true;
-     const { slug: newSlug, name: newName } = hostConfirmRequest;
-     setHostConfirmRequest(null);
-     
-     await updateDoc(doc(db, "rooms", roomId), { movieId: newSlug, currentTime: 0, isPlaying: false, epIndex: 0, updatedAt: Date.now() });
-     await addDoc(collection(db, `rooms/${roomId}/messages`), { isSystem: true, text: `Chủ phòng đã đồng ý đổi sang phim: ${newName}`, createdAt: serverTimestamp() });
-     navigate({ type: 'watch-room', roomId, slug: newSlug });
+     if (!hostConfirmRequest || isWritingRef.current) return; isWritingRef.current = true; isChangingMovieRef.current = true;
+     const { slug: newSlug, name: newName } = hostConfirmRequest; setHostConfirmRequest(null);
+     try {
+         await supabase.from('rooms').update({ movie_id: newSlug, current_time: 0, is_playing: false, ep_index: 0, updated_at: new Date().toISOString() }).eq('id', roomId);
+         if (currentSlugRef.current !== "dang-chon-phim") {
+            const msg = { id: Date.now().toString(), isSystem: true, text: `Chủ phòng đổi phim: ${newName}` };
+            channelRef.current?.send({ type: 'broadcast', event: 'new_message', payload: msg }); setMessages(prev => [...prev, msg]);
+         }
+         navigateRef.current({ type: 'watch-room', roomId, slug: newSlug }); 
+     } catch (e) {} finally { setTimeout(() => { isWritingRef.current = false; }, 1000); }
   };
 
   const handleSelectEpisode = async (index, epItem) => {
-    setShowEpModal(false);
-    const defaultName = user.displayName || user.email?.split('@')[0] || "Khách";
-    const defaultAvatar = user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(defaultName)}&background=E50914&color=fff`;
-    const epNameNumber = epItem.name.replace(/tập\s*/i, '');
-
-    if (isHostRef.current) {
-        await updateDoc(doc(db, "rooms", roomId), { epIndex: index, currentTime: 0, isPlaying: false, updatedAt: Date.now() });
-        await addDoc(collection(db, `rooms/${roomId}/messages`), { isSystem: true, text: `Chủ phòng đã chuyển sang Tập ${epNameNumber}`, createdAt: serverTimestamp() });
-    } else {
-        await addDoc(collection(db, `rooms/${roomId}/messages`), {
-           uid: user.uid, name: defaultName, avatar: defaultAvatar, customAvatarId: myAvatarId,
-           text: `đã yêu cầu chuyển sang:`, type: 'request_ep',
-           requestEpIndex: index, requestEpName: epNameNumber, createdAt: serverTimestamp()
-        });
-        setActiveTab("chat");
-    }
+    if (isWritingRef.current) return; isWritingRef.current = true; setShowEpModal(false);
+    try {
+        if (isHostRef.current) {
+            await supabase.from('rooms').update({ ep_index: index, current_time: 0, is_playing: false, updated_at: new Date().toISOString() }).eq('id', roomId);
+            const msg = { id: Date.now().toString(), isSystem: true, text: `Chủ phòng đổi Tập ${epItem.name.replace(/tập\s*/i, '')}` };
+            channelRef.current?.send({ type: 'broadcast', event: 'new_message', payload: msg }); setMessages(prev => [...prev, msg]);
+        } else {
+            const finalAvatar = await getGuaranteedAvatar(); 
+            const reqMsg = { id: Date.now().toString(), uid: user.uid, name: user.displayName || "Khách", avatar: user.photoURL, customAvatarId: finalAvatar, text: `Yêu cầu đổi tập:`, type: 'request_ep', requestEpIndex: index, requestEpName: epItem.name.replace(/tập\s*/i, ''), createdAt: Date.now() };
+            channelRef.current?.send({ type: 'broadcast', event: 'new_message', payload: reqMsg }); setMessages(prev => [...prev, reqMsg]);
+        }
+    } catch (e) {} finally { setTimeout(() => { isWritingRef.current = false; }, 1000); }
   };
 
   const executeHostChangeEpisode = async () => {
-      if (!hostConfirmEpRequest) return;
-      const { index, name } = hostConfirmEpRequest;
-      setHostConfirmEpRequest(null);
-      await updateDoc(doc(db, "rooms", roomId), { epIndex: index, currentTime: 0, isPlaying: false, updatedAt: Date.now() });
-      await addDoc(collection(db, `rooms/${roomId}/messages`), { isSystem: true, text: `Chủ phòng đã đồng ý chuyển sang Tập ${name}`, createdAt: serverTimestamp() });
+      if (!hostConfirmEpRequest || isWritingRef.current) return; isWritingRef.current = true;
+      const { index, name } = hostConfirmEpRequest; setHostConfirmEpRequest(null);
+      try {
+          await supabase.from('rooms').update({ ep_index: index, current_time: 0, is_playing: false, updated_at: new Date().toISOString() }).eq('id', roomId);
+          const msg = { id: Date.now().toString(), isSystem: true, text: `Chủ phòng đổi Tập ${name}` };
+          channelRef.current?.send({ type: 'broadcast', event: 'new_message', payload: msg }); setMessages(prev => [...prev, msg]);
+      } catch (e) {} finally { setTimeout(() => { isWritingRef.current = false; }, 1000); }
   };
 
   const epList = movieData?.episodes?.[0]?.server_data || movieData?.episodes?.[0]?.items || [];
-  const hasMultipleEps = epList.length > 1;
-  const chunkSize = 50;
-  const epChunks = [];
+  const chunkSize = 50; const epChunks = [];
   for (let i = 0; i < epList.length; i += chunkSize) epChunks.push(epList.slice(i, i + chunkSize));
 
-  if (loadingPage) return <div className="h-screen w-screen flex justify-center items-center bg-[#050505] overflow-hidden"><Icon.Loader2 className="animate-spin text-[#E50914]" size={40}/></div>;
-
-  const isHost = roomData?.hostId === user?.uid;
-
-  const handleHostPlay = () => { if (isHost && vRef.current) updateDoc(doc(db, "rooms", roomId), { isPlaying: true, currentTime: vRef.current.currentTime, updatedAt: Date.now() }).catch(()=>{}); };
-  const handleHostPause = () => { if (isHost && vRef.current) updateDoc(doc(db, "rooms", roomId), { isPlaying: false, currentTime: vRef.current.currentTime, updatedAt: Date.now() }).catch(()=>{}); };
-  const handleHostSeek = () => { if (isHost && vRef.current) updateDoc(doc(db, "rooms", roomId), { currentTime: vRef.current.currentTime, updatedAt: Date.now() }).catch(()=>{}); };
-
-  const handleManualLeave = async () => {
-     if(isHost) await deleteDoc(doc(db, "rooms", roomId)).catch(()=>{});
-     else await deleteDoc(doc(db, `rooms/${roomId}/users`, user.uid)).catch(()=>{});
-     navigate({type: 'watch-party-lobby'});
-  };
+  if (loadingPage) return <div className="h-screen w-screen flex justify-center items-center bg-[#050505] overflow-hidden"></div>;
 
   return (
-    <div className="pt-20 md:pt-[88px] pb-4 max-w-[1800px] mx-auto px-2 md:px-4 h-screen w-screen flex flex-col overflow-hidden animate-in fade-in duration-500 bg-[#050505] relative">
+    <div className="pt-20 md:pt-[88px] pb-4 max-w-[1920px] mx-auto px-2 md:px-4 h-screen w-screen flex flex-col overflow-hidden animate-in fade-in duration-500 bg-[#050505] relative text-white">
       
+      {!isHostRef.current && ( <style>{`.art-control-playAndPause { display: none !important; } .art-progress { pointer-events: none !important; } .art-video { pointer-events: none !important; }`}</style> )}
+
+      {/* POPUP: HOST THOÁT */}
+      {showHostLeftPopup && (
+        <div className="fixed inset-0 z-[9999] bg-black/90 backdrop-blur-md flex justify-center items-center p-4 animate-in fade-in">
+           <div className="bg-[#111] border border-white/10 p-8 rounded-2xl text-center shadow-[0_0_40px_rgba(229,9,20,0.2)]">
+              <div className="w-16 h-16 bg-[#E50914]/10 rounded-full flex items-center justify-center mx-auto mb-5">
+                 <Icon.MonitorOff size={32} className="text-[#E50914]" />
+              </div>
+              <h3 className="text-xl font-black uppercase mb-3">Phòng Đã Đóng</h3>
+              <p className="text-gray-400 mb-8 text-sm">Chủ phòng đã rời đi hoặc kết thúc phiên xem chung.</p>
+              <button onClick={() => navigateRef.current({ type: 'watch-party-lobby' })} className="w-full py-3.5 bg-[#E50914] text-white font-black rounded-xl uppercase text-sm">Về Sảnh</button>
+           </div>
+        </div>
+      )}
+
+      {/* POPUP: CHỌN TẬP */}
       {showEpModal && (
         <div className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-sm flex justify-center items-center p-4">
-          <div className="bg-[#111] border border-white/10 rounded-2xl w-full max-w-4xl h-[80vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-300">
-            <div className="p-4 md:p-5 flex justify-between items-center shrink-0 border-b border-white/5">
-               <h2 className="text-lg md:text-xl font-black uppercase tracking-widest text-white flex items-center gap-2">
-                 <Icon.ListVideo size={20} className="text-[#E50914]" /> Chọn Tập Phim
-               </h2>
-               <button onClick={() => setShowEpModal(false)} className="p-2 bg-white/5 hover:bg-white/10 rounded-full transition text-gray-400 hover:text-white">
-                 <Icon.X size={20}/>
-               </button>
+          <div className="bg-[#111] border border-white/10 rounded-2xl w-full max-w-4xl h-[80vh] flex flex-col shadow-2xl animate-in zoom-in-95">
+            <div className="p-5 flex justify-between items-center shrink-0 border-b border-white/5">
+               <h2 className="text-xl font-black uppercase flex items-center gap-2"><Icon.ListVideo size={20} className="text-[#E50914]" /> Chọn Tập</h2>
+               <button onClick={() => setShowEpModal(false)} className="p-2 text-gray-400 hover:text-white bg-white/5 rounded-full"><Icon.X size={20}/></button>
             </div>
             {epChunks.length > 1 && (
               <div className="p-4 border-b border-white/5 bg-black/40 shrink-0">
-                <div 
-                  ref={epScrollRef} onMouseDown={handleMouseDownEp} onMouseLeave={handleMouseLeaveEp} onMouseUp={handleMouseUpEp} onMouseMove={handleMouseMoveEp}
-                  className={`flex gap-2 overflow-x-auto no-scrollbar pb-2 select-none ${isDraggingEp ? 'cursor-grabbing' : 'cursor-grab'}`}
-                >
-                  {epChunks.map((chunk, idx) => {
-                    const start = idx * chunkSize + 1;
-                    const end = start + chunk.length - 1;
-                    return (
-                      <button 
-                        key={idx} onClick={() => setEpChunkIndex(idx)}
-                        className={`px-4 py-2 text-xs font-bold rounded-lg uppercase tracking-wider whitespace-nowrap transition-all border shrink-0 ${epChunkIndex === idx ? 'bg-white/10 border-red-500/50 text-white' : 'bg-[#1a1a1a] border-white/5 text-gray-400 hover:bg-white/5 hover:text-white pointer-events-none md:pointer-events-auto'}`}
-                        onMouseUp={(e) => { if(isDraggingEp && Math.abs(e.pageX - epScrollRef.current.offsetLeft - startXEp) > 10) e.stopPropagation(); }}
-                      >
-                        TẬP {start} - {end}
-                      </button>
-                    )
-                  })}
+                <div ref={epScrollRef} onMouseDown={handleMouseDownEp} onMouseLeave={handleMouseLeaveEp} onMouseUp={handleMouseUpEp} onMouseMove={handleMouseMoveEp} className="flex gap-2 overflow-x-auto pb-2 select-none cursor-grab [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                  {epChunks.map((chunk, idx) => (
+                    <button key={idx} onClick={() => setEpChunkIndex(idx)} className={`px-4 py-2 text-xs font-bold rounded-lg uppercase tracking-wider whitespace-nowrap border shrink-0 ${epChunkIndex === idx ? 'bg-white/10 border-red-500/50 text-white' : 'bg-[#1a1a1a] border-white/5 text-gray-400 hover:bg-white/5 hover:text-white'}`}>TẬP {idx * chunkSize + 1} - {idx * chunkSize + chunk.length}</button>
+                  ))}
                 </div>
               </div>
             )}
-            <div className="flex-1 overflow-y-auto p-4 md:p-6 no-scrollbar">
+            <div className="flex-1 overflow-y-auto p-6 relative [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 gap-3">
                  {epChunks[epChunkIndex]?.map((epItem, localIdx) => {
                     const globalIdx = epChunkIndex * chunkSize + localIdx;
                     return (
-                      <button 
-                        key={globalIdx} onClick={() => handleSelectEpisode(globalIdx, epItem)}
-                        className={`py-3 rounded-lg text-sm font-bold transition-all border ${currentEpIndex === globalIdx ? 'bg-[#E50914] text-white border-transparent shadow-[0_0_15px_rgba(229,9,20,0.4)]' : 'bg-[#1a1a1a] text-gray-300 border-white/5 hover:bg-white/10 hover:border-white/20'}`}
-                      >
-                        {epItem.name.replace(/tập\s*/i, '')}
-                      </button>
+                      <button key={globalIdx} onClick={() => handleSelectEpisode(globalIdx, epItem)} className={`py-3 rounded-lg text-sm font-bold border transition-colors ${currentEpIndex === globalIdx ? 'bg-[#E50914] text-white border-transparent' : 'bg-[#1a1a1a] text-gray-300 border-white/5 hover:bg-white/10'}`}>{epItem.name.replace(/tập\s*/i, '')}</button>
                     )
                  })}
                </div>
@@ -643,91 +685,74 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         </div>
       )}
 
+      {/* MODAL CHỌN PHIM TRONG PHÒNG */}
       {showMovieModal && (
         <div className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-sm flex justify-center items-center p-4">
           <div className="bg-[#111] border border-white/10 rounded-2xl w-full max-w-5xl h-[85vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-300">
             <div className="p-4 md:p-5 flex justify-between items-center shrink-0 border-b border-white/5">
-               <h2 className="text-lg md:text-xl font-black uppercase tracking-widest text-white flex items-center gap-2">
-                 <Icon.Film size={20} className="text-[#E50914]" /> Chọn Phim Mới
-               </h2>
-               <button onClick={() => setShowMovieModal(false)} className="p-2 bg-white/5 hover:bg-white/10 rounded-full transition text-gray-400 hover:text-white">
-                 <Icon.X size={20}/>
-               </button>
+               <h2 className="text-lg md:text-xl font-black uppercase tracking-widest text-white flex items-center gap-2"><Icon.Film size={20} className="text-[#E50914]" /> Chọn Phim Mới</h2>
+               <button onClick={() => setShowMovieModal(false)} className="p-2 bg-white/5 hover:bg-white/10 rounded-full transition text-gray-400 hover:text-white"><Icon.X size={20}/></button>
             </div>
             
             <div className="p-4 md:px-5 flex flex-col lg:flex-row gap-4 shrink-0 bg-[#0a0a0a]/50 border-b border-white/5 items-start lg:items-center">
-               <form onSubmit={handleModalSearchSubmit} className="relative w-full lg:w-72 shrink-0">
+               <form onSubmit={(e) => {e.preventDefault(); setModalPage(1); loadModalMovies(true, 1, []);}} className="relative w-full lg:w-72 shrink-0">
                   <div className="absolute left-4 top-0 bottom-0 flex items-center pointer-events-none"><Icon.Search className="text-gray-500" size={16} /></div>
-                  <input
-                     type="text" value={modalSearchTerm} onChange={(e) => setModalSearchTerm(e.target.value)} placeholder="Tìm theo tên phim..."
-                     className="w-full bg-black border border-white/10 rounded-xl py-3 pl-11 pr-4 text-base md:text-sm text-white focus:outline-none focus:border-[#E50914] transition-colors placeholder:text-gray-600 font-bold tracking-wider"
-                  />
-                  <button type="submit" className="hidden">Tìm</button>
+                  <input type="text" value={modalSearchTerm} onChange={(e) => setModalSearchTerm(e.target.value)} placeholder="Tìm theo tên phim..." className="w-full bg-black border border-white/10 rounded-xl py-3 pl-11 pr-4 text-base md:text-sm text-white focus:outline-none focus:border-[#E50914] font-bold tracking-wider" />
                </form>
-
-               <div 
-                  ref={catScrollRef} onMouseDown={handleMouseDownCat} onMouseLeave={handleMouseLeaveCat} onMouseUp={handleMouseUpCat} onMouseMove={handleMouseMoveCat}
-                  className={`flex gap-2.5 overflow-x-auto no-scrollbar w-full pb-1 lg:pb-0 select-none ${isDraggingCat ? 'cursor-grabbing' : 'cursor-grab'}`}
-               >
+               <div ref={catScrollRef} onMouseDown={handleMouseDownCat} onMouseLeave={handleMouseLeaveCat} onMouseUp={handleMouseUpCat} onMouseMove={handleMouseMoveCat} className="flex gap-2.5 overflow-x-auto pb-1 lg:pb-0 select-none cursor-grab [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                  {CATEGORIES.map(cat => (
-                   <button 
-                     key={cat.slug} 
-                     onClick={() => { setModalCat(cat); setModalSearchTerm(""); }}
-                     className={`px-4 py-2.5 text-xs font-bold rounded-xl uppercase tracking-widest whitespace-nowrap shrink-0 transition-colors ${!modalSearchTerm && modalCat.slug === cat.slug ? 'bg-[#E50914] text-white shadow-[0_0_15px_rgba(229,9,20,0.4)]' : 'bg-white/5 border border-white/5 text-gray-400 hover:bg-white/10 hover:text-white'}`}
-                     onMouseUp={(e) => { if(isDraggingCat && Math.abs(e.pageX - catScrollRef.current.offsetLeft - startXCat) > 10) e.stopPropagation(); }}
-                   >
-                      {cat.name}
-                   </button>
+                   <button key={cat.slug} onClick={() => { setModalCat(cat); setModalSearchTerm(""); }} className={`px-4 py-2.5 text-xs font-bold rounded-xl uppercase tracking-widest whitespace-nowrap shrink-0 transition-colors ${!modalSearchTerm && modalCat.slug === cat.slug ? 'bg-[#E50914] text-white shadow-[0_0_15px_rgba(229,9,20,0.4)]' : 'bg-white/5 border border-white/5 text-gray-400 hover:bg-white/10 hover:text-white'}`}>{cat.name}</button>
                  ))}
                </div>
             </div>
-
-            <div className="flex-1 overflow-y-auto p-4 md:p-5 no-scrollbar">
-              {isFetchingModal ? (
-                 <div className="h-full flex items-center justify-center"><Icon.Loader2 className="animate-spin text-[#E50914]" size={40}/></div>
-              ) : modalMovies.length === 0 ? (
-                 <div className="h-full flex flex-col items-center justify-center opacity-50">
-                    <Icon.Ghost size={48} className="mb-4 text-gray-500" />
-                    <p className="text-sm font-bold uppercase tracking-widest text-gray-400">Không tìm thấy phim nào!</p>
-                 </div>
-              ) : (
+            
+            <div className="flex-1 overflow-y-auto p-4 md:p-5 relative [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              {isFetchingModal ? <div className="h-full flex items-center justify-center"><Icon.Loader2 className="animate-spin text-[#E50914]" size={40}/></div> : (
                  <>
-                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-5">
-                      {modalMovies.map(m => (
-                        <div key={m.slug} onClick={() => handleSelectMovie(m)} className="group cursor-pointer bg-[#0a0a0a] rounded-xl p-2 border border-white/5 hover:border-[#E50914]/50 transition-all hover:bg-white/5">
-                          <div className="w-full aspect-[2/3] rounded-lg overflow-hidden mb-3 relative">
-                            <img src={getImg(m.thumb_url || m.poster_url)} alt={m.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                               <span className="bg-[#E50914] text-white text-[10px] font-black px-3 py-1.5 rounded-lg uppercase tracking-widest">Chọn phim</span>
-                            </div>
+                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4 lg:gap-5">
+                      {modalMovies.map((m, idx) => (
+                        <div key={`${m.slug}-${idx}`} className="group relative">
+                          <MovieCard 
+                            m={m} 
+                            isRow={false} 
+                            onClickOverride={() => handleSelectMovie(m)} 
+                          />
+                          <div className="absolute inset-0 z-30 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none rounded-xl">
+                            <span className="bg-[#E50914] text-white text-[10px] font-black px-3 py-1.5 rounded-lg uppercase tracking-widest shadow-2xl scale-90 group-hover:scale-100 transition-transform">
+                              Đổi Sang Phim Này
+                            </span>
                           </div>
-                          <h3 className="text-xs md:text-sm font-bold text-white truncate px-1 text-center group-hover:text-[#E50914] transition-colors">{m.name}</h3>
                         </div>
                       ))}
                    </div>
                    
                    {modalHasMore && (
-                      <div ref={modalObserverTarget} className="flex justify-center items-center py-8 mt-4">
-                         {isLoadingMoreModal && <Icon.Loader2 className="animate-spin text-[#E50914]" size={30} />}
-                      </div>
+                     <div ref={observerTarget} className="mt-8 flex justify-center py-8">
+                       {isLoadingMoreModal ? (
+                         <div className="flex items-center gap-3 text-[#E50914] font-bold uppercase tracking-widest text-sm">
+                           <Icon.Loader2 className="animate-spin" size={24} /> Đang tải thêm...
+                         </div>
+                       ) : (
+                         <div className="h-10 w-full"></div>
+                       )}
+                     </div>
                    )}
                  </>
               )}
             </div>
+
           </div>
         </div>
       )}
 
+      {/* POPUP: CONFIRM YÊU CẦU */}
       {hostConfirmRequest && (
         <div className="fixed inset-0 z-[1001] bg-black/80 backdrop-blur-sm flex justify-center items-center p-4">
            <div className="bg-[#111] border border-white/10 p-6 rounded-2xl max-w-sm text-center shadow-2xl animate-in zoom-in-95">
               <Icon.HelpCircle size={48} className="text-[#E50914] mx-auto mb-4" />
-              <h3 className="text-lg font-black text-white uppercase tracking-widest mb-2">Đồng ý đổi phim?</h3>
-              <p className="text-gray-400 text-sm mb-6">Bạn có chắc muốn chuyển cả phòng sang xem phim: <br/><strong className="text-[#E50914] font-black text-lg mt-1 block">{hostConfirmRequest.name}</strong></p>
-              <div className="flex gap-3">
-                 <button onClick={() => setHostConfirmRequest(null)} className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-white font-bold rounded-xl text-xs uppercase tracking-widest transition">Hủy</button>
-                 <button onClick={executeHostChangeMovie} className="flex-1 py-3 bg-[#E50914] hover:bg-red-700 text-white font-bold rounded-xl text-xs uppercase tracking-widest transition shadow-[0_0_15px_rgba(229,9,20,0.4)]">Đồng Ý</button>
-              </div>
+              <h3 className="text-lg font-black uppercase tracking-widest mb-2">Đồng ý yêu cầu?</h3>
+              <p className="text-gray-400 text-sm mb-6">Bạn sẽ đổi phòng sang phim: <strong className="text-[#E50914] mt-1 block">{hostConfirmRequest.name}</strong></p>
+              <div className="flex gap-3"><button onClick={() => setHostConfirmRequest(null)} className="flex-1 py-3 bg-white/5 text-white font-bold rounded-xl text-xs uppercase">Hủy</button><button onClick={executeHostChangeMovie} className="flex-1 py-3 bg-[#E50914] text-white font-bold rounded-xl text-xs uppercase shadow-lg">Đồng Ý</button></div>
            </div>
         </div>
       )}
@@ -736,256 +761,156 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         <div className="fixed inset-0 z-[1001] bg-black/80 backdrop-blur-sm flex justify-center items-center p-4">
            <div className="bg-[#111] border border-white/10 p-6 rounded-2xl max-w-sm text-center shadow-2xl animate-in zoom-in-95">
               <Icon.HelpCircle size={48} className="text-[#E50914] mx-auto mb-4" />
-              <h3 className="text-lg font-black text-white uppercase tracking-widest mb-2">Đồng ý đổi tập?</h3>
-              <p className="text-gray-400 text-sm mb-6">Bạn có chắc muốn chuyển sang: <br/><strong className="text-[#E50914] font-black text-xl mt-1 block">Tập {hostConfirmEpRequest.name}</strong></p>
-              <div className="flex gap-3">
-                 <button onClick={() => setHostConfirmEpRequest(null)} className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-white font-bold rounded-xl text-xs uppercase tracking-widest transition">Hủy</button>
-                 <button onClick={executeHostChangeEpisode} className="flex-1 py-3 bg-[#E50914] hover:bg-red-700 text-white font-bold rounded-xl text-xs uppercase tracking-widest transition shadow-[0_0_15px_rgba(229,9,20,0.4)]">Đồng Ý</button>
-              </div>
+              <h3 className="text-lg font-black uppercase tracking-widest mb-2">Đồng ý yêu cầu?</h3>
+              <p className="text-gray-400 text-sm mb-6">Bạn sẽ chuyển phòng sang: <strong className="text-[#E50914] mt-1 block">Tập {hostConfirmEpRequest.name}</strong></p>
+              <div className="flex gap-3"><button onClick={() => setHostConfirmEpRequest(null)} className="flex-1 py-3 bg-white/5 text-white font-bold rounded-xl text-xs uppercase">Hủy</button><button onClick={executeHostChangeEpisode} className="flex-1 py-3 bg-[#E50914] text-white font-bold rounded-xl text-xs uppercase shadow-lg">Đồng Ý</button></div>
            </div>
         </div>
       )}
 
-      {roomClosed && (
-        <div className="fixed inset-0 z-[999] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[#111] border border-white/10 p-6 md:p-8 rounded-3xl max-w-sm w-full text-center shadow-[0_20px_60px_rgba(0,0,0,0.8)] animate-in zoom-in-95 duration-300">
-            <Icon.AlertOctagon size={64} className="text-[#E50914] mx-auto mb-4" />
-            <h3 className="text-xl font-black text-white uppercase tracking-widest mb-2">Phòng Đã Đóng!</h3>
-            <p className="text-gray-400 text-sm mb-6 leading-relaxed">Chủ phòng đã rời đi hoặc kết thúc buổi xem chung. Bạn sẽ được tự động chuyển về Sảnh.</p>
-            <button onClick={() => navigate({ type: 'watch-party-lobby' })} className="w-full bg-[#E50914] hover:bg-red-700 text-white font-black py-3.5 rounded-xl uppercase tracking-widest text-xs transition transform-gpu active:scale-95">Về Sảnh Ngay</button>
-          </div>
-        </div>
-      )}
-
+      {/* MAIN LAYOUT: CHIA CỘT PLAYER VÀ CHAT */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 md:gap-4 flex-1 min-h-0">
         
-        {/* KHUNG VIDEO BÊN TRÁI */}
+        {/* CỘT TRÁI: VIDEO PLAYER */}
         <div className="lg:col-span-3 flex flex-col gap-3 min-h-0 h-full relative">
+          
           <div className="shrink-0 flex flex-wrap items-center justify-between bg-[#111] p-3 md:px-4 rounded-xl border border-white/5 gap-3 shadow-lg">
-            <div className="flex items-center gap-3">
-              <h1 className="text-base md:text-lg font-black text-white uppercase tracking-tighter truncate max-w-[150px] sm:max-w-xs">{roomData?.name || "Đang tải..."}</h1>
-              <span className="text-[10px] text-gray-400 bg-white/5 px-2 py-1 rounded-md font-mono border border-white/10 shrink-0">ID: {roomId}</span>
-            </div>
+            <div className="flex items-center gap-3"><h1 className="text-base md:text-lg font-black uppercase tracking-tighter truncate max-w-[150px] sm:max-w-xs">{roomData?.name || "Đang tải..."}</h1><span className="text-[10px] text-gray-400 bg-white/5 px-2 py-1 rounded-md font-mono border border-white/10 shrink-0">ID: {roomId}</span></div>
             <div className="flex items-center gap-2">
-               {hasMultipleEps && slug !== "dang-chon-phim" && (
-                 <button onClick={() => setShowEpModal(true)} className="shrink-0 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white text-[10px] md:text-xs font-black rounded-lg transition-colors uppercase tracking-widest flex items-center gap-2 border border-white/5">
-                   <Icon.ListVideo size={14} /> <span className="hidden sm:inline">{isHost ? "Chọn Tập" : "Yêu Cầu Tập"}</span>
-                 </button>
-               )}
-               <button onClick={() => setShowMovieModal(true)} className="shrink-0 px-3 py-1.5 bg-[#E50914]/10 text-[#E50914] hover:bg-[#E50914] hover:text-white text-[10px] md:text-xs font-black rounded-lg transition-colors uppercase tracking-widest flex items-center gap-2 border border-[#E50914]/20">
-                 <Icon.RefreshCcw size={14} /> <span className="hidden sm:inline">{isHost ? "Đổi Phim" : "Yêu Cầu Đổi Phim"}</span>
-               </button>
-               <button onClick={handleManualLeave} className="shrink-0 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-white text-[10px] md:text-xs font-black rounded-lg transition-colors uppercase tracking-widest flex items-center gap-2 border border-white/5">
-                 <Icon.LogOut size={14} /> <span className="hidden sm:inline">{isHost ? "Đóng Phòng" : "Thoát"}</span>
-               </button>
+               {slug !== "dang-chon-phim" && <button onClick={() => setShowEpModal(true)} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-[10px] md:text-xs font-black rounded-lg uppercase flex items-center gap-2 border border-white/5 transition-colors"><Icon.ListVideo size={14} /> <span className="hidden sm:inline">{isHostRef.current ? "Chọn Tập" : "Yêu Cầu Đổi Tập"}</span></button>}
+               <button onClick={() => setShowMovieModal(true)} className="px-3 py-1.5 bg-[#E50914]/10 text-[#E50914] hover:bg-[#E50914] hover:text-white text-[10px] md:text-xs font-black rounded-lg uppercase flex items-center gap-2 border border-[#E50914]/20 transition-colors"><Icon.RefreshCcw size={14} /> <span className="hidden sm:inline">{isHostRef.current ? "Đổi Phim" : "Yêu Cầu Đổi Phim"}</span></button>
+               <button onClick={async () => { if(isHostRef.current) await supabase.from('rooms').delete().eq('id', roomId); navigateRef.current({type: 'watch-party-lobby'}); }} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-[10px] md:text-xs font-black rounded-lg uppercase flex items-center gap-2 border border-white/5 transition-colors"><Icon.LogOut size={14} /> <span className="hidden sm:inline">Thoát</span></button>
             </div>
           </div>
 
-          <div ref={containerRef} className="flex-1 min-h-0 w-full bg-black rounded-xl overflow-hidden border border-white/5 relative group flex items-center justify-center shadow-2xl" onMouseMove={!isHost ? handleViewerMouseMove : undefined} onMouseLeave={() => !isHost && setShowViewerControls(false)}>
-             
-             <video 
-                ref={vRef} 
-                className={`w-full h-full object-contain bg-black transition-opacity duration-500 ${(loadingPlayer || slug === "dang-chon-phim") ? 'opacity-0 pointer-events-none absolute' : 'opacity-100'}`} 
-                onPlay={handleHostPlay} 
-                onPause={handleHostPause} 
-                onSeeked={handleHostSeek} 
-                controls={isHost && slug !== "dang-chon-phim"} 
-                style={{ pointerEvents: isHost ? 'auto' : 'none' }} 
-                playsInline 
-             />
-
-             {loadingPlayer && slug !== "dang-chon-phim" && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm z-40">
-                   <Icon.Loader2 className="animate-spin text-[#E50914]" size={48} />
-                </div>
-             )}
-
+          <div ref={containerRef} className="flex-1 min-h-0 w-full bg-black rounded-xl overflow-hidden border border-white/5 relative group flex items-center justify-center shadow-2xl">
+             <div ref={artRef} className={`w-full h-full object-contain ${loadingPlayer ? 'opacity-0' : 'opacity-100'}`}></div>
              {slug === "dang-chon-phim" && (
                  <div className="absolute inset-0 z-50 bg-[#111] flex flex-col justify-center items-center">
                      <Icon.Film size={64} className="text-gray-600 mb-4 animate-pulse" />
-                     <p className="text-gray-400 font-bold uppercase tracking-widest text-sm md:text-base text-center px-4">
-                        {isHost ? "Phòng đã sẵn sàng. Vui lòng chọn phim!" : "Đang chờ chủ phòng chọn phim..."}
-                     </p>
-                     {isHost && (
-                        <button onClick={() => setShowMovieModal(true)} className="mt-6 bg-[#E50914] px-8 py-3.5 rounded-xl font-black text-white uppercase text-xs tracking-widest shadow-lg hover:bg-red-700 transition-colors">
-                           Chọn Phim Ngay
-                        </button>
-                     )}
+                     <p className="text-gray-400 font-bold uppercase tracking-widest text-sm text-center px-4">{isHostRef.current ? "Vui lòng chọn phim để bắt đầu!" : "Đang chờ chủ phòng chọn phim..."}</p>
+                     {isHostRef.current && <button onClick={() => setShowMovieModal(true)} className="mt-6 bg-[#E50914] hover:bg-red-700 px-8 py-3.5 rounded-xl font-black uppercase tracking-widest text-xs transition shadow-[0_4px_15px_rgba(229,9,20,0.4)]">Chọn Phim Ngay</button>}
                  </div>
-             )}
-             
-             {!isHost && !loadingPlayer && slug !== "dang-chon-phim" && (
-               <>
-                 <div className="absolute inset-0 z-30 pointer-events-auto cursor-pointer" onDoubleClick={toggleFullscreen} />
-                 <div className={`absolute inset-0 z-40 flex flex-col justify-between pointer-events-none transition-opacity duration-300 ${showViewerControls ? 'opacity-100' : 'opacity-0'}`}>
-                    <div className="p-4 flex justify-between items-start">
-                       <div className="bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg text-[10px] font-bold text-white tracking-widest uppercase border border-white/10 flex items-center gap-2 shadow-lg">
-                          <Icon.Radio size={12} className="text-[#E50914] animate-pulse" /> Xem cùng Host
-                       </div>
-                    </div>
-                    <div className="p-4 flex justify-between items-center bg-gradient-to-t from-black/90 to-transparent pointer-events-auto">
-                       <div className="flex items-center gap-3 group/vol">
-                         <button onClick={() => { const newMuted = !isMuted; setIsMuted(newMuted); if (vRef.current) vRef.current.muted = newMuted; }} className="text-white hover:text-[#E50914] transition focus:outline-none">
-                            {isMuted || volume === 0 ? <Icon.VolumeX size={20}/> : <Icon.Volume2 size={20}/>}
-                         </button>
-                         <input type="range" min="0" max="1" step="0.05" value={isMuted ? 0 : volume} onChange={(e) => { const val = parseFloat(e.target.value); setVolume(val); setIsMuted(val === 0); if (vRef.current) { vRef.current.volume = val; vRef.current.muted = val === 0; } }} className="w-0 overflow-hidden group-hover/vol:w-20 transition-all duration-300 accent-[#E50914] h-1.5 bg-white/20 rounded-full cursor-pointer opacity-0 group-hover/vol:opacity-100"/>
-                       </div>
-                       <button onClick={toggleFullscreen} className="text-white hover:text-[#E50914] transition focus:outline-none">
-                          {isFullscreen ? <Icon.Minimize size={20}/> : <Icon.Maximize size={20}/>}
-                       </button>
-                    </div>
-                 </div>
-               </>
              )}
           </div>
 
           <div className="shrink-0 bg-[#111] p-3 md:px-4 rounded-xl border border-white/5 flex items-center justify-between shadow-lg">
              <div className="min-w-0 pr-4">
-                <h2 className="text-sm md:text-base font-black uppercase tracking-tight text-white mb-0.5 line-clamp-1">{movieData?.name || (slug === "dang-chon-phim" ? "Chưa chọn phim" : "Đang tải...")}</h2>
-                <p className="text-[10px] md:text-xs text-gray-500 uppercase tracking-widest line-clamp-1 font-bold">{movieData?.origin_name || movieData?.original_name || ""} {ep?.name ? `• Tập ${ep.name.replace(/tập\s*/i, '')}` : ""}</p>
+                <h2 className="text-sm md:text-base font-black uppercase tracking-tight mb-0.5 line-clamp-1">{movieData?.name || "Chưa chọn phim"}</h2>
+                <p className="text-[10px] md:text-xs text-gray-500 uppercase tracking-widest font-bold">{ep?.name ? `Tập ${ep.name.replace(/tập\s*/i, '')}` : ""}</p>
              </div>
-             {isHost ? (
-                <div className="shrink-0 bg-[#E50914]/10 text-[#E50914] text-[9px] md:text-[10px] font-bold uppercase tracking-widest px-2.5 py-1.5 rounded-md border border-[#E50914]/20 flex items-center gap-1.5">
-                   <Icon.Key size={12}/> Host
-                </div>
-             ) : (
-                <div className="shrink-0 bg-white/5 text-gray-400 text-[9px] md:text-[10px] font-bold uppercase tracking-widest px-2.5 py-1.5 rounded-md border border-white/10 flex items-center gap-1.5">
-                   <Icon.User size={12}/> Viewer
-                </div>
-             )}
+             <div className={`shrink-0 ${isHostRef.current ? 'bg-[#E50914]/10 text-[#E50914]' : 'bg-white/5 text-gray-400'} text-[9px] font-bold uppercase px-2.5 py-1.5 rounded-md border border-current flex items-center gap-1.5`}>
+                {isHostRef.current ? <><Icon.Key size={12}/> Host</> : <><Icon.User size={12}/> Viewer</>}
+             </div>
           </div>
         </div>
 
-        {/* KHUNG CHAT BÊN PHẢI */}
-        <div className="bg-[#111] border border-white/5 rounded-xl flex flex-col h-full min-h-0 overflow-hidden shadow-2xl">
-          <div className="shrink-0 flex border-b border-white/5 bg-black/20">
-             <button onClick={() => setActiveTab("chat")} className={`flex-1 py-3.5 text-[10px] md:text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${activeTab === "chat" ? "text-white bg-white/5 border-b-2 border-[#E50914]" : "text-gray-500 hover:text-gray-300"}`}>
-               <Icon.MessageSquare size={14} /> Trò chuyện
-             </button>
-             <button onClick={() => setActiveTab("users")} className={`flex-1 py-3.5 text-[10px] md:text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all ${activeTab === "users" ? "text-white bg-white/5 border-b-2 border-[#E50914]" : "text-gray-500 hover:text-gray-300"}`}>
-               <Icon.Users size={14} /> Thành viên ({usersInRoom.length})
-             </button>
-          </div>
+        {/* CỘT PHẢI: KHUNG CHAT VÀ ONLINE */}
+        <div className="flex-1 flex flex-col gap-3 md:gap-4 min-h-0 h-full">
           
-          {activeTab === "chat" && (
-            <div className="flex-1 flex flex-col min-h-0 relative">
-              <div className="flex-1 min-h-0 overflow-y-auto p-3 md:p-4 space-y-4 no-scrollbar bg-gradient-to-b from-transparent to-black/20">
-                {messages.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-gray-600 space-y-2 opacity-50">
-                    <Icon.MessagesSquare size={40} />
-                    <p className="text-[10px] font-bold uppercase tracking-widest mt-1">Bắt đầu trò chuyện</p>
-                  </div>
-                ) : (
-                  messages.map((msg) => {
-                    if (msg.isSystem) {
-                        return (
-                           <div key={msg.id} className="flex justify-center my-3">
-                             <span className="bg-white/5 border border-white/10 text-gray-400 text-[10px] px-4 py-2 rounded-full uppercase tracking-widest font-bold text-center drop-shadow-md">
-                               {msg.text}
-                             </span>
-                           </div>
-                        );
-                    }
-
-                    if (msg.type === 'request_movie') {
-                        return (
-                          <div key={msg.id} className="flex gap-2.5 animate-in slide-in-from-bottom-2 duration-300 mb-2">
-                             {renderAvatar(msg.customAvatarId, msg.avatar, "w-8 h-8 md:w-10 md:h-10")}
-                             <div className="flex flex-col w-full max-w-[85%] items-start">
-                               <div className="flex items-center gap-1.5 mb-1.5 px-1 flex-wrap">
-                                 <span className="text-[10px] md:text-xs text-gray-300 font-black uppercase tracking-wider">{msg.name}</span>
-                                 <span className="text-[10px] md:text-[11px] text-gray-500 font-medium italic">{msg.text}</span>
-                               </div>
-                               <div className="p-3 bg-[#161616] border border-white/10 rounded-2xl rounded-tl-sm shadow-lg w-full max-w-sm">
-                                  <div className="flex gap-3 md:gap-4 mb-3 bg-black/40 p-2 md:p-3 rounded-xl border border-white/5">
-                                    <img src={msg.requestMoviePoster} alt="Poster" className="w-16 h-24 md:w-24 md:h-36 rounded-lg object-cover border border-white/10 shadow-md shrink-0" />
-                                    <div className="flex flex-col justify-center flex-1 min-w-0">
-                                      <p className="text-[#E50914] font-black tracking-tight text-sm md:text-xl leading-snug uppercase line-clamp-3">{msg.requestMovieName}</p>
-                                      <p className="text-gray-500 text-[9px] md:text-xs uppercase tracking-widest mt-2 font-bold line-clamp-2">{msg.requestMovieOrigin}</p>
-                                    </div>
-                                  </div>
-                                  {isHost && (
-                                     <button 
-                                        onClick={() => setHostConfirmRequest({slug: msg.requestMovieSlug, name: msg.requestMovieName})}
-                                        className="w-full bg-[#E50914] hover:bg-red-700 text-white font-black text-[10px] md:text-xs uppercase tracking-widest py-2 md:py-2.5 rounded-xl transition shadow-md"
-                                     >
-                                        Đồng ý chuyển
-                                     </button>
-                                  )}
-                               </div>
-                             </div>
-                          </div>
-                        )
-                    }
-
-                    if (msg.type === 'request_ep') {
-                        return (
-                          <div key={msg.id} className="flex gap-2.5 animate-in slide-in-from-bottom-2 duration-300 mb-2">
-                             {renderAvatar(msg.customAvatarId, msg.avatar, "w-8 h-8 md:w-10 md:h-10")}
-                             <div className="flex flex-col max-w-[85%] w-full items-start">
-                               <div className="flex items-center gap-1.5 mb-1.5 px-1 flex-wrap">
-                                 <span className="text-[10px] md:text-xs text-gray-300 font-black uppercase tracking-wider">{msg.name}</span>
-                                 <span className="text-[10px] md:text-[11px] text-gray-500 font-medium italic">{msg.text}</span>
-                               </div>
-                               <div className="p-3 md:p-4 bg-blue-500/10 border border-blue-500/30 rounded-2xl rounded-tl-sm shadow-lg w-full text-center">
-                                  <p className="text-blue-400 font-black tracking-tight mb-3 uppercase text-xl md:text-2xl">Tập {msg.requestEpName}</p>
-                                  {isHost && (
-                                     <button 
-                                        onClick={() => setHostConfirmEpRequest({index: msg.requestEpIndex, name: msg.requestEpName})}
-                                        className="w-full bg-blue-500 hover:bg-blue-400 text-white font-black text-[10px] md:text-xs uppercase tracking-widest py-2 md:py-2.5 rounded-xl transition shadow-md"
-                                     >
-                                        Đồng ý chuyển
-                                     </button>
-                                  )}
-                               </div>
-                             </div>
-                          </div>
-                        )
-                    }
-
-                    const isMe = msg.uid === user?.uid;
-                    return (
-                      <div key={msg.id} className={`flex gap-2.5 mb-2 ${isMe ? 'flex-row-reverse' : 'flex-row'} animate-in slide-in-from-bottom-2 duration-300`}>
-                        {renderAvatar(msg.customAvatarId, msg.avatar, "w-8 h-8 md:w-10 md:h-10")}
-                        <div className={`flex flex-col max-w-[85%] ${isMe ? 'items-end' : 'items-start'}`}>
-                          <span className={`text-[10px] md:text-xs font-bold mb-1 px-1 tracking-wider uppercase ${isMe ? 'text-[#E50914]' : 'text-gray-400'}`}>{isMe ? "Bạn" : msg.name}</span>
-                          <div className={`px-4 py-2.5 rounded-2xl text-[13px] md:text-sm font-bold leading-relaxed shadow-md ${isMe ? 'bg-[#E50914] text-white rounded-tr-sm' : 'bg-white/10 text-gray-200 rounded-tl-sm border border-white/5'}`}>
-                            {msg.text}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-                <div ref={messagesEndRef} />
+          {/* USER ONLINE */}
+          <div className="bg-[#111] p-4 rounded-xl border border-white/5 shadow-2xl">
+              <div className="flex items-center justify-between mb-3 border-b border-white/5 pb-3">
+                  <h3 className="text-xs md:text-sm font-black uppercase tracking-widest flex items-center gap-2"><Icon.Users size={16} className="text-[#E50914]"/> Người xem</h3>
+                  <span className="text-xs font-mono font-bold text-gray-400 bg-white/5 px-2 py-1 rounded-md">{onlineUsers.length}</span>
               </div>
+              <div className="flex flex-wrap gap-2.5 max-h-24 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                  {onlineUsers.map(u => (
+                      <div key={u.uid} className="relative group" title={u.name}>
+                          {renderAvatar(u.customAvatarId, u.avatar, "w-10 h-10")}
+                          <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-[#111]"></span>
+                          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 px-2 py-1 bg-black text-[10px] font-bold rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition pointer-events-none z-50">
+                              {u.name} {u.uid === roomData?.hostId && "(Host)"}
+                          </div>
+                      </div>
+                  ))}
+              </div>
+          </div>
 
-              <form onSubmit={handleSendMessage} className="shrink-0 p-3 bg-black/60 border-t border-white/5 flex gap-2">
-                <input type="text" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Nhập tin nhắn..." className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-base md:text-sm text-white focus:outline-none focus:border-[#E50914] focus:bg-[#111] transition-all placeholder:text-gray-500 font-bold"/>
-                <button type="submit" disabled={!newMessage.trim()} className="bg-[#E50914] text-white px-5 rounded-xl hover:bg-red-700 disabled:opacity-50 transition transform-gpu active:scale-95 flex items-center justify-center shadow-lg">
-                  <Icon.Send size={18} className="-ml-0.5" />
-                </button>
-              </form>
+          {/* CHAT BOX */}
+          <div className="bg-[#111] border border-white/5 rounded-xl flex-1 flex flex-col min-h-0 overflow-hidden shadow-2xl">
+            <div className="shrink-0 flex items-center justify-center border-b border-white/5 bg-black/20 py-3 md:py-4">
+               <h3 className="text-xs md:text-sm font-black uppercase tracking-widest flex items-center gap-2"><Icon.MessageSquareText size={18} className="text-[#E50914]"/> Trò Chuyện</h3>
             </div>
-          )}
+            
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-5 space-y-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              {messages.length === 0 && (
+                 <div className="h-full flex flex-col items-center justify-center text-gray-600">
+                    <Icon.MessageCircle size={40} className="mb-3 opacity-50"/>
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Hãy nói gì đó đi...</span>
+                 </div>
+              )}
+              {messages.map((msg) => (
+                <div key={msg.id} className={`animate-in fade-in slide-in-from-bottom-2 ${msg.type === 'chat' && msg.uid === user.uid ? 'text-right' : ''}`}>
+                  
+                  {msg.isSystem && (
+                    <div className="flex justify-center my-3">
+                        <span className="bg-white/5 text-gray-400 text-[10px] md:text-xs px-3 py-1.5 rounded-full uppercase font-bold text-center border border-white/10">
+                            {msg.text}
+                        </span>
+                    </div>
+                  )}
+                  
+                  {msg.type === 'chat' && (
+                      <div className={`flex gap-3 items-start ${msg.uid === user.uid ? 'flex-row-reverse' : ''}`}>
+                          {msg.uid !== user.uid && renderAvatar(msg.customAvatarId, msg.avatar, "w-8 h-8 shrink-0 mt-0.5")}
+                          <div className={`flex flex-col ${msg.uid === user.uid ? 'items-end' : 'items-start'}`}>
+                              {msg.uid !== user.uid && <span className="text-[10px] text-gray-500 font-bold mb-1 ml-1">{msg.name}</span>}
+                              <div className={`px-4 py-2.5 rounded-2xl max-w-[250px] text-sm ${msg.uid === user.uid ? 'bg-[#E50914] text-white rounded-br-none' : 'bg-[#1a1a1a] text-gray-200 rounded-bl-none border border-white/5'}`}>
+                                  {msg.text}
+                              </div>
+                          </div>
+                      </div>
+                  )}
 
-          {activeTab === "users" && (
-            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 no-scrollbar bg-gradient-to-b from-transparent to-black/20">
-               {usersInRoom.map((u, idx) => (
-                  <div key={idx} className="flex items-center gap-3 bg-white/5 p-3 rounded-xl border border-white/5 hover:bg-white/10 transition-colors cursor-default shadow-sm">
-                     {renderAvatar(u.customAvatarId, u.avatar, "w-10 h-10")}
-                     <div className="flex-1 min-w-0">
-                        <p className="text-sm font-black text-white truncate mb-0.5 tracking-tight uppercase">{u.name}</p>
-                        {u.uid === roomData?.hostId ? (
-                          <span className="inline-block text-[9px] bg-[#E50914] text-white px-2 py-0.5 rounded font-black uppercase tracking-[0.2em] shadow-md">Chủ phòng</span>
-                        ) : (
-                          <span className="inline-block text-[9px] border border-gray-600 text-gray-400 px-2 py-0.5 rounded font-black uppercase tracking-[0.2em]">Thành viên</span>
+                  {(msg.type === 'request_movie' || msg.type === 'request_ep') && (
+                      <div className="bg-[#1a1a1a] rounded-xl border border-white/5 overflow-hidden shadow-lg p-3 my-3">
+                        <div className="flex items-center gap-3 mb-3 border-b border-white/5 pb-3">
+                            {renderAvatar(msg.customAvatarId, msg.avatar, "w-8 h-8")}
+                            <div>
+                                <span className="text-xs font-black text-white uppercase block leading-tight">{msg.name}</span>
+                                <span className="text-[9px] text-[#E50914] font-bold uppercase">{msg.text}</span>
+                            </div>
+                        </div>
+                        {msg.type === 'request_movie' && (
+                            <div className="flex gap-3 items-center">
+                                <div className="w-10 h-14 bg-black rounded shrink-0 overflow-hidden">
+                                    {msg.movieItem ? <ChatPoster m={msg.movieItem} fallback={msg.requestMoviePoster} /> : <img src={msg.requestMoviePoster} className="w-full h-full object-cover"/>}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <h4 className="text-xs font-bold text-white line-clamp-1 leading-tight">{msg.requestMovieName}</h4>
+                                    <p className="text-[9px] text-gray-400 font-bold uppercase truncate">{msg.requestMovieGenre}</p>
+                                </div>
+                                {isHostRef.current && ( <button onClick={() => setHostConfirmRequest({slug: msg.requestMovieSlug, name: msg.requestMovieName})} className="shrink-0 bg-[#E50914] text-white text-[9px] font-black uppercase py-1.5 px-3 rounded transition-colors">Duyệt</button> )}
+                            </div>
                         )}
-                     </div>
-                  </div>
-               ))}
+                        {msg.type === 'request_ep' && (
+                            <div className="flex items-center justify-between gap-3">
+                                <span className="text-sm font-black text-white flex items-center gap-2"><Icon.PlaySquare size={16} className="text-[#E50914]"/> Tập {msg.requestEpName}</span>
+                                {isHostRef.current && ( <button onClick={() => setHostConfirmEpRequest({index: msg.requestEpIndex, name: msg.requestEpName})} className="bg-[#E50914] text-white text-[9px] font-black uppercase py-1.5 px-3 rounded">Duyệt</button> )}
+                            </div>
+                        )}
+                      </div>
+                  )}
+                </div>
+              ))
+            }
+              <div ref={messagesEndRef} />
             </div>
-          )}
+
+            <form onSubmit={handleSendChatMessage} className="shrink-0 p-3 md:p-4 border-t border-white/5 bg-black/20 flex gap-2.5 items-center">
+                <input 
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    placeholder="Nhập nội dung..."
+                    className="flex-1 bg-black border border-white/10 rounded-full px-5 py-2.5 text-sm text-white placeholder:text-gray-600 outline-none focus:border-[#E50914] font-bold transition-colors"
+                />
+                <button type="submit" disabled={!chatInput.trim()} className="w-10 h-10 shrink-0 bg-[#E50914] rounded-full flex items-center justify-center text-white disabled:opacity-40 disabled:bg-gray-700 transition active:scale-90">
+                    <Icon.SendHorizontal size={18} />
+                </button>
+            </form>
+          </div>
         </div>
       </div>
     </div>

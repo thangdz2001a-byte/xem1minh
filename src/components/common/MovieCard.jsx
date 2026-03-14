@@ -1,37 +1,135 @@
-import React, { memo } from "react";
+import React, { memo, useEffect, useState } from "react";
 import * as Icon from "lucide-react";
-import { safeText, formatTime } from "../../utils/helpers";
-import SmartImage from "./SmartImage";
+import { safeText, formatTime, getImg } from "../../utils/helpers";
+import useTmdbImage from "../../utils/useTmdbImage";
 
 const MovieCard = memo(function MovieCard({
   m,
   navigate,
   progressData,
   isRow = false,
+  useTmdb = true,
   onRemove = null,
   onClickOverride = null
 }) {
+  const { posterSrc, isLoading } = useTmdbImage(m, useTmdb);
+
+  const [imgSrc, setImgSrc] = useState("");
+  const [imgStep, setImgStep] = useState("loading");
+  
+  const [localProgData, setLocalProgData] = useState({});
+
   if (!m) return null;
 
-  const progData = progressData?.[m.slug] || {};
-  const rawProg = Number(progData?.percentage || 0);
-  const prog = Math.max(0, Math.min(100, rawProg));
+  useEffect(() => {
+    if (progressData && progressData[m?.slug]) {
+      setLocalProgData(progressData[m.slug]);
+    } else if (m?.slug) {
+      try {
+        const storedProgress = JSON.parse(localStorage.getItem("movie_progress") || "{}");
+        if (storedProgress[m.slug]) {
+          setLocalProgData(storedProgress[m.slug]);
+        }
+      } catch (e) {
+        console.error("Lỗi đọc localStorage:", e);
+      }
+    }
+  }, [progressData, m?.slug]);
 
-  const thumbSrc = m.thumb_url || m.thumb || m.poster_url || "";
-  const voteAverage = m.tmdb?.vote_average;
-  const hasVote = voteAverage && !isNaN(Number(voteAverage));
+  const prog = Math.max(0, Math.min(100, Number(localProgData?.percentage || 0)));
   
-  // Lấy tên tiếng anh / tên gốc
+  // Xóa số 0 khỏi phần đánh giá
+  const voteAverage = m.tmdb?.vote_average;
+  const numVote = Number(voteAverage);
+  const hasVote = !isNaN(numVote) && numVote > 0;
+
   const originName = m.origin_name || m.original_name || "";
+  const movieName = safeText(m.name, "");
+
+  const rawOphimPoster = m.poster_url || "";
+  const rawOphimThumb = m.thumb_url || m.thumb || "";
+
+  const ophimPoster = rawOphimPoster ? getImg(rawOphimPoster) : "";
+  const ophimThumb = rawOphimThumb ? getImg(rawOphimThumb) : "";
+
+  const isValidSrc = (src) => {
+    if (!src) return false;
+    if (String(src).includes("placehold.co")) return false;
+    if (String(src) === "null") return false;
+    if (String(src) === "undefined") return false;
+    if (String(src).length <= 10) return false;
+    return true;
+  };
+
+  const hasValidTmdbPoster = isValidSrc(posterSrc);
+  const hasValidOphimPoster = isValidSrc(ophimPoster);
+  const hasValidOphimThumb = isValidSrc(ophimThumb);
+
+  useEffect(() => {
+    if (hasValidTmdbPoster) {
+      setImgSrc(posterSrc);
+      setImgStep("tmdb");
+    } else if (hasValidOphimPoster) {
+      setImgSrc(ophimPoster);
+      setImgStep("ophimPoster");
+    } else if (hasValidOphimThumb) {
+      setImgSrc(ophimThumb);
+      setImgStep("ophimThumb");
+    } else {
+      setImgSrc("");
+      setImgStep("done");
+    }
+  }, [posterSrc, ophimPoster, ophimThumb, hasValidTmdbPoster, hasValidOphimPoster, hasValidOphimThumb]);
+
+  const handleImageError = () => {
+    if (imgStep === "tmdb") {
+      if (hasValidOphimPoster) {
+        setImgSrc(ophimPoster);
+        setImgStep("ophimPoster");
+        return;
+      }
+      if (hasValidOphimThumb) {
+        setImgSrc(ophimThumb);
+        setImgStep("ophimThumb");
+        return;
+      }
+    }
+
+    if (imgStep === "ophimPoster") {
+      if (hasValidOphimThumb) {
+        setImgSrc(ophimThumb);
+        setImgStep("ophimThumb");
+        return;
+      }
+    }
+
+    setImgSrc("");
+    setImgStep("done");
+  };
 
   const handleOpen = () => {
     if (onClickOverride) {
       onClickOverride();
       return;
     }
-
     if (m.slug) {
-      navigate({ type: "detail", slug: m.slug, movieData: { item: m } });
+      let latestProg = localProgData;
+      try {
+        const stored = JSON.parse(localStorage.getItem("movie_progress") || "{}");
+        if (stored[m.slug]) latestProg = stored[m.slug];
+      } catch (e) {}
+
+      // LOGIC FIX: Check currentTime > 0 để bắt chuẩn các phim mới xem vài giây (phần trăm bị = 0)
+      const hasHistory = latestProg && latestProg.currentTime > 0;
+      const percentage = Math.max(0, Math.min(100, Number(latestProg?.percentage || 0)));
+
+      if (hasHistory && percentage < 99) {
+        // Có xem dở -> Phóng thẳng player (tự xoay ngang trên mobile theo web của ông)
+        navigate({ type: "watch", slug: m.slug });
+      } else {
+        // Chưa xem bao giờ hoặc xem xong rồi -> Vào chi tiết bình thường
+        navigate({ type: "detail", slug: m.slug, movieData: m });
+      }
       window.scrollTo(0, 0);
     }
   };
@@ -39,72 +137,123 @@ const MovieCard = memo(function MovieCard({
   const handleRemove = (e) => {
     e.preventDefault();
     e.stopPropagation();
-
-    if (typeof onRemove === "function" && m.slug) {
-      onRemove(m.slug);
-    }
+    if (typeof onRemove === "function" && m.slug) onRemove(m.slug);
   };
 
-  const progressLabel = safeText(
-    String(progData?.episode_name || progData?.episodeSlug || "")
-      .toUpperCase()
-      .replace("TAP-", "TẬP ")
-      .replace(/['"]/g, "")
-      .trim()
-  );
+  // FORMAT LẠI TEXT: "T3 | 05:12" hoặc "FULL | 09:12"
+  let epDisplay = "FULL";
+  const epStr = String(localProgData?.episode_name || localProgData?.episodeSlug || "").trim();
+  const numMatch = epStr.match(/\d+/);
+  if (numMatch) {
+    epDisplay = "T" + numMatch[0];
+  } else if (epStr && !epStr.toLowerCase().includes("full")) {
+    epDisplay = "FULL";
+  }
+
+  const timeText = localProgData?.currentTime > 0 ? formatTime(localProgData.currentTime) : "00:00";
+  const isFetching = isLoading;
+  let imageContent = null;
+
+  if (isFetching) {
+    imageContent = <div className="poster-loading"></div>;
+  } else {
+    if (imgSrc) {
+      imageContent = (
+        <img
+          src={imgSrc}
+          alt={movieName}
+          onError={handleImageError}
+          className="w-full h-full object-cover relative z-10"
+          loading="lazy"
+        />
+      );
+    } else {
+      imageContent = (
+        <img
+          src="https://placehold.co/400x600/111/333?text=Chưa+Có+Ảnh"
+          alt="Chưa Có Ảnh"
+          className="w-full h-full object-cover relative z-10"
+          loading="lazy"
+        />
+      );
+    }
+  }
 
   return (
     <div
       className={`group/card cursor-pointer flex flex-col shrink-0 relative ${
-        isRow ? "w-[120px] sm:w-[150px] md:w-52 lg:w-60 xl:w-64 snap-start" : ""
+        isRow ? "w-[120px] sm:w-[150px] md:w-52 lg:w-60 snap-start" : ""
       }`}
       onClick={handleOpen}
       style={{ perspective: "1200px" }}
     >
+      <style>{`
+        @keyframes spinEdge {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+        .poster-loading {
+          position: absolute;
+          inset: 0;
+          background: #0a0a0a;
+          border-radius: inherit;
+          overflow: hidden;
+          z-index: 10;
+        }
+
+        .poster-loading::before {
+          content: "";
+          position: absolute;
+          top: -50%;
+          left: -50%;
+          width: 200%;
+          height: 200%;
+          background: conic-gradient(from 0deg, transparent 70%, rgba(229,9,20, 0.2) 85%, #E50914 100%);
+          animation: spinEdge 1.5s linear infinite;
+        }
+
+        .poster-loading::after {
+          content: "";
+          position: absolute;
+          inset: 2px;
+          background: #0a0a0a;
+          border-radius: inherit;
+        }
+      `}</style>
+
       {onRemove && (
         <button
-          type="button"
-          aria-label="Xóa khỏi tiếp tục xem"
           onClick={handleRemove}
-          onMouseDown={(e) => e.stopPropagation()}
-          onTouchStart={(e) => e.stopPropagation()}
-          className="absolute top-2 right-2 z-50 bg-[#E50914] hover:bg-[#ff1a1a] text-white p-2 rounded-full shadow-[0_10px_28px_rgba(229,9,20,0.42)] transition-all border border-white/10 opacity-100 md:opacity-0 md:group-hover/card:opacity-100 hover:scale-110 active:scale-95"
+          className="absolute top-2 right-2 z-50 bg-[#E50914] text-white p-2 rounded-full opacity-100 md:opacity-0 md:group-hover/card:opacity-100 transition-all hover:scale-110 active:scale-95 shadow-lg"
         >
-          <Icon.X size={14} className="md:w-[16px] md:h-[16px]" strokeWidth={3} />
+          <Icon.X size={14} strokeWidth={3} />
         </button>
       )}
 
       <div className="relative rounded-xl transition-all duration-300 [transform-style:preserve-3d] group-hover/card:[transform:translateZ(24px)_rotateX(3deg)_rotateY(-3deg)]">
-        <div className="relative overflow-hidden rounded-xl aspect-[2/3] bg-[#111] shadow-xl border border-white/5 transition-all duration-300 group-hover/card:shadow-[0_20px_45px_rgba(0,0,0,0.55)] group-hover/card:border-white/15">
-          <SmartImage
-            src={thumbSrc}
-            className="w-full h-full object-cover"
-            alt={safeText(m.name, "Movie")}
-            loading="lazy"
-            decoding="async"
-            fetchPriority="low"
-          />
+        <div className="relative overflow-hidden rounded-xl aspect-[2/3] bg-[#0a0a0a] shadow-xl border border-white/5 transition-all duration-300 group-hover/card:shadow-[0_20px_45px_rgba(0,0,0,0.55)]">
+          
+          {imageContent}
 
-          {prog > 0 && prog < 99 && (
+          {/* HIỂN THỊ TIẾN TRÌNH XEM */}
+          {localProgData?.currentTime > 0 && prog < 99 && (
             <>
-              <div className="absolute bottom-0 left-0 w-full h-1/2 bg-gradient-to-t from-black/90 via-black/40 to-transparent z-10 pointer-events-none" />
+              {/* Lớp gradient mỏng để chống cháy chữ ở các ảnh nền sáng */}
+              <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/60 to-transparent z-20 pointer-events-none" />
 
-              <div className="absolute bottom-2 md:bottom-3 left-0 w-full flex justify-between items-center z-20 pointer-events-none px-2 md:px-3">
-                <span className="text-[9px] md:text-[11px] font-bold text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] tracking-wider truncate max-w-full">
-                  {progressLabel || `${Math.round(prog)}% đã xem`}
-                </span>
-                {progData?.currentTime > 0 && (
-                  <span className="text-[9px] md:text-[11px] font-mono font-bold text-white/90 drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] shrink-0 ml-1">
-                    {formatTime(progData.currentTime)}
+              {/* Box hiển thị Tập | Phút siêu gọn, nằm ngay trên thanh tiến trình */}
+              <div className="absolute bottom-[10px] left-0 w-full flex justify-center z-30 pointer-events-none">
+                <div className="bg-black/40 backdrop-blur-md border border-white/10 px-2 py-[2px] rounded-[6px] shadow-sm">
+                  <span className="text-[10px] md:text-[11px] font-semibold text-white drop-shadow-md tracking-wide">
+                    {epDisplay} <span className="mx-[2px] text-white/50">|</span> {timeText}
                   </span>
-                )}
+                </div>
               </div>
 
-              <div className="absolute bottom-0 left-0 w-full h-1 md:h-1.5 bg-white/20 z-20">
-                <div
-                  className="h-full bg-[#E50914] transition-all duration-300"
-                  style={{ width: `${prog}%` }}
-                />
+              {/* Thanh màu đỏ mỏng dưới đáy */}
+              <div className="absolute bottom-0 left-0 w-full h-[4px] bg-white/20 z-30">
+                <div className="h-full bg-[#E50914]" style={{ width: `${Math.max(1, prog)}%` }} />
               </div>
             </>
           )}
@@ -112,48 +261,30 @@ const MovieCard = memo(function MovieCard({
       </div>
 
       <div className="mt-2 md:mt-3 flex flex-col flex-1 px-1">
-        <h3 className="text-[12px] sm:text-[13px] md:text-[15px] font-bold text-gray-200 line-clamp-2 transition-colors uppercase tracking-tight group-hover/card:text-[#E50914]">
-          {safeText(m.name)}
+        <h3 className="text-[12px] md:text-[15px] font-bold text-gray-200 line-clamp-2 uppercase group-hover/card:text-[#E50914] transition-colors">
+          {movieName}
         </h3>
 
-        {/* HIỂN THỊ TÊN TIẾNG ANH (TÊN GỐC) */}
         {originName && originName.toLowerCase() !== m.name?.toLowerCase() && (
-          <p className="text-[10px] md:text-[12px] text-gray-400 mt-1 truncate">
-            {originName}
-          </p>
+          <p className="text-[10px] md:text-[12px] text-gray-400 mt-1 truncate">{originName}</p>
         )}
 
-        <div className="flex items-center justify-between mt-1.5 gap-2">
-          <div className="flex items-center gap-1.5 text-[9px] sm:text-[10px] md:text-[11px] text-gray-500 font-medium min-w-0 flex-wrap">
-            <span className="shrink-0">{safeText(m.year, "2025")}</span>
-
-            <span className="bg-[#E50914] text-white text-[8px] md:text-[9px] px-1.5 py-[1px] rounded-[4px] font-black uppercase tracking-wide shrink-0">
+        <div className="flex items-center justify-between mt-1.5">
+          <div className="flex items-center gap-1.5 text-[9px] md:text-[11px] text-gray-500 font-medium">
+            <span>{safeText(m.year, "2025")}</span>
+            <span className="bg-[#E50914] text-white px-1.5 py-[1px] rounded-[4px] font-black uppercase">
               {safeText(m.quality, "HD")}
             </span>
-
-            {!prog && m.episode_current && (
-              <>
-                <span className="shrink-0 text-gray-700">•</span>
-                <span className="text-[#E50914] font-bold truncate max-w-[80px]">
-                  {safeText(m.episode_current)}
-                </span>
-              </>
-            )}
-
-            {prog > 0 && prog < 99 && (
-              <>
-                <span className="shrink-0 text-gray-700">•</span>
-                <span className="text-white/70 font-bold truncate">
-                  {Math.round(prog)}%
-                </span>
-              </>
+            {(!prog || prog >= 99) && m.episode_current && (
+              <span className="text-[#E50914] font-bold ml-1">{m.episode_current}</span>
             )}
           </div>
 
+          {/* Ẩn hoàn toàn nếu sao = 0 */}
           {hasVote ? (
-            <span className="flex items-center gap-1 text-[#f5c518] text-[9px] sm:text-[10px] md:text-[11px] font-bold shrink-0">
-              <Icon.Star fill="currentColor" size={10} className="md:w-[12px] md:h-[12px]" />
-              {Number(voteAverage).toFixed(1)}
+            <span className="flex items-center gap-1 text-[#f5c518] text-[9px] md:text-[11px] font-bold">
+              <Icon.Star fill="currentColor" size={10} />
+              {numVote.toFixed(1)}
             </span>
           ) : null}
         </div>

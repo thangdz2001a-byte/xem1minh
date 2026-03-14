@@ -171,8 +171,8 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
       isLive: false,
       muted: false,
       autoplay: false, 
-      pip: true,
-      airplay: false, // ĐÃ XÓA AIRPLAY THEO LỆNH SẾP!
+      pip: true, // ĐÃ BẬT LẠI PIP NHƯ SẾP MUỐN
+      airplay: false, 
       autoSize: false,
       autoMini: true,
       setting: true,
@@ -180,8 +180,8 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
       flip: false,
       playbackRate: true,
       aspectRatio: false,
-      fullscreen: true,
-      fullscreenWeb: true,
+      fullscreen: true, 
+      fullscreenWeb: false, // XÓA ĐÚNG NÚT FULLSCREEN TRÌNH DUYỆT THEO LỆNH
       subtitleOffset: false,
       miniProgressBar: true,
       mutex: true,
@@ -354,20 +354,23 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
         }
 
         @media (max-width: 640px) {
+          /* ÉP SÁT TẤT CẢ CÁC NÚT LẠI VỚI NHAU, THU BÉ MỌI ICON */
           .art-controls-left .art-control,
           .art-controls-right .art-control {
             margin: 0 !important;
-            padding: 0 4px !important;
+            padding: 0 3px !important;
           }
           
-          .art-icon-seek {
+          /* THU BÉ MỌI ICON MẶC ĐỊNH (PLAY, PIp, CÀI ĐẶT...) VÀ ICON TUA */
+          .art-control svg, .art-icon-seek {
             width: 18px !important;
             height: 18px !important;
           }
 
+          /* BÓP NHỎ CHỮ THỜI GIAN */
           .art-control-time {
-            font-size: 11px !important;
-            padding: 0 4px !important;
+            font-size: 10px !important;
+            padding: 0 2px !important;
           }
         }
         .art-spinner { display: none !important; }

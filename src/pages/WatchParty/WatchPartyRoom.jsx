@@ -292,10 +292,10 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
       isLive: false, 
       muted: false, 
       autoplay: false, 
-      pip: true, 
-      airplay: false, // ĐÃ XÓA AIRPLAY
+      pip: true, // ĐÃ BẬT LẠI PIP NHƯ SẾP MUỐN
+      airplay: false, 
       fullscreen: true,
-      fullscreenWeb: true,
+      fullscreenWeb: false, // XÓA ĐÚNG NÚT FULLSCREEN TRÌNH DUYỆT THEO LỆNH
       setting: true,
       playbackRate: isHost, 
       hotkey: false, 
@@ -555,9 +555,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
       setMessages(prev => [...prev, chatMsg]);
   };
 
-  // ==========================================
-  // HÀM TẢI PHIM ĐÃ ĐƯỢC TÍCH HỢP TMDB 
-  // ==========================================
   const loadModalMovies = async (isSearch = false, pageNum = 1, currentList = []) => {
     if (pageNum === 1) setIsFetchingModal(true); 
     else setIsLoadingMoreModal(true); 
@@ -919,7 +916,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         </div>
       )}
 
-      {/* MAIN LAYOUT: Đã đổi lưới để đáp ứng di động mượt hơn */}
+      {/* MAIN LAYOUT */}
       <div className="flex flex-col lg:grid lg:grid-cols-4 gap-3 md:gap-4 lg:flex-1 lg:min-h-0">
         
         {/* CỘT TRÁI: VIDEO PLAYER */}
@@ -943,20 +940,24 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                }
 
                @media (max-width: 640px) {
-                 .art-controls-left .art-control,
-                 .art-controls-right .art-control {
+                 /* ÉP SÁT TẤT CẢ CÁC NÚT LẠI VỚI NHAU, THU BÉ MỌI ICON */
+                 .art-bottom .art-controls-left .art-control,
+                 .art-bottom .art-controls-right .art-control {
                    margin: 0 !important;
-                   padding: 0 4px !important;
+                   padding: 0 3px !important;
                  }
                  
-                 .art-icon-seek {
-                   width: 18px !important;
-                   height: 18px !important;
+                 /* THU BÉ MỌI ICON MẶC ĐỊNH VÀ ICON TUA */
+                 .art-bottom .art-control svg, .art-icon-seek {
+                   width: 16px !important;
+                   height: 16px !important;
                  }
 
+                 /* BÓP NHỎ CHỮ THỜI GIAN */
                  .art-control-time {
-                   font-size: 11px !important;
-                   padding: 0 4px !important;
+                   font-size: 10px !important;
+                   padding: 0 2px !important;
+                   margin: 0 !important;
                  }
                }
                .art-spinner { display: none !important; }

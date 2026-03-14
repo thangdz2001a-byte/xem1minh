@@ -161,6 +161,12 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
   const navigateRef = useRef(navigate);
   useEffect(() => { navigateRef.current = navigate; }, [navigate]);
 
+  useEffect(() => {
+    if (!user) {
+      navigateRef.current({ type: 'watch-party-lobby' });
+    }
+  }, [user]);
+
   useEffect(() => { currentSlugRef.current = slug; }, [slug]);
   useEffect(() => { roomDataRef.current = roomData; }, [roomData]);
 

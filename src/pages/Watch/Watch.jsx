@@ -265,8 +265,9 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
         }] : []),
         // SỬA: Bỏ margin cứng, thêm class art-icon-fullscreen để điều khiển qua CSS
         {
+          name: 'btn-phong-to', // SỬA CHỖ NÀY: Thêm name để override CSS ẩn mặc định của Artplayer trên mobile
           position: 'right',
-          index: 90,
+          index: 99, // SỬA CHỖ NÀY: Đẩy index lên cao để nút luôn nằm ngoài cùng bên phải
           html: `<svg class="art-icon-fullscreen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>`,
           tooltip: 'Toàn màn hình',
           click: function () {
@@ -373,6 +374,13 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
   return (
     <div className="relative w-full aspect-video bg-[#050505] shadow-[0_20px_50px_rgba(0,0,0,0.5)] md:rounded-2xl overflow-hidden border border-white/5 flex justify-center items-center">
       <style>{`
+        /* SỬA CHỖ NÀY: Ép hiển thị nút phóng to tự chế bằng mọi giá trên tất cả thiết bị */
+        .art-control-btn-phong-to {
+          display: flex !important;
+          align-items: center;
+          justify-content: center;
+        }
+
         /* SỬA CHỖ NÀY: Resize toàn bộ icon và bóp khoảng cách ở màn nhỏ (mobile) */
         .art-icon-seek, .art-icon-fullscreen {
           width: 20px;
@@ -381,6 +389,13 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
         }
 
         @media (max-width: 640px) {
+          /* Ép nút hiển thị, không cho Artplayer tự giấu */
+          .art-control-btn-phong-to {
+            display: flex !important; 
+            margin: 0 !important;
+            padding: 0 4px !important;
+          }
+
           /* Ép các nút thu sát lại nhau */
           .art-controls-left .art-control,
           .art-controls-right .art-control {

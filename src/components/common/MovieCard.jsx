@@ -37,10 +37,6 @@ const MovieCard = memo(function MovieCard({
   }, [progressData, m?.slug]);
 
   const prog = Math.max(0, Math.min(100, Number(localProgData?.percentage || 0)));
-  
-  const voteAverage = m.tmdb?.vote_average;
-  const numVote = Number(voteAverage);
-  const hasVote = !isNaN(numVote) && numVote > 0;
 
   const originName = m.origin_name || m.original_name || "";
   const movieName = safeText(m.name, "");
@@ -255,32 +251,26 @@ const MovieCard = memo(function MovieCard({
         </div>
       </div>
 
+      {/* THÔNG TIN PHIM ĐÃ ĐƯỢC SẮP XẾP LẠI */}
       <div className="mt-2 md:mt-3 flex flex-col flex-1 px-1">
-        <h3 className="text-[12px] md:text-[15px] font-bold text-gray-200 line-clamp-2 uppercase group-hover/card:text-[#E50914] transition-colors">
+        {/* Tên Việt */}
+        <h3 className="text-[13px] md:text-[15px] font-bold text-gray-200 line-clamp-2 uppercase group-hover/card:text-[#E50914] transition-colors leading-tight">
           {movieName}
         </h3>
 
+        {/* Tên Gốc */}
         {originName && originName.toLowerCase() !== m.name?.toLowerCase() && (
-          <p className="text-[10px] md:text-[12px] text-gray-400 mt-1 truncate">{originName}</p>
+          <p className="text-[11px] md:text-[12px] text-gray-400 mt-1 truncate">
+            {originName}
+          </p>
         )}
 
-        <div className="flex items-center justify-between mt-1.5">
-          <div className="flex items-center gap-1.5 text-[9px] md:text-[11px] text-gray-500 font-medium">
-            <span>{safeText(m.year, "2025")}</span>
-            <span className="bg-[#E50914] text-white px-1.5 py-[1px] rounded-[4px] font-black uppercase">
-              {safeText(m.quality, "HD")}
-            </span>
-            {(!prog || prog >= 99) && m.episode_current && (
-              <span className="text-[#E50914] font-bold ml-1">{m.episode_current}</span>
-            )}
-          </div>
-
-          {hasVote ? (
-            <span className="flex items-center gap-1 text-[#f5c518] text-[9px] md:text-[11px] font-bold">
-              <Icon.Star fill="currentColor" size={10} />
-              {numVote.toFixed(1)}
-            </span>
-          ) : null}
+        {/* Năm & Chất lượng */}
+        <div className="flex items-center gap-2 mt-1.5 text-[10px] md:text-[11px] text-gray-500 font-medium">
+          <span>{safeText(m.year, "2025")}</span>
+          <span className="bg-[#E50914] text-white px-1.5 py-[2px] rounded-[3px] font-bold uppercase tracking-wider">
+            {safeText(m.quality, "HD")}
+          </span>
         </div>
       </div>
     </div>

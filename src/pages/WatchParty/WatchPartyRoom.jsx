@@ -734,8 +734,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
   if (loadingPage) return <div className="h-screen w-screen flex justify-center items-center bg-[#050505] overflow-hidden"></div>;
 
   return (
-    // Đã thay đổi h-screen thành h-[100dvh] để fix lỗi bẹp giao diện trên Safari/Chrome Mobile
-    // Chuyển sang lg:overflow-hidden overflow-y-auto để trên đt có thể cuộn được
     <div className="pt-20 md:pt-[88px] pb-4 max-w-[1920px] mx-auto px-2 md:px-4 h-[100dvh] w-full flex flex-col lg:overflow-hidden overflow-y-auto animate-in fade-in duration-500 bg-[#050505] relative text-white">
       
       {!isHostRef.current && ( <style>{`.art-control-playAndPause { display: none !important; } .art-progress { pointer-events: none !important; } .art-video { pointer-events: none !important; }`}</style> )}
@@ -754,29 +752,36 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         </div>
       )}
 
-      {/* POPUP: CHỌN TẬP */}
+      {/* POPUP: CHỌN TẬP ĐÃ TỐI ƯU MOBILE */}
       {showEpModal && (
-        <div className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-sm flex justify-center items-center p-4">
-          <div className="bg-[#111] border border-white/10 rounded-2xl w-full max-w-4xl h-[80vh] flex flex-col shadow-2xl animate-in zoom-in-95">
-            <div className="p-5 flex justify-between items-center shrink-0 border-b border-white/5">
-               <h2 className="text-xl font-black uppercase flex items-center gap-2"><Icon.ListVideo size={20} className="text-[#E50914]" /> Chọn Tập</h2>
-               <button onClick={() => setShowEpModal(false)} className="p-2 text-gray-400 hover:text-white bg-white/5 rounded-full"><Icon.X size={20}/></button>
+        <div className="fixed inset-0 z-[1000] bg-black/95 backdrop-blur-md flex justify-center items-center p-0 md:p-4">
+          <div className="bg-[#111] border-0 md:border border-white/10 md:rounded-2xl w-full h-full md:max-w-4xl md:h-[80vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom-5 duration-300">
+            <div className="p-3 md:p-5 flex justify-between items-center shrink-0 border-b border-white/5 pt-safe-top">
+               <div className="flex items-center gap-3">
+                 <Icon.ListVideo size={18} className="text-[#E50914] md:w-5 md:h-5" />
+                 <h2 className="text-sm md:text-xl font-black uppercase flex items-center">Chọn Tập</h2>
+               </div>
+               <button onClick={() => setShowEpModal(false)} className="p-1.5 md:p-2 text-gray-400 hover:text-white bg-white/5 rounded-full"><Icon.X size={18} className="md:w-5 md:h-5"/></button>
             </div>
+            
             {epChunks.length > 1 && (
-              <div className="p-4 border-b border-white/5 bg-black/40 shrink-0">
-                <div ref={epScrollRef} onMouseDown={handleMouseDownEp} onMouseLeave={handleMouseLeaveEp} onMouseUp={handleMouseUpEp} onMouseMove={handleMouseMoveEp} className="flex gap-2 overflow-x-auto pb-2 select-none cursor-grab [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                  {epChunks.map((chunk, idx) => (
-                    <button key={idx} onClick={() => setEpChunkIndex(idx)} className={`px-4 py-2 text-xs font-bold rounded-lg uppercase tracking-wider whitespace-nowrap border shrink-0 ${epChunkIndex === idx ? 'bg-white/10 border-red-500/50 text-white' : 'bg-[#1a1a1a] border-white/5 text-gray-400 hover:bg-white/5 hover:text-white'}`}>TẬP {idx * chunkSize + 1} - {idx * chunkSize + chunk.length}</button>
-                  ))}
+              <div className="p-3 md:p-4 border-b border-white/5 bg-black/40 shrink-0">
+                <div className="w-full overflow-hidden">
+                  <div ref={epScrollRef} onMouseDown={handleMouseDownEp} onMouseLeave={handleMouseLeaveEp} onMouseUp={handleMouseUpEp} onMouseMove={handleMouseMoveEp} className="flex gap-2 overflow-x-auto pb-1 select-none cursor-grab touch-pan-x snap-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                    {epChunks.map((chunk, idx) => (
+                      <button key={idx} onClick={() => setEpChunkIndex(idx)} className={`snap-start px-3 py-1.5 md:px-4 md:py-2 text-[10px] md:text-xs font-bold rounded-lg uppercase tracking-wider whitespace-nowrap border shrink-0 ${epChunkIndex === idx ? 'bg-white/10 border-red-500/50 text-white shadow-[0_0_10px_rgba(229,9,20,0.2)]' : 'bg-[#1a1a1a] border-white/5 text-gray-400 hover:bg-white/5 hover:text-white'}`}>TẬP {idx * chunkSize + 1} - {idx * chunkSize + chunk.length}</button>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
-            <div className="flex-1 overflow-y-auto p-6 relative [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-               <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 gap-3">
+            
+            <div className="flex-1 overflow-y-auto p-3 md:p-6 relative [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+               <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2 md:gap-3">
                  {epChunks[epChunkIndex]?.map((epItem, localIdx) => {
                     const globalIdx = epChunkIndex * chunkSize + localIdx;
                     return (
-                      <button key={globalIdx} onClick={() => handleSelectEpisode(globalIdx, epItem)} className={`py-3 rounded-lg text-sm font-bold border transition-colors ${currentEpIndex === globalIdx ? 'bg-[#E50914] text-white border-transparent' : 'bg-[#1a1a1a] text-gray-300 border-white/5 hover:bg-white/10'}`}>{epItem.name.replace(/tập\s*/i, '')}</button>
+                      <button key={globalIdx} onClick={() => handleSelectEpisode(globalIdx, epItem)} className={`py-2 md:py-3 rounded-lg text-xs md:text-sm font-bold border transition-colors ${currentEpIndex === globalIdx ? 'bg-[#E50914] text-white border-transparent' : 'bg-[#1a1a1a] text-gray-300 border-white/5 hover:bg-white/10'}`}>{epItem.name.replace(/tập\s*/i, '')}</button>
                     )
                  })}
                </div>
@@ -785,31 +790,38 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         </div>
       )}
 
-      {/* MODAL CHỌN PHIM TRONG PHÒNG */}
+      {/* MODAL CHỌN PHIM TRONG PHÒNG ĐÃ TỐI ƯU MOBILE (GIỐNG LOBBY) */}
       {showMovieModal && (
-        <div className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-sm flex justify-center items-center p-4">
-          <div className="bg-[#111] border border-white/10 rounded-2xl w-full max-w-5xl h-[85vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-300">
-            <div className="p-4 md:p-5 flex justify-between items-center shrink-0 border-b border-white/5">
-               <h2 className="text-lg md:text-xl font-black uppercase tracking-widest text-white flex items-center gap-2"><Icon.Film size={20} className="text-[#E50914]" /> Chọn Phim Mới</h2>
-               <button onClick={() => setShowMovieModal(false)} className="p-2 bg-white/5 hover:bg-white/10 rounded-full transition text-gray-400 hover:text-white"><Icon.X size={20}/></button>
+        <div className="fixed inset-0 z-[1000] bg-black/95 backdrop-blur-md flex justify-center items-center p-0 md:p-4">
+          <div className="bg-[#111] border-0 md:border border-white/10 md:rounded-2xl w-full h-full md:max-w-5xl md:h-[85vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom-5 duration-300">
+            
+            <div className="p-3 md:p-5 flex justify-between items-center shrink-0 border-b border-white/5 pt-safe-top">
+               <div className="flex items-center gap-2 md:gap-3">
+                 <Icon.Film size={18} className="text-[#E50914] md:w-5 md:h-5" />
+                 <h2 className="text-sm md:text-xl font-black uppercase tracking-widest text-white">{isHostRef.current ? "Chọn Phim Mới" : "Yêu Cầu Đổi Phim"}</h2>
+               </div>
+               <button onClick={() => setShowMovieModal(false)} className="p-1.5 md:p-2 bg-white/5 hover:bg-white/10 rounded-full transition text-gray-400 hover:text-white"><Icon.X size={18} className="md:w-5 md:h-5"/></button>
             </div>
             
-            <div className="p-4 md:px-5 flex flex-col lg:flex-row gap-4 shrink-0 bg-[#0a0a0a]/50 border-b border-white/5 items-start lg:items-center">
+            <div className="p-3 md:p-4 flex flex-col lg:flex-row gap-3 md:gap-4 shrink-0 bg-[#0a0a0a]/50 border-b border-white/5 items-start lg:items-center">
                <form onSubmit={(e) => {e.preventDefault(); setModalPage(1); loadModalMovies(true, 1, []);}} className="relative w-full lg:w-72 shrink-0">
-                  <div className="absolute left-4 top-0 bottom-0 flex items-center pointer-events-none"><Icon.Search className="text-gray-500" size={16} /></div>
-                  <input type="text" value={modalSearchTerm} onChange={(e) => setModalSearchTerm(e.target.value)} placeholder="Tìm theo tên phim..." className="w-full bg-black border border-white/10 rounded-xl py-3 pl-11 pr-4 text-base md:text-sm text-white focus:outline-none focus:border-[#E50914] font-bold tracking-wider" />
+                  <div className="absolute left-3.5 top-0 bottom-0 flex items-center pointer-events-none"><Icon.Search className="text-gray-500" size={14} /></div>
+                  <input type="text" value={modalSearchTerm} onChange={(e) => setModalSearchTerm(e.target.value)} placeholder="Tìm theo tên phim..." className="w-full bg-black border border-white/10 rounded-xl py-2.5 pl-9 pr-3 text-sm text-white focus:outline-none focus:border-[#E50914] font-bold tracking-wider" />
                </form>
-               <div ref={catScrollRef} onMouseDown={handleMouseDownCat} onMouseLeave={handleMouseLeaveCat} onMouseUp={handleMouseUpCat} onMouseMove={handleMouseMoveCat} className="flex gap-2.5 overflow-x-auto pb-1 lg:pb-0 select-none cursor-grab [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                 {CATEGORIES.map(cat => (
-                   <button key={cat.slug} onClick={() => { setModalCat(cat); setModalSearchTerm(""); }} className={`px-4 py-2.5 text-xs font-bold rounded-xl uppercase tracking-widest whitespace-nowrap shrink-0 transition-colors ${!modalSearchTerm && modalCat.slug === cat.slug ? 'bg-[#E50914] text-white shadow-[0_0_15px_rgba(229,9,20,0.4)]' : 'bg-white/5 border border-white/5 text-gray-400 hover:bg-white/10 hover:text-white'}`}>{cat.name}</button>
-                 ))}
+
+               <div className="w-full overflow-hidden">
+                 <div ref={catScrollRef} onMouseDown={handleMouseDownCat} onMouseLeave={handleMouseLeaveCat} onMouseUp={handleMouseUpCat} onMouseMove={handleMouseMoveCat} className="flex gap-2 overflow-x-auto pb-1 select-none cursor-grab snap-x touch-pan-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                   {CATEGORIES.map(cat => (
+                     <button key={cat.slug} onClick={() => { setModalCat(cat); setModalSearchTerm(""); }} className={`snap-start px-3 py-1.5 md:px-4 md:py-2.5 text-[10px] md:text-xs font-bold rounded-lg md:rounded-xl uppercase tracking-widest whitespace-nowrap shrink-0 transition-colors ${!modalSearchTerm && modalCat.slug === cat.slug ? 'bg-[#E50914] text-white shadow-[0_0_10px_rgba(229,9,20,0.3)]' : 'bg-white/5 border border-white/5 text-gray-400 hover:bg-white/10 hover:text-white'}`}>{cat.name}</button>
+                   ))}
+                 </div>
                </div>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-4 md:p-5 relative [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-              {isFetchingModal ? <div className="h-full flex items-center justify-center"><Icon.Loader2 className="animate-spin text-[#E50914]" size={40}/></div> : (
+            <div className="flex-1 overflow-y-auto p-3 md:p-5 relative [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              {isFetchingModal ? <div className="h-full flex items-center justify-center"><Icon.Loader2 className="animate-spin text-[#E50914] md:w-10 md:h-10" size={32}/></div> : (
                  <>
-                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4 lg:gap-5">
+                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 md:gap-4">
                       {modalMovies.map((m, idx) => (
                         <div key={`${m.slug}-${idx}`} className="group relative">
                           <MovieCard 
@@ -817,9 +829,9 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                             isRow={false} 
                             onClickOverride={() => handleSelectMovie(m)} 
                           />
-                          <div className="absolute inset-0 z-30 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none rounded-xl">
+                          <div className="absolute inset-0 z-30 bg-black/40 opacity-0 md:group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none rounded-xl">
                             <span className="bg-[#E50914] text-white text-[10px] font-black px-3 py-1.5 rounded-lg uppercase tracking-widest shadow-2xl scale-90 group-hover:scale-100 transition-transform">
-                              Đổi Sang Phim Này
+                              {isHostRef.current ? "Chọn Phim Này" : "Yêu Cầu Đổi"}
                             </span>
                           </div>
                         </div>
@@ -827,10 +839,10 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                    </div>
                    
                    {modalHasMore && (
-                     <div ref={observerTarget} className="mt-8 flex justify-center py-8">
+                     <div ref={observerTarget} className="mt-6 md:mt-8 flex justify-center py-6 md:py-8">
                        {isLoadingMoreModal ? (
-                         <div className="flex items-center gap-3 text-[#E50914] font-bold uppercase tracking-widest text-sm">
-                           <Icon.Loader2 className="animate-spin" size={24} /> Đang tải thêm...
+                         <div className="flex items-center gap-2 text-[#E50914] font-bold uppercase tracking-widest text-xs md:text-sm">
+                           <Icon.Loader2 className="animate-spin md:w-6 md:h-6" size={18} /> Đang tải...
                          </div>
                        ) : (
                          <div className="h-10 w-full"></div>
@@ -848,16 +860,16 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
       {/* POPUP: CONFIRM YÊU CẦU ĐỔI PHIM */}
       {hostConfirmRequest && (
         <div className="fixed inset-0 z-[1001] bg-black/80 backdrop-blur-sm flex justify-center items-center p-4">
-           <div className="bg-[#111] border border-white/10 w-[320px] aspect-square flex flex-col justify-center items-center p-6 rounded-3xl text-center shadow-[0_0_40px_rgba(229,9,20,0.15)] animate-in zoom-in-95">
-              <Icon.HelpCircle size={56} className="text-[#E50914] mx-auto mb-4 drop-shadow-[0_0_10px_rgba(229,9,20,0.5)]" />
+           <div className="bg-[#111] border border-white/10 w-[320px] flex flex-col justify-center items-center p-6 rounded-3xl text-center shadow-[0_0_40px_rgba(229,9,20,0.15)] animate-in zoom-in-95">
+              <Icon.HelpCircle size={48} className="text-[#E50914] mx-auto mb-4 drop-shadow-[0_0_10px_rgba(229,9,20,0.5)]" />
               <h3 className="text-xl font-black uppercase tracking-widest mb-2 text-white">Đồng ý yêu cầu?</h3>
-              <p className="text-gray-400 text-sm mb-auto flex-1 flex flex-col items-center justify-center">
+              <p className="text-gray-400 text-sm mb-6 flex-1 flex flex-col items-center justify-center">
                 Bạn sẽ đổi phòng sang phim:
                 <strong className="text-[#E50914] mt-2 block text-base line-clamp-2 leading-tight">{hostConfirmRequest.name}</strong>
               </p>
-              <div className="flex gap-3 w-full mt-4">
-                  <button onClick={() => setHostConfirmRequest(null)} className="flex-1 py-3.5 bg-white/5 hover:bg-white/10 text-white font-black rounded-xl text-sm uppercase transition-colors">Hủy</button>
-                  <button onClick={executeHostChangeMovie} className="flex-1 py-3.5 bg-[#E50914] hover:bg-red-700 text-white font-black rounded-xl text-sm uppercase shadow-lg transition-colors">Đồng Ý</button>
+              <div className="flex gap-3 w-full">
+                  <button onClick={() => setHostConfirmRequest(null)} className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-white font-black rounded-xl text-xs md:text-sm uppercase transition-colors">Hủy</button>
+                  <button onClick={executeHostChangeMovie} className="flex-1 py-3 bg-[#E50914] hover:bg-red-700 text-white font-black rounded-xl text-xs md:text-sm uppercase shadow-lg transition-colors">Đồng Ý</button>
               </div>
            </div>
         </div>
@@ -866,16 +878,16 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
       {/* POPUP: CONFIRM YÊU CẦU ĐỔI TẬP */}
       {hostConfirmEpRequest && (
         <div className="fixed inset-0 z-[1001] bg-black/80 backdrop-blur-sm flex justify-center items-center p-4">
-           <div className="bg-[#111] border border-white/10 w-[320px] aspect-square flex flex-col justify-center items-center p-6 rounded-3xl text-center shadow-[0_0_40px_rgba(229,9,20,0.15)] animate-in zoom-in-95">
-              <Icon.HelpCircle size={56} className="text-[#E50914] mx-auto mb-4 drop-shadow-[0_0_10px_rgba(229,9,20,0.5)]" />
+           <div className="bg-[#111] border border-white/10 w-[320px] flex flex-col justify-center items-center p-6 rounded-3xl text-center shadow-[0_0_40px_rgba(229,9,20,0.15)] animate-in zoom-in-95">
+              <Icon.HelpCircle size={48} className="text-[#E50914] mx-auto mb-4 drop-shadow-[0_0_10px_rgba(229,9,20,0.5)]" />
               <h3 className="text-xl font-black uppercase tracking-widest mb-2 text-white">Đồng ý yêu cầu?</h3>
-              <p className="text-gray-400 text-sm mb-auto flex-1 flex flex-col items-center justify-center">
+              <p className="text-gray-400 text-sm mb-6 flex-1 flex flex-col items-center justify-center">
                 Bạn sẽ chuyển phòng sang:
                 <strong className="text-[#E50914] mt-2 block text-base leading-tight">Tập {hostConfirmEpRequest.name}</strong>
               </p>
-              <div className="flex gap-3 w-full mt-4">
-                  <button onClick={() => setHostConfirmEpRequest(null)} className="flex-1 py-3.5 bg-white/5 hover:bg-white/10 text-white font-black rounded-xl text-sm uppercase transition-colors">Hủy</button>
-                  <button onClick={executeHostChangeEpisode} className="flex-1 py-3.5 bg-[#E50914] hover:bg-red-700 text-white font-black rounded-xl text-sm uppercase shadow-lg transition-colors">Đồng Ý</button>
+              <div className="flex gap-3 w-full">
+                  <button onClick={() => setHostConfirmEpRequest(null)} className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-white font-black rounded-xl text-xs md:text-sm uppercase transition-colors">Hủy</button>
+                  <button onClick={executeHostChangeEpisode} className="flex-1 py-3 bg-[#E50914] hover:bg-red-700 text-white font-black rounded-xl text-xs md:text-sm uppercase shadow-lg transition-colors">Đồng Ý</button>
               </div>
            </div>
         </div>
@@ -896,7 +908,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
             </div>
           </div>
 
-          {/* Sửa lại wrapper của player: aspect-video cho dt, flex-1 cho pc */}
           <div ref={containerRef} className="w-full aspect-video lg:aspect-auto lg:flex-1 lg:min-h-0 bg-black rounded-xl overflow-hidden border border-white/5 relative group flex items-center justify-center shadow-2xl">
              <div ref={artRef} className={`w-full h-full object-contain ${loadingPlayer ? 'opacity-0' : 'opacity-100'}`}></div>
              {slug === "dang-chon-phim" && (
@@ -920,7 +931,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         </div>
 
         {/* CỘT PHẢI: KHUNG CHAT VÀ ONLINE */}
-        {/* Chat bây giờ sẽ co giãn hoặc có min-height trên đt để ko bị đè */}
         <div className="flex-1 lg:flex-[none] flex flex-col gap-3 md:gap-4 lg:min-h-0 lg:h-full min-h-[400px]">
           
           {/* USER ONLINE */}
@@ -960,7 +970,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                   
                   {msg.isSystem && (
                     <div className="flex justify-center my-4">
-                        <span className="bg-white/10 text-gray-300 text-sm px-5 py-2.5 rounded-full uppercase font-black text-center border border-white/20 shadow-md">
+                        <span className="bg-white/10 text-gray-300 text-[10px] md:text-xs px-5 py-2.5 rounded-full uppercase font-black text-center border border-white/20 shadow-md">
                             {msg.text}
                         </span>
                     </div>
@@ -970,8 +980,8 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                       <div className={`flex gap-3 items-start ${msg.uid === user.uid ? 'flex-row-reverse' : ''}`}>
                           {msg.uid !== user.uid && renderAvatar(msg.customAvatarId, msg.avatar, "w-8 h-8 shrink-0 mt-0.5")}
                           <div className={`flex flex-col ${msg.uid === user.uid ? 'items-end' : 'items-start'}`}>
-                              {msg.uid !== user.uid && <span className="text-sm text-gray-400 font-bold mb-1 mx-1">{msg.name}</span>}
-                              <div className={`px-4 py-2.5 rounded-2xl max-w-[250px] text-base ${msg.uid === user.uid ? 'bg-[#E50914] text-white rounded-br-none' : 'bg-[#1a1a1a] text-gray-200 rounded-bl-none border border-white/5'}`}>
+                              {msg.uid !== user.uid && <span className="text-xs text-gray-400 font-bold mb-1 mx-1">{msg.name}</span>}
+                              <div className={`px-4 py-2.5 rounded-2xl max-w-[250px] text-sm md:text-base ${msg.uid === user.uid ? 'bg-[#E50914] text-white rounded-br-none' : 'bg-[#1a1a1a] text-gray-200 rounded-bl-none border border-white/5'}`}>
                                   {msg.text}
                               </div>
                           </div>
@@ -983,26 +993,26 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                         <div className="flex items-center gap-3 mb-3 border-b border-white/5 pb-3">
                             {renderAvatar(msg.customAvatarId, msg.avatar, "w-10 h-10")}
                             <div>
-                                <span className="text-base font-black text-white uppercase block leading-tight">{msg.name}</span>
-                                <span className="text-sm text-[#E50914] font-bold uppercase mt-0.5 block">{msg.text}</span>
+                                <span className="text-sm md:text-base font-black text-white uppercase block leading-tight">{msg.name}</span>
+                                <span className="text-[10px] md:text-xs text-[#E50914] font-bold uppercase mt-0.5 block">{msg.text}</span>
                             </div>
                         </div>
                         {msg.type === 'request_movie' && (
                             <div className="flex gap-4 items-center mt-2">
-                                <div className="w-[100px] h-[150px] bg-black rounded-lg shrink-0 overflow-hidden shadow-md border border-white/10">
+                                <div className="w-16 h-24 md:w-[80px] md:h-[120px] bg-black rounded-lg shrink-0 overflow-hidden shadow-md border border-white/10">
                                     <img src={msg.requestMoviePoster} alt="poster" className="w-full h-full object-cover"/>
                                 </div>
                                 <div className="flex-1 min-w-0 flex flex-col justify-center">
-                                    <h4 className="text-lg font-black text-white line-clamp-2 leading-snug mb-2">{msg.requestMovieName}</h4>
-                                    <p className="text-base text-gray-400 font-bold uppercase truncate">{msg.requestMovieGenre}</p>
+                                    <h4 className="text-sm md:text-base font-black text-white line-clamp-2 leading-snug mb-1">{msg.requestMovieName}</h4>
+                                    <p className="text-[10px] md:text-xs text-gray-400 font-bold uppercase truncate mb-2">{msg.requestMovieGenre}</p>
+                                    {isHostRef.current && ( <button onClick={() => setHostConfirmRequest({slug: msg.requestMovieSlug, name: msg.requestMovieName})} className="self-start bg-[#E50914] hover:bg-red-700 text-white text-[10px] md:text-xs font-black uppercase py-2 px-4 rounded-lg transition-colors shadow-md">Duyệt</button> )}
                                 </div>
-                                {isHostRef.current && ( <button onClick={() => setHostConfirmRequest({slug: msg.requestMovieSlug, name: msg.requestMovieName})} className="shrink-0 bg-[#E50914] hover:bg-red-700 text-white text-base font-black uppercase py-3 px-6 rounded-xl transition-colors shadow-md">Duyệt</button> )}
                             </div>
                         )}
                         {msg.type === 'request_ep' && (
                             <div className="flex items-center justify-between gap-3 mt-2">
-                                <span className="text-lg font-black text-white flex items-center gap-2"><Icon.PlaySquare size={24} className="text-[#E50914]"/> Tập {msg.requestEpName}</span>
-                                {isHostRef.current && ( <button onClick={() => setHostConfirmEpRequest({index: msg.requestEpIndex, name: msg.requestEpName})} className="bg-[#E50914] hover:bg-red-700 text-white text-base font-black uppercase py-3 px-6 rounded-xl shadow-md transition-colors">Duyệt</button> )}
+                                <span className="text-sm md:text-base font-black text-white flex items-center gap-2"><Icon.PlaySquare size={20} className="text-[#E50914] md:w-6 md:h-6"/> Tập {msg.requestEpName}</span>
+                                {isHostRef.current && ( <button onClick={() => setHostConfirmEpRequest({index: msg.requestEpIndex, name: msg.requestEpName})} className="bg-[#E50914] hover:bg-red-700 text-white text-[10px] md:text-xs font-black uppercase py-2 px-4 rounded-lg shadow-md transition-colors">Duyệt</button> )}
                             </div>
                         )}
                       </div>
@@ -1018,10 +1028,10 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                     value={chatInput}
                     onChange={(e) => setChatInput(e.target.value)}
                     placeholder="Nhập nội dung..."
-                    className="flex-1 bg-black border border-white/10 rounded-full px-5 py-2.5 text-sm text-white placeholder:text-gray-600 outline-none focus:border-[#E50914] font-bold transition-colors"
+                    className="flex-1 bg-black border border-white/10 rounded-full px-4 py-2 md:px-5 md:py-2.5 text-xs md:text-sm text-white placeholder:text-gray-600 outline-none focus:border-[#E50914] font-bold transition-colors"
                 />
-                <button type="submit" disabled={!chatInput.trim()} className="w-10 h-10 shrink-0 bg-[#E50914] hover:bg-red-700 rounded-full flex items-center justify-center text-white disabled:opacity-40 disabled:bg-gray-700 transition active:scale-90 shadow-lg">
-                    <Icon.SendHorizontal size={18} />
+                <button type="submit" disabled={!chatInput.trim()} className="w-9 h-9 md:w-10 md:h-10 shrink-0 bg-[#E50914] hover:bg-red-700 rounded-full flex items-center justify-center text-white disabled:opacity-40 disabled:bg-gray-700 transition active:scale-90 shadow-lg">
+                    <Icon.SendHorizontal size={16} className="md:w-[18px] md:h-[18px]" />
                 </button>
             </form>
           </div>

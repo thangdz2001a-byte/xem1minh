@@ -363,7 +363,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                   }
               });
           }
-      }, 3000); 
+      }, 1500); 
 
       return () => clearInterval(pingInterval);
   }, [isHostState, roomId]);

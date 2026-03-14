@@ -163,14 +163,6 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
 
     hasAutoFullscreened.current = false;
 
-    const attemptPlay = (video, art) => {
-      video.play().catch(() => {
-        video.muted = true;
-        video.play().catch(() => {});
-        art.notice.show = "Đã tắt tiếng để tự động phát. Chạm vào màn hình để bật lại âm.";
-      });
-    };
-
     let artInstance = new Artplayer({
       container: artRef.current,
       url: m3u8Link,
@@ -188,8 +180,8 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
       flip: false,
       playbackRate: true,
       aspectRatio: false,
-      fullscreen: false, // Tắt nút mặc định để dùng nút xịn
-      fullscreenWeb: false, 
+      fullscreen: true, // BẬT LẠI NÚT MẶC ĐỊNH
+      fullscreenWeb: true, // BẬT LẠI NÚT MẶC ĐỊNH
       subtitleOffset: false,
       miniProgressBar: true,
       mutex: true,
@@ -238,7 +230,6 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
         },
       },
       controls: [
-        // SỬA: Đổi tên class icon tua tới/lùi để dễ target CSS ở màn mobile
         { position: 'left', index: 10, html: `<svg class="art-icon-seek" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 19 2 12 11 5 11 19"></polygon><polygon points="22 19 13 12 22 5 22 19"></polygon></svg>`, tooltip: 'Tua lùi 10s', click: function () { if (artInstance) artInstance.seek = Math.max(0, artInstance.currentTime - 10); } },
         { position: 'left', index: 11, html: `<svg class="art-icon-seek" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 19 22 12 13 5 13 19"></polygon><polygon points="2 19 11 12 2 5 2 19"></polygon></svg>`, tooltip: 'Tua tới 10s', click: function () { if (artInstance) artInstance.seek = artInstance.currentTime + 10; } },
         ...(serverSource === "ophim" ? [{ 
@@ -252,7 +243,6 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
             <style>
               .watch-party-btn { display: flex; align-items: center; gap: 6px; background: rgba(229,9,20,0.9); padding: 6px 12px; border-radius: 6px; font-weight: 900; font-size: 11px; cursor: pointer; color: white; text-transform: uppercase; letter-spacing: 1px; margin-right: 8px; }
               .wp-icon { width: 14px; height: 14px; stroke-width: 2.5px; }
-              /* SỬA CHỖ NÀY: Ép nút Xem chung nhỏ xíu trên đt */
               @media (max-width: 640px) { 
                 .watch-party-text { display: none; } 
                 .watch-party-btn { padding: 4px; border-radius: 50%; margin-right: 0px; background: transparent; } 
@@ -262,30 +252,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
           `, 
           tooltip: 'Mở phòng xem chung', 
           click: function () { if (onWatchPartyClick) onWatchPartyClick(); } 
-        }] : []),
-        // SỬA: Bỏ margin cứng, thêm class art-icon-fullscreen để điều khiển qua CSS
-        {
-          name: 'btn-phong-to', // SỬA CHỖ NÀY: Thêm name để override CSS ẩn mặc định của Artplayer trên mobile
-          position: 'right',
-          index: 99, // SỬA CHỖ NÀY: Đẩy index lên cao để nút luôn nằm ngoài cùng bên phải
-          html: `<svg class="art-icon-fullscreen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>`,
-          tooltip: 'Toàn màn hình',
-          click: function () {
-            if (artInstance) {
-              if (artInstance.fullscreen) {
-                artInstance.fullscreen = false; // Thoát native
-                if (window.screen && window.screen.orientation && window.screen.orientation.unlock) {
-                  window.screen.orientation.unlock(); 
-                }
-              } else {
-                artInstance.fullscreen = true; // Ép gọi API Native
-                if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
-                  window.screen.orientation.lock("landscape").catch(() => {});
-                }
-              }
-            }
-          }
-        }
+        }] : [])
       ],
     });
 
@@ -293,24 +260,31 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
     artInstance.on('video:canplay', () => setIsLoading(false));
     artInstance.on('video:playing', () => setIsLoading(false));
 
+    // BẮT SỰ KIỆN NÚT PHÓNG TO ĐỂ XOAY NGANG MÀN HÌNH ĐIỆN THOẠI
+    artInstance.on('fullscreen', (state) => {
+      try {
+        if (state) {
+          if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+            window.screen.orientation.lock("landscape").catch(() => {});
+          }
+        } else {
+          if (window.screen && window.screen.orientation && window.screen.orientation.unlock) {
+            window.screen.orientation.unlock();
+          }
+        }
+      } catch (e) {}
+    });
+
     artInstance.on('ready', () => {
       if (autoFullscreen && !hasAutoFullscreened.current) {
         hasAutoFullscreened.current = true;
         
         setTimeout(() => {
-          // GỌI THẲNG NATIVE FULLSCREEN CỦA HỆ ĐIỀU HÀNH
           artInstance.fullscreen = true;
-          
-          if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
-            window.screen.orientation.lock("landscape").catch(() => {});
-          }
-
           artInstance.muted = true;
           artInstance.play().then(() => {
             artInstance.notice.show = "Đã tự động phát (Tắt tiếng). Vui lòng chạm bật âm lượng!";
-          }).catch(() => {
-            console.log("Trình duyệt chặn autoplay hoàn toàn.");
-          });
+          }).catch(() => {});
         }, 500); 
       }
     });
@@ -374,53 +348,32 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
   return (
     <div className="relative w-full aspect-video bg-[#050505] shadow-[0_20px_50px_rgba(0,0,0,0.5)] md:rounded-2xl overflow-hidden border border-white/5 flex justify-center items-center">
       <style>{`
-        /* SỬA CHỖ NÀY: Ép hiển thị nút phóng to tự chế bằng mọi giá trên tất cả thiết bị */
-        .art-control-btn-phong-to {
-          display: flex !important;
-          align-items: center;
-          justify-content: center;
-        }
-
-        /* SỬA CHỖ NÀY: Resize toàn bộ icon và bóp khoảng cách ở màn nhỏ (mobile) */
-        .art-icon-seek, .art-icon-fullscreen {
+        .art-icon-seek {
           width: 20px;
           height: 20px;
           color: white;
         }
 
         @media (max-width: 640px) {
-          /* Ép nút hiển thị, không cho Artplayer tự giấu */
-          .art-control-btn-phong-to {
-            display: flex !important; 
-            margin: 0 !important;
-            padding: 0 4px !important;
-          }
-
-          /* Ép các nút thu sát lại nhau */
           .art-controls-left .art-control,
           .art-controls-right .art-control {
             margin: 0 !important;
             padding: 0 4px !important;
           }
           
-          /* Bóp nhỏ kích thước các icon tuỳ chỉnh */
-          .art-icon-seek, .art-icon-fullscreen {
+          .art-icon-seek {
             width: 18px !important;
             height: 18px !important;
           }
 
-          /* Thu nhỏ kích thước chữ thời gian để lấy thêm khoảng trống */
           .art-control-time {
             font-size: 11px !important;
             padding: 0 4px !important;
           }
         }
-
-        /* Ẩn Spinner mặc định của trình phát để nhường chỗ cho Màn Đen tuỳ chỉnh */
         .art-spinner { display: none !important; }
       `}</style>
 
-      {/* MÀN ĐEN CHE PHỦ KHI TẢI (ĐÃ ĐỔI TỪ TRƯỢT SANG MỜ DẦN ĐỂ ĐỠ GIẬT LAG CHO MÁY YẾU) */}
       <div className={`absolute inset-0 z-[150] bg-[#050505] flex flex-col justify-center items-center transition-opacity duration-300 ${isLoading || isSwitchingServer ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
          <div className="w-12 h-12 md:w-16 md:h-16 border-[4px] border-white/10 border-t-[#E50914] rounded-full animate-spin"></div>
          {isSwitchingServer && <span className="mt-4 text-white text-[10px] md:text-xs font-bold uppercase tracking-widest animate-pulse">Đang đổi máy chủ...</span>}

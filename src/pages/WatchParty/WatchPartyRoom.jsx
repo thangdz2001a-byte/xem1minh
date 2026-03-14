@@ -98,7 +98,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
   
   const [loadingPage, setLoadingPage] = useState(true);
   const [loadingPlayer, setLoadingPlayer] = useState(true);
-  const [isLoadingMedia, setIsLoadingMedia] = useState(true); // Thêm state quản lý loading media
+  const [isLoadingMedia, setIsLoadingMedia] = useState(true); 
 
   const [roomClosed, setRoomClosed] = useState(false);
   
@@ -172,7 +172,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
   useEffect(() => { currentSlugRef.current = slug; }, [slug]);
   useEffect(() => { roomDataRef.current = roomData; }, [roomData]);
 
-  // BẮT PHÍM TẮT
   useEffect(() => {
     const handleKeyDown = (e) => {
         const art = artInstanceRef.current;
@@ -190,7 +189,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // LẤY AVATAR
   useEffect(() => {
     if (!user?.uid) return;
     supabase.from('profiles').select('avatar').eq('user_id', user.uid).single().then(({data}) => {
@@ -198,12 +196,10 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
     });
   }, [user?.uid]);
 
-  // CẬP NHẬT TRẠNG THÁI LOADING KHI CHUYỂN TẬP
   useEffect(() => {
     setIsLoadingMedia(true);
   }, [ep?.link_m3u8]);
 
-  // LOAD DATA PHIM
   useEffect(() => {
     let isMounted = true;
     if (slug === "dang-chon-phim") { setLoadingPage(false); setLoadingPlayer(false); setIsLoadingMedia(false); return; }
@@ -248,7 +244,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
     return () => { isMounted = false; };
   }, [slug]); 
 
-  // ĐỒNG BỘ TẬP PHIM
   useEffect(() => {
      if (!movieData || !roomData) return;
      const epList = movieData?.episodes?.[0]?.server_data || movieData?.episodes?.[0]?.items || [];
@@ -261,7 +256,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
      }
   }, [roomData?.epIndex, movieData, ep]); 
 
-  // KHỞI TẠO PLAYER (CẬP NHẬT GIAO DIỆN CHUẨN MỚI)
   useEffect(() => {
     if (!ep?.link_m3u8 || !artRef.current || isHostState === null) return; 
 
@@ -291,32 +285,24 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         });
     }
 
-    // Nút Fullscreen Native
-    customControls.push({
-      position: 'right',
-      index: 90,
-      html: `<svg class="art-icon-fullscreen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>`,
-      tooltip: 'Toàn màn hình',
-      click: function () {
-        if (artInstanceRef.current) {
-          if (artInstanceRef.current.fullscreen) {
-            artInstanceRef.current.fullscreen = false; // Thoát native
-            if (window.screen && window.screen.orientation && window.screen.orientation.unlock) {
-              window.screen.orientation.unlock(); 
-            }
-          } else {
-            artInstanceRef.current.fullscreen = true; // Ép gọi API Native
-            if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
-              window.screen.orientation.lock("landscape").catch(() => {});
-            }
-          }
-        }
-      }
-    });
-
     const art = new Artplayer({
-      container: artRef.current, url: ep.link_m3u8, volume: 1, isLive: false, muted: false, autoplay: false, pip: true, airplay: true, fullscreen: false, fullscreenWeb: false, setting: true,
-      playbackRate: isHost, hotkey: false, backdrop: isHost, theme: '#E50914', lang: 'vi', lock: false, 
+      container: artRef.current, 
+      url: ep.link_m3u8, 
+      volume: 1, 
+      isLive: false, 
+      muted: false, 
+      autoplay: false, 
+      pip: true, 
+      airplay: true, 
+      fullscreen: true, // BẬT LẠI NÚT MẶC ĐỊNH
+      fullscreenWeb: true, // BẬT LẠI NÚT MẶC ĐỊNH
+      setting: true,
+      playbackRate: isHost, 
+      hotkey: false, 
+      backdrop: isHost, 
+      theme: '#E50914', 
+      lang: 'vi', 
+      lock: false, 
       i18n: { 'vi': { 'Play': 'Phát', 'Pause': 'Tạm dừng', 'Settings': 'Cài đặt', 'Speed': 'Tốc độ', 'Quality': 'Chất lượng', 'Auto': 'Tự động' } },
       controls: customControls,
       plugins: [ function (art) { art.on('ready', () => { if (!isHost && art.template.$playAndPause) art.template.$playAndPause.style.display = 'none'; }); } ],
@@ -331,7 +317,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
             
             hls.on(Hls.Events.ERROR, function (event, data) {
                 if (data.fatal) {
-                    setIsLoadingMedia(false); // Bỏ loading nếu lỗi
+                    setIsLoadingMedia(false); 
                     if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
                         artObj.notice.show = "Lỗi CORS / Mạng. Cài Extention 'Allow CORS' để test trên localhost!";
                     } else {
@@ -340,7 +326,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                 }
             });
 
-            // Lược bỏ cài đặt Chất Lượng (Quality) vì Watch Party cần ưu tiên tốc độ stream
             hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {});
           } else if (video.canPlayType('application/vnd.apple.mpegurl')) { video.src = url; }
         },
@@ -351,6 +336,21 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
     art.on('video:waiting', () => setIsLoadingMedia(true));
     art.on('video:canplay', () => setIsLoadingMedia(false));
     art.on('video:playing', () => setIsLoadingMedia(false));
+
+    // BẮT SỰ KIỆN NÚT PHÓNG TO ĐỂ XOAY NGANG MÀN HÌNH
+    art.on('fullscreen', (state) => {
+      try {
+        if (state) {
+          if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+            window.screen.orientation.lock("landscape").catch(() => {});
+          }
+        } else {
+          if (window.screen && window.screen.orientation && window.screen.orientation.unlock) {
+            window.screen.orientation.unlock();
+          }
+        }
+      } catch (e) {}
+    });
 
     if (isHost) {
         let syncTimeout;
@@ -379,7 +379,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
     };
   }, [ep?.link_m3u8, roomId, isHostState]);
 
-  // ĐỒNG BỘ: HOST LIÊN TỤC PING TRẠNG THÁI CHO NHỮNG NGƯỜI VÀO SAU
   useEffect(() => {
       if (!isHostState) return;
 
@@ -404,7 +403,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
       return () => clearInterval(pingInterval);
   }, [isHostState, roomId]);
 
-  // TỐI ƯU HÓA: CƠ CHẾ ĐỒNG BỘ MƯỢT MÀ CHO VIEWER (KHÔNG TỐN DATA SUPABASE)
   useEffect(() => {
     const syncInterval = setInterval(() => {
         if (isHostRef.current) return; 
@@ -412,22 +410,18 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         const video = art.video; const rData = roomDataRef.current;
         if (!rData || rData.movieId !== currentSlugRef.current) return;
 
-        // Nếu video chưa sẵn sàng nhưng host đang play -> Mute và ép play để lách luật trình duyệt
         if (video.readyState === 0 && rData.isPlaying) {
             video.muted = true;
             video.play().catch(()=>{});
             return;
         }
 
-        // Host Pause -> Viewer cũng Pause và ép sát thời gian
         if (!rData.isPlaying || rData.isBuffering) { 
             if (!video.paused) video.pause(); 
-            // Ép sát thời gian ngay khi Pause (giảm mức chịu đựng từ 1.5 xuống 0.5s)
             if (Math.abs(rData.currentTime - video.currentTime) > 0.5) video.currentTime = rData.currentTime; 
             return; 
         }
         
-        // Host ĐANG PLAY: Tính toán thời gian thực tế của Host
         let expectedTime = rData.currentTime || 0; 
         if (rData.updatedAt && rData.isPlaying) {
             expectedTime += (Date.now() - rData.updatedAt) / 1000;
@@ -436,7 +430,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         const diff = expectedTime - video.currentTime;
 
         if (video.paused) { 
-            // Nếu Viewer đang bị pause, nhảy tới thời gian hiện tại và Play
             video.currentTime = expectedTime;
             const playPromise = video.play();
             if (playPromise !== undefined) {
@@ -444,13 +437,11 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                     if (isInitialSyncing && art.notice) art.notice.show = "Đã đồng bộ Live!"; 
                     if (isInitialSyncing) setIsInitialSyncing(false); 
                 }).catch(()=>{
-                    // Bị trình duyệt chặn AutoPlay (thiếu gesture) -> Mute r play
                     video.muted = true;
                     video.play().catch(()=>{});
                 });
             }
         } else {
-            // Giảm độ trễ nhảy cóc từ 3 giây xuống 1.5 giây
             if (Math.abs(diff) > 1.5) { 
                 video.currentTime = expectedTime; 
             } 
@@ -946,38 +937,32 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
 
           <div ref={containerRef} className="w-full aspect-video lg:aspect-auto lg:flex-1 lg:min-h-0 bg-black rounded-xl overflow-hidden border border-white/5 relative group flex items-center justify-center shadow-2xl">
              <style>{`
-               /* ĐÃ SỬA CHỖ NÀY ĐỂ BÓP ICON MÀN MOBILE TƯƠNG TỰ WATCH.JSX */
-               .art-icon-seek, .art-icon-fullscreen {
+               .art-icon-seek {
                  width: 20px;
                  height: 20px;
                  color: white;
                }
 
                @media (max-width: 640px) {
-                 /* Ép các nút thu sát lại nhau */
                  .art-controls-left .art-control,
                  .art-controls-right .art-control {
                    margin: 0 !important;
                    padding: 0 4px !important;
                  }
                  
-                 /* Bóp nhỏ kích thước các icon tuỳ chỉnh */
-                 .art-icon-seek, .art-icon-fullscreen {
+                 .art-icon-seek {
                    width: 18px !important;
                    height: 18px !important;
                  }
 
-                 /* Thu nhỏ kích thước chữ thời gian để lấy thêm khoảng trống */
                  .art-control-time {
                    font-size: 11px !important;
                    padding: 0 4px !important;
                  }
                }
-               /* Ẩn Spinner mặc định */
                .art-spinner { display: none !important; }
              `}</style>
              
-             {/* MÀN ĐEN CHE PHỦ KHI TẢI */}
              <div className={`absolute inset-0 z-[150] bg-[#050505] flex flex-col justify-center items-center transition-opacity duration-300 ${isLoadingMedia ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
                 <div className="w-12 h-12 md:w-16 md:h-16 border-[4px] border-white/10 border-t-[#E50914] rounded-full animate-spin"></div>
              </div>

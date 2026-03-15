@@ -190,16 +190,41 @@ export default function App() {
   };
   // ==========================================
 
-  // ==========================================
-  // ĐOẠN CODE THÊM MỚI: Bắt URL Scheme trả về từ Safari/Trình duyệt
+ // ==========================================
+  // ĐOẠN CODE THÊM MỚI: Bắt URL Scheme trả về từ Safari/Trình duyệt (ĐÃ FIX SUPABASE)
   // ==========================================
   useEffect(() => {
     const setupDeepLinks = async () => {
-      CapacitorApp.addListener('appUrlOpen', (event) => {
+      CapacitorApp.addListener('appUrlOpen', async (event) => {
         const url = event.url;
+        
         if (url.includes('politephim://login-callback')) {
-          console.log('App đã mở từ URL:', url);
-          // CapacitorApp lắng nghe và Supabase sẽ tự động nhận hash access_token trên URL
+          
+          // Trích xuất Token nạp thẳng vào Supabase
+          // 1. Dành cho luồng Implicit Flow (trả về #access_token=)
+          if (url.includes('#access_token=')) {
+            const hashFragment = url.split('#')[1];
+            const params = new URLSearchParams(hashFragment);
+            const accessToken = params.get('access_token');
+            const refreshToken = params.get('refresh_token');
+
+            if (accessToken && refreshToken) {
+              await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken
+              });
+            }
+          } 
+          // 2. Dành cho luồng PKCE Flow (trả về ?code=)
+          else if (url.includes('?code=')) {
+            const queryString = url.split('?')[1];
+            const params = new URLSearchParams(queryString);
+            const code = params.get('code');
+            
+            if (code) {
+              await supabase.auth.exchangeCodeForSession(code);
+            }
+          }
         }
       });
     };

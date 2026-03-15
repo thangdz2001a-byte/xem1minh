@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react"; // ĐÃ SỬA: Thêm useRef
 import * as Icon from "lucide-react";
 import { supabase } from "../../utils/supabaseClient"; 
 import { YEARS } from "../../utils/helpers";
@@ -206,6 +206,22 @@ export default function Header({ navigate, categories, countries, user, onLogin,
   const [customAvatarId, setCustomAvatarId] = useState(null); 
   const [tempAvatarId, setTempAvatarId] = useState(null); 
 
+  // ==========================================
+  // ĐOẠN CODE THÊM MỚI: Xử lý click ra ngoài để đóng Profile Menu
+  // ==========================================
+  const profileRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (profileRef.current && !profileRef.current.contains(event.target)) {
+        setShowProfile(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+  // ==========================================
+
   // FIX LỖI 406 CHÍ MẠNG: Dùng .limit(1) thay vì single()
   useEffect(() => {
     const fetchAvatarFromSupabase = async () => {
@@ -312,7 +328,7 @@ export default function Header({ navigate, categories, countries, user, onLogin,
               type="text"
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
-              placeholder
+              placeholder="Nhập tên mới..." /* ĐÃ SỬA: Thêm placeholder */
               autoFocus
               maxLength={25}
               className="w-full bg-[#222] border border-white/10 rounded-xl p-4 text-white outline-none focus:border-[#E50914] transition-colors mb-6 font-bold"
@@ -439,7 +455,8 @@ export default function Header({ navigate, categories, countries, user, onLogin,
               </div>
               <button onClick={() => setIsSearchOpen(true)} className="lg:hidden p-1.5"><Icon.Search size={20} className="text-white" /></button>
 
-              <div className="relative">
+              {/* ĐÃ SỬA: Thêm ref={profileRef} vào div chứa Avatar và Dropdown */}
+              <div className="relative" ref={profileRef}>
                 {user ? (
                   <div 
                     className={`w-8 h-8 md:w-10 md:h-10 rounded-full border-2 border-[#E50914] overflow-hidden cursor-pointer flex items-center justify-center transition-transform hover:scale-110 ${activeAvatar ? activeAvatar.bgColor : 'bg-black'}`}

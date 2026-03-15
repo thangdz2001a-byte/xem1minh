@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import * as Icon from "lucide-react";
 
+// ĐOẠN CODE THÊM MỚI: Import Capacitor App để lắng nghe Deep Link
+import { App as CapacitorApp } from '@capacitor/app';
+
 import { supabase } from "./utils/supabaseClient"; 
 import {
   API,
@@ -185,6 +188,28 @@ export default function App() {
     }
     setShowWelcomePopup(false);
   };
+  // ==========================================
+
+  // ==========================================
+  // ĐOẠN CODE THÊM MỚI: Bắt URL Scheme trả về từ Safari/Trình duyệt
+  // ==========================================
+  useEffect(() => {
+    const setupDeepLinks = async () => {
+      CapacitorApp.addListener('appUrlOpen', (event) => {
+        const url = event.url;
+        if (url.includes('politephim://login-callback')) {
+          console.log('App đã mở từ URL:', url);
+          // CapacitorApp lắng nghe và Supabase sẽ tự động nhận hash access_token trên URL
+        }
+      });
+    };
+
+    setupDeepLinks();
+
+    return () => {
+      CapacitorApp.removeAllListeners();
+    };
+  }, []);
   // ==========================================
 
   // STATE TRANSITION ANIMATION (Hiệu ứng dịu nhẹ)
@@ -438,7 +463,8 @@ export default function App() {
     try { 
       await supabase.auth.signInWithOAuth({ 
         provider: 'google', 
-        options: { redirectTo: window.location.origin } 
+        // ĐÃ SỬA: Thay window.location.origin thành politephim://login-callback
+        options: { redirectTo: 'politephim://login-callback' } 
       }); 
     } 
     catch (e) { alert("Lỗi đăng nhập Google: " + e.message); }

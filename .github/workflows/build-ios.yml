@@ -12,7 +12,7 @@ jobs:
       
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22' # <--- ĐÃ SỬA SỐ 20 THÀNH 22 ĐỂ CHIỀU LÒNG CAPACITOR V8
           
       - run: npm install
       

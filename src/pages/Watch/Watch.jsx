@@ -171,7 +171,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
       isLive: false,
       muted: false,
       autoplay: false, 
-      pip: true, // ĐÃ BẬT LẠI PIP NHƯ SẾP MUỐN
+      pip: true, 
       airplay: false, 
       autoSize: false,
       autoMini: true,
@@ -181,7 +181,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
       playbackRate: true,
       aspectRatio: false,
       fullscreen: true, 
-      fullscreenWeb: false, // XÓA ĐÚNG NÚT FULLSCREEN TRÌNH DUYỆT THEO LỆNH
+      fullscreenWeb: false, 
       subtitleOffset: false,
       miniProgressBar: true,
       mutex: true,
@@ -354,20 +354,17 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
         }
 
         @media (max-width: 640px) {
-          /* ÉP SÁT TẤT CẢ CÁC NÚT LẠI VỚI NHAU, THU BÉ MỌI ICON */
           .art-controls-left .art-control,
           .art-controls-right .art-control {
             margin: 0 !important;
             padding: 0 3px !important;
           }
           
-          /* THU BÉ MỌI ICON MẶC ĐỊNH (PLAY, PIp, CÀI ĐẶT...) VÀ ICON TUA */
           .art-control svg, .art-icon-seek {
             width: 18px !important;
             height: 18px !important;
           }
 
-          /* BÓP NHỎ CHỮ THỜI GIAN */
           .art-control-time {
             font-size: 10px !important;
             padding: 0 2px !important;
@@ -410,6 +407,9 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
   const [isCreating, setIsCreating] = useState(false);
 
   const [restoredTime, setRestoredTime] = useState(0);
+  
+  // STATE MỚI CHO POPUP CHỌN TẬP ĐƯỢC ẨN ĐI
+  const [showEpModal, setShowEpModal] = useState(false);
 
   const handleCreateRoom = async (e) => {
     e.preventDefault();
@@ -621,39 +621,102 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
         <div className="relative w-full aspect-video bg-[#111] shadow-2xl overflow-hidden flex justify-center items-center animate-pulse"><Icon.Loader2 className="animate-spin text-[#E50914]" size={40} /></div>
       ) : null}
 
-      <div className="mt-6 md:mt-10 bg-[#111] p-5 md:p-8 border-y sm:border border-white/5 shadow-2xl rounded-2xl">
-        <h1 className="text-xl md:text-3xl font-black text-white uppercase mb-2 line-clamp-2">{safeText(data?.name)}</h1>
-        {ep && <p className="text-gray-400 font-bold uppercase mb-8">Đang phát: Tập <span className="text-[#E50914]">{safeText(ep?.name)}</span></p>}
+      <div className="mt-4 md:mt-8 bg-[#111] p-4 md:p-8 border-y sm:border border-white/5 shadow-xl md:rounded-2xl">
+        <div className="border-b border-white/10 pb-4">
+          <h1 className="text-lg md:text-3xl font-black text-white uppercase tracking-tight mb-2 line-clamp-2 leading-snug">{safeText(data?.name)}</h1>
+          
+          {/* CÁI BADGE ĐỎ - BẤM VÀO ĐỂ HIỆN BẢNG CHỌN TẬP TỪ DƯỚI ĐÁY LÊN */}
+          {ep && (
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] md:text-xs text-gray-400 font-bold uppercase tracking-widest">Đang phát:</span>
+              <button 
+                onClick={() => setShowEpModal(true)} 
+                className="bg-[#E50914] text-white text-[10px] md:text-xs font-black px-2.5 py-1 md:px-3 md:py-1.5 rounded shadow-[0_2px_10px_rgba(229,9,20,0.3)] hover:bg-red-700 transition-colors"
+              >
+                {safeText(ep?.name).replace(/tập\s*/i, '')}
+              </button>
+            </div>
+          )}
+        </div>
 
         {serverList.length > 0 && (
-          <div>
-            <div className="mb-6">
+          <div className="mt-4 md:mt-6">
+            <div className="flex flex-col gap-3">
               {Object.entries(serverList.reduce((acc, s, idx) => { if (!acc[s.groupType]) acc[s.groupType] = []; acc[s.groupType].push({ ...s, originalIndex: idx }); return acc; }, {})).map(([type, servers]) => (
-                <div key={type} className="mb-4">
-                  <p className="text-gray-400 text-xs font-bold uppercase mb-2">MÁY CHỦ : {type}</p>
-                  <div className="flex flex-wrap gap-3">
+                <div key={type} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                  <span className="text-gray-500 text-[10px] md:text-xs font-black uppercase w-20 md:w-24 shrink-0 tracking-widest">{type}</span>
+                  <div className="flex flex-wrap gap-2">
                     {servers.map((s) => (
-                      <button key={s.originalIndex} onClick={() => handleServerChange(s.originalIndex)} className={`px-4 py-2 border rounded-lg font-bold uppercase ${activeServerIdx === s.originalIndex ? "border-[#E50914] bg-[#E50914]/10 text-white" : "border-white/10 text-gray-400 hover:text-white"}`}>{s.sourceName}</button>
+                      <button 
+                        key={s.originalIndex} 
+                        onClick={() => handleServerChange(s.originalIndex)} 
+                        className={`px-3 py-1.5 md:px-4 md:py-2 rounded-full text-[10px] md:text-xs font-bold uppercase tracking-wide transition-all duration-200 ${
+                          activeServerIdx === s.originalIndex 
+                          ? "bg-[#E50914] text-white shadow-[0_2px_10px_rgba(229,9,20,0.4)] border border-[#E50914]" 
+                          : "bg-[#1a1a1a] text-gray-400 border border-white/10 hover:bg-white/10 hover:text-white"
+                        }`}
+                      >
+                        {s.source === "ophim" ? "MÁY CHỦ 1" : "MÁY CHỦ 2"}
+                      </button>
                     ))}
                   </div>
                 </div>
               ))}
             </div>
-            {episodeChunks.length > 1 && (
-              <div className="mb-6 flex flex-wrap gap-2">
-                {episodeChunks.map((_, idx) => (
-                  <button key={idx} onClick={() => setActiveTabIdx(idx)} className={`px-4 py-2 font-bold rounded-lg border ${activeTabIdx === idx ? "border-[#E50914] text-[#E50914] bg-[#E50914]/10" : "border-white/10 text-gray-400 hover:text-white"}`}>Tập {idx * 50 + 1} - {Math.min((idx + 1) * 50, episodes.length)}</button>
-                ))}
-              </div>
-            )}
-            <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-10 gap-2 md:gap-3">
-              {currentChunk.map((e, idx) => (
-                <button key={idx} onClick={() => { setEp(e); setRestoredTime(0); window.scrollTo(0, 0); }} className={`py-3 rounded-lg font-black uppercase border ${ep?.name === e.name ? "bg-[#E50914] border-[#E50914] text-white scale-105" : "bg-white/5 border-white/5 text-gray-400 hover:text-white"}`}>{safeText(e.name)}</button>
-              ))}
-            </div>
           </div>
         )}
       </div>
+
+      {/* POPUP CHỌN TẬP (BOTTOM SHEET VUỐT TỪ DƯỚI LÊN ĐÂY SẾP ƠI) */}
+      {showEpModal && (
+        <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 transition-opacity duration-300" onClick={() => setShowEpModal(false)}>
+          <div className="bg-[#111] w-full sm:w-[600px] max-h-[75vh] sm:max-h-[85vh] rounded-t-3xl sm:rounded-2xl flex flex-col shadow-[0_-10px_50px_rgba(0,0,0,0.5)] animate-in slide-in-from-bottom-full duration-300 border-t border-white/10 sm:border-0" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 md:p-5 flex justify-between items-center border-b border-white/10 shrink-0">
+              <h3 className="text-sm md:text-base font-black uppercase tracking-widest text-white flex items-center gap-2">
+                <Icon.ListVideo size={18} className="text-[#E50914]"/> CHỌN TẬP
+              </h3>
+              <button onClick={() => setShowEpModal(false)} className="p-1.5 bg-white/5 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition">
+                <Icon.X size={18} />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-4 md:p-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              {episodeChunks.length > 1 && (
+                <div className="flex gap-2 overflow-x-auto pb-3 mb-4 border-b border-white/5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                  {episodeChunks.map((_, idx) => (
+                    <button 
+                      key={idx} 
+                      onClick={() => setActiveTabIdx(idx)} 
+                      className={`shrink-0 px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase transition-colors ${
+                        activeTabIdx === idx 
+                        ? "bg-white/10 text-white border border-[#E50914]" 
+                        : "text-gray-500 hover:text-gray-300 border border-transparent"
+                      }`}
+                    >
+                      Từ {idx * 50 + 1} - {Math.min((idx + 1) * 50, episodes.length)}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="grid grid-cols-5 sm:grid-cols-6 lg:grid-cols-8 gap-2">
+                {currentChunk.map((e, idx) => (
+                  <button 
+                    key={idx} 
+                    onClick={() => { setEp(e); setRestoredTime(0); setShowEpModal(false); window.scrollTo(0, 0); }} 
+                    className={`py-2.5 md:py-3 rounded-md text-xs md:text-sm font-black uppercase transition-all duration-200 ${
+                      ep?.name === e.name 
+                      ? "bg-[#E50914] text-white shadow-[0_2px_8px_rgba(229,9,20,0.5)] transform scale-105 z-10" 
+                      : "bg-[#1a1a1a] text-gray-400 border border-white/5 hover:bg-white/10 hover:text-white"
+                    }`}
+                  >
+                    {safeText(e.name).replace(/tập\s*/i, '')}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showPartyModal && (
         <div className="fixed inset-0 z-[500] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 shadow-2xl">

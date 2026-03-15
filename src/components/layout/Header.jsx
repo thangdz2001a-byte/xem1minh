@@ -206,6 +206,8 @@ export default function Header({ navigate, categories, countries, user, onLogin,
   const [customAvatarId, setCustomAvatarId] = useState(null); 
   const [tempAvatarId, setTempAvatarId] = useState(null); 
 
+  const [isAdmin, setIsAdmin] = useState(false); // ĐÃ THÊM: State lưu quyền Admin
+
   // ==========================================
   // ĐOẠN CODE THÊM MỚI: Xử lý click ra ngoài để đóng Profile Menu
   // ==========================================
@@ -230,20 +232,27 @@ export default function Header({ navigate, categories, countries, user, onLogin,
         try {
           const { data, error } = await supabase
             .from('profiles')
-            .select('avatar')
+            .select('avatar, role') // ĐÃ SỬA: Lấy thêm role để kiểm tra quyền
             .eq('user_id', user.uid)
             .limit(1); // Cứu tinh chống lỗi 406
             
-          if (data && data.length > 0 && data[0].avatar) {
-            setCustomAvatarId(data[0].avatar);
+          if (data && data.length > 0) { // ĐÃ SỬA: Bọc lại logic để xử lý cả avatar và role
+            if (data[0].avatar) {
+              setCustomAvatarId(data[0].avatar);
+            } else {
+              setCustomAvatarId(null);
+            }
+            setIsAdmin(data[0].role === 'admin'); // ĐÃ THÊM: Cập nhật state quyền
           } else {
             setCustomAvatarId(null);
+            setIsAdmin(false); // ĐÃ THÊM
           }
         } catch (error) {
           console.error("Lỗi tải avatar:", error);
         }
       } else {
         setCustomAvatarId(null);
+        setIsAdmin(false); // ĐÃ THÊM
       }
     };
     fetchAvatarFromSupabase();
@@ -504,6 +513,13 @@ export default function Header({ navigate, categories, countries, user, onLogin,
                     <button onClick={() => { setShowProfile(false); navigate({ type: "favorites" }); }} className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-[#E50914] hover:bg-white/5 flex items-center gap-3 transition-colors">
                       <Icon.Heart size={16} /> Phim yêu thích
                     </button>
+
+                    {/* ĐOẠN MỚI THÊM: Nút duyệt bình luận chỉ dành cho Admin */}
+                    {isAdmin && (
+                      <button onClick={() => { setShowProfile(false); navigate({ type: "admin-comments" }); }} className="w-full text-left px-4 py-3 text-sm text-yellow-500 hover:text-yellow-400 hover:bg-white/5 flex items-center gap-3 transition-colors border-t border-white/5">
+                        <Icon.ShieldCheck size={16} /> Duyệt bình luận
+                      </button>
+                    )}
 
                     <button onClick={() => { setShowProfile(false); navigate({ type: "watch-party-lobby" }); }} className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:text-[#E50914] hover:bg-white/5 flex md:hidden items-center gap-3 transition-colors border-t border-white/5">
                       <Icon.Users size={16} /> Phòng xem chung

@@ -28,6 +28,9 @@ import Watch from "./pages/Watch/Watch";
 import WatchPartyLobby from "./pages/WatchParty/WatchPartyLobby";
 import WatchPartyRoom from "./pages/WatchParty/WatchPartyRoom";
 
+// ĐOẠN CODE THÊM MỚI: Import trang Admin
+import AdminComments from "./pages/Admin/AdminComments";
+
 // ==========================================
 // COMPONENT SPLASH SCREEN
 // ==========================================
@@ -68,6 +71,7 @@ const getViewUrl = (view) => {
     case "list": return `/danh-sach/${view.mode}/${view.slug}`;
     case "history": return "/phim-da-xem";
     case "favorites": return "/phim-yeu-thich";
+    case "admin-comments": return "/admin/comments"; // ĐOẠN CODE THÊM MỚI
     default: return "/";
   }
 };
@@ -79,6 +83,7 @@ const parseUrlToView = () => {
   if (path === "/" || path === "") return { type: "home" };
   if (path === "/phim-da-xem") return { type: "history" };
   if (path === "/phim-yeu-thich") return { type: "favorites" };
+  if (path === "/admin/comments") return { type: "admin-comments" }; // ĐOẠN CODE THÊM MỚI
   if (path.startsWith("/phim/")) return { type: "detail", slug: path.split("/")[2] };
   if (path.startsWith("/xem-phim/")) return { type: "watch", slug: path.split("/")[2] };
   if (path === "/xem-chung") return { type: "watch-party-lobby" };
@@ -664,8 +669,8 @@ export default function App() {
     if (user && user.uid) {
       try { 
         await supabase.from('favorites')
-          .delete()
-          .match({ user_id: user.uid, movie_slug: slug }); 
+        .delete()
+        .match({ user_id: user.uid, movie_slug: slug }); 
       } catch (e) {
         console.error("Lỗi xóa yêu thích:", e);
       }
@@ -718,6 +723,8 @@ export default function App() {
         document.title = "Phim Đã Xem - POLITE";
       } else if (view.type === "favorites") {
         document.title = "Phim Yêu Thích - POLITE";
+      } else if (view.type === "admin-comments") { // ĐOẠN CODE THÊM MỚI
+        document.title = "Duyệt Bình Luận - POLITE"; 
       }
     }
   }, [view.type, view.keyword, view.title, user?.uid]); 
@@ -1042,7 +1049,8 @@ export default function App() {
   };
 
   useEffect(() => {
-    const skipTypes = ["home", "detail", "watch", "watch-party-lobby", "watch-room", "history", "favorites"];
+    // ĐOẠN CODE SỬA NHẸ: Thêm "admin-comments" vào danh sách không tự động fetch phim
+    const skipTypes = ["home", "detail", "watch", "watch-party-lobby", "watch-room", "history", "favorites", "admin-comments"];
     if (!skipTypes.includes(view.type)) {
       setPage(1); 
       fetchData(1, true);
@@ -1114,6 +1122,8 @@ export default function App() {
             <MovieGrid title="Phim Đã Xem" movies={historyMovies} loading={historyLoading} navigate={navigate} hasMore={false} onRemove={removeProgressPermanently} progressData={progressData} />
           ) : view.type === "favorites" ? (
             <MovieGrid title="Phim Yêu Thích" movies={Object.keys(favorites).map((slug) => { const fav = favorites[slug]; const finalPosterUrl = getMoviePoster(fav, {}, getImg); return { slug, name: fav.name, origin_name: fav.origin_name || fav.original_name || "", thumb_url: finalPosterUrl, poster_url: finalPosterUrl, year: fav.year }; }).reverse()} loading={false} navigate={navigate} hasMore={false} onRemove={removeFavorite} />
+          ) : view.type === "admin-comments" ? (
+            <AdminComments user={user} navigate={navigate} /> // ĐOẠN CODE THÊM MỚI
           ) : (
             <MovieGrid title={view.type === "search" ? `Tìm kiếm: ${view.keyword}` : view.title} movies={movies} loading={loading} navigate={navigate} onLoadMore={loadNextPage} hasMore={hasMore} loadingMore={loadingMore} />
           )}

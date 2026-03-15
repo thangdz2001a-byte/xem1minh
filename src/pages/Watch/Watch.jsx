@@ -14,6 +14,7 @@ import {
 
 import Artplayer from "artplayer";
 import Hls from "hls.js";
+import CommentSection from "./CommentSection"; // ĐOẠN MỚI THÊM: Import file bình luận cùng thư mục
 
 const requestMemoryCache = new Map();
 
@@ -174,7 +175,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
       pip: true, 
       airplay: false, 
       autoSize: false,
-      autoMini: true,
+      autoMini: false,
       setting: true,
       loop: false,
       flip: false,
@@ -678,6 +679,11 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
   </div>
 )}
       </div>
+
+      {/* ĐOẠN MỚI THÊM: Bắt đầu phần Bình Luận */}
+      <CommentSection slug={slug} user={user} onLogin={onLogin} />
+      {/* ĐOẠN MỚI THÊM: Kết thúc phần Bình Luận */}
+
       {showEpModal && (
         <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 transition-opacity duration-300" onClick={() => setShowEpModal(false)}>
           <div className="bg-[#111] w-full sm:w-[600px] max-h-[75vh] sm:max-h-[85vh] rounded-t-3xl sm:rounded-2xl flex flex-col shadow-[0_-10px_50px_rgba(0,0,0,0.5)] animate-in slide-in-from-bottom-full duration-300 border-t border-white/10 sm:border-0" onClick={(e) => e.stopPropagation()}>

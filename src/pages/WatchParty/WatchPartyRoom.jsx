@@ -200,11 +200,15 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
     setIsLoadingMedia(true);
   }, [ep?.link_m3u8]);
 
+  // SỬA RACE CONDITION Ở ĐÂY: Xóa sạch dữ liệu cũ khi đổi phim!
   useEffect(() => {
     let isMounted = true;
     if (slug === "dang-chon-phim") { setLoadingPage(false); setLoadingPlayer(false); setIsLoadingMedia(false); return; }
     
     setEp(null);
+    setMovieData(null); // Fix: Xóa phim cũ để khỏi load nhầm tập 1 của phim cũ!
+    setCurrentEpIndex(-1); // Fix: Chống cache tập
+
     if (artInstanceRef.current) {
         try { 
             artInstanceRef.current.pause();
@@ -333,6 +337,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
     });
     artInstanceRef.current = art;
 
+    art.on('ready', () => setIsLoadingMedia(false)); // Tắt loading ngay khi dựng xong khung phát để tránh kẹt
     art.on('video:waiting', () => setIsLoadingMedia(true));
     art.on('video:canplay', () => setIsLoadingMedia(false));
     art.on('video:playing', () => setIsLoadingMedia(false));
@@ -978,7 +983,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
                .art-spinner { display: none !important; }
              `}</style>
              
-             <div className={`absolute inset-0 z-[150] bg-[#050505] flex flex-col justify-center items-center transition-opacity duration-300 ${isLoadingMedia ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+             <div className={`absolute inset-0 z-[150] bg-[#050505] flex flex-col justify-center items-center transition-opacity duration-300 pointer-events-none ${isLoadingMedia ? "opacity-100" : "opacity-0"}`}>
                 <div className="w-12 h-12 md:w-16 md:h-16 border-[4px] border-white/10 border-t-[#E50914] rounded-full animate-spin"></div>
              </div>
 

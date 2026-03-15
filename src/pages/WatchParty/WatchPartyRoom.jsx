@@ -708,7 +708,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
             navigateRef.current({ type: 'watch-room', roomId, slug: m.slug }); 
         } else {
             const genres = getMovieGenres(m); const finalAvatar = await getGuaranteedAvatar(); 
-            const poster = getImg(m.poster_url || m.thumb_url);
+            const poster = m.poster_path ? `https://image.tmdb.org/t/p/w500${m.poster_path}` : getImg(m.poster_url || m.thumb_url);
             const reqMsg = { id: Date.now().toString(), uid: user.uid, name: user.displayName || "Khách", avatar: user.photoURL, customAvatarId: finalAvatar, text: `Yêu cầu đổi phim:`, type: 'request_movie', requestMovieSlug: m.slug, requestMovieName: m.name, requestMoviePoster: poster, movieItem: m, requestMovieOrigin: m.origin_name || m.original_name || "", requestMovieGenre: genres, createdAt: Date.now() };
             channelRef.current?.send({ type: 'broadcast', event: 'new_message', payload: reqMsg }); setMessages(prev => [...prev, reqMsg]);
         }

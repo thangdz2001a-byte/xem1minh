@@ -204,9 +204,9 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
             art.hls = hls; 
             
             hls.on(Hls.Events.MANIFEST_PARSED, function (event, data) {
+              // Vẫn giữ ở đây để backup cho những trình duyệt phản ứng nhanh
               if (savedTime > 0) {
                 video.currentTime = savedTime;
-                art.notice.show = 'Đã khôi phục thời gian xem trước đó';
               }
             });
             
@@ -223,7 +223,6 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
             video.addEventListener('loadedmetadata', () => {
               if (savedTime > 0) {
                 video.currentTime = savedTime;
-                art.notice.show = 'Đã khôi phục thời gian xem trước đó';
               }
             });
           }
@@ -274,7 +273,13 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
       } catch (e) {}
     });
 
+    // CHỐT HẠ ĐỒNG BỘ Ở ĐÂY: Vừa ready là ép seek chuẩn mốc Supabase
     artInstance.on('ready', () => {
+      if (savedTime > 0) {
+        artInstance.seek = savedTime;
+        artInstance.notice.show = 'Đã khôi phục thời gian xem trước đó';
+      }
+      
       if (autoFullscreen && !hasAutoFullscreened.current) {
         hasAutoFullscreened.current = true;
         
@@ -342,7 +347,8 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
         } catch (e) {}
       }
     };
-  }, [m3u8Link, useIframe, ep, movieSlug]);
+  // FIX CHÍNH LÀ ĐÂY: Thêm savedTime vào array để ép Player render lại khi Supabase nhả dữ liệu
+  }, [m3u8Link, useIframe, ep, movieSlug, savedTime]);
 
   return (
     <div className="relative w-full aspect-video bg-[#050505] shadow-[0_20px_50px_rgba(0,0,0,0.5)] md:rounded-2xl overflow-hidden border border-white/5 flex justify-center items-center">
@@ -408,7 +414,6 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
 
   const [restoredTime, setRestoredTime] = useState(0);
   
-  // STATE MỚI CHO POPUP CHỌN TẬP ĐƯỢC ẨN ĐI
   const [showEpModal, setShowEpModal] = useState(false);
 
   const handleCreateRoom = async (e) => {

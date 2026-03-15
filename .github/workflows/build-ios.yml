@@ -12,22 +12,20 @@ jobs:
       
       - uses: actions/setup-node@v4
         with:
-          node-version: '22' # <--- ĐÃ SỬA SỐ 20 THÀNH 22 ĐỂ CHIỀU LÒNG CAPACITOR V8
+          node-version: '22'
           
       - run: npm install
       
       - run: npm run build
       
-      # Đồng bộ code Web mới nhất vào thư mục ios (Giữ nguyên vẹn Info.plist của bạn)
       - run: npx cap sync ios
       
       - name: Build Unsigned IPA
         run: |
           cd ios/App
           
-          # Không cần pod install nữa vì bạn dùng Swift Package Manager
-          # Ép XCODE chạy và tự động tải thư viện qua SPM, sau đó nhả file vào đúng thư mục
-          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGNING_IDENTITY="" SYMROOT="$(PWD)/build" build
+          # ĐÃ SỬA: Thay -workspace App.xcworkspace thành -project App.xcodeproj
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGNING_IDENTITY="" SYMROOT="$(PWD)/build" build
           
           cd build/Release-iphoneos
           mkdir Payload

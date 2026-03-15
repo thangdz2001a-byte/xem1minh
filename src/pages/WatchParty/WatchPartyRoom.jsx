@@ -124,7 +124,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
   const [isLoadingMoreModal, setIsLoadingMoreModal] = useState(false);
   const observerTarget = useRef(null);
 
-  const [showEpModal, setShowEpModal] = useState(false); // Modal popup chọn tập
+  const [showEpModal, setShowEpModal] = useState(false);
   const [epChunkIndex, setEpChunkIndex] = useState(0);
   const [currentEpIndex, setCurrentEpIndex] = useState(0);
 
@@ -203,7 +203,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
     setIsLoadingMedia(true);
   }, [ep?.link_m3u8]);
 
-  // LOAD DATA PHIM (GIỮ NGUYÊN LOGIC GỐC, KHÔNG THÊM LỆNH XÓA STATE NÀO CẢ)
+  // LOAD DATA PHIM
   useEffect(() => {
     let isMounted = true;
     if (slug === "dang-chon-phim") { setLoadingPage(false); setLoadingPlayer(false); setIsLoadingMedia(false); return; }
@@ -261,7 +261,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
      }
   }, [roomData?.epIndex, movieData, ep]); 
 
-  // KHỞI TẠO PLAYER (CHỈ THÊM CUSTOM NÚT F VÀ GIỮ NGUYÊN CẤU HÌNH GỐC CỦA SẾP)
+  // KHỞI TẠO PLAYER (CẬP NHẬT GIAO DIỆN CHUẨN MỚI)
   useEffect(() => {
     if (!ep?.link_m3u8 || !artRef.current || isHostState === null) return; 
 
@@ -291,7 +291,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         });
     }
 
-    // ĐÂY LÀ NÚT FULLSCREEN NATIVE CHẾ TỪ ĐẦU, BÂY GIỜ ĐÃ CÓ CSS BÓP LẠI ĐỂ HIỆN RA
+    // Nút Fullscreen Native
     customControls.push({
       position: 'right',
       index: 90,
@@ -300,12 +300,12 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
       click: function () {
         if (artInstanceRef.current) {
           if (artInstanceRef.current.fullscreen) {
-            artInstanceRef.current.fullscreen = false; 
+            artInstanceRef.current.fullscreen = false; // Thoát native
             if (window.screen && window.screen.orientation && window.screen.orientation.unlock) {
               window.screen.orientation.unlock(); 
             }
           } else {
-            artInstanceRef.current.fullscreen = true; 
+            artInstanceRef.current.fullscreen = true; // Ép gọi API Native
             if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
               window.screen.orientation.lock("landscape").catch(() => {});
             }
@@ -314,7 +314,6 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
       }
     });
 
-    // GIỮ NGUYÊN CẤU HÌNH PLAYER NHƯ BẢN GỐC CỦA SẾP
     const art = new Artplayer({
       container: artRef.current, url: ep.link_m3u8, volume: 1, isLive: false, muted: false, autoplay: false, pip: true, airplay: true, fullscreen: false, fullscreenWeb: false, setting: true,
       playbackRate: isHost, hotkey: false, backdrop: isHost, theme: '#E50914', lang: 'vi', lock: false, 
@@ -789,61 +788,45 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         </div>
       )}
 
-      {/* POPUP CHỌN TẬP */}
+      {/* POPUP: CHỌN TẬP ĐÃ TỐI ƯU MOBILE */}
       {showEpModal && (
-        <div className="fixed inset-0 z-[1000] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 transition-opacity duration-300" onClick={() => setShowEpModal(false)}>
-          <div className="bg-[#111] w-full sm:w-[600px] max-h-[75vh] sm:max-h-[85vh] rounded-t-3xl sm:rounded-2xl flex flex-col shadow-[0_-10px_50px_rgba(0,0,0,0.5)] animate-in slide-in-from-bottom-full duration-300 border-t border-white/10 sm:border-0" onClick={(e) => e.stopPropagation()}>
-            <div className="p-4 md:p-5 flex justify-between items-center border-b border-white/10 shrink-0">
-              <h3 className="text-sm md:text-base font-black uppercase tracking-widest text-white flex items-center gap-2">
-                <Icon.ListVideo size={18} className="text-[#E50914]"/> CHỌN TẬP
-              </h3>
-              <button onClick={() => setShowEpModal(false)} className="p-1.5 bg-white/5 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition">
-                <Icon.X size={18} />
-              </button>
+        <div className="fixed inset-0 z-[1000] bg-black/95 backdrop-blur-md flex justify-center items-center p-0 md:p-4">
+          <div className="bg-[#111] border-0 md:border border-white/10 md:rounded-2xl w-full h-full md:max-w-4xl md:h-[80vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom-5 duration-300">
+            <div className="p-3 md:p-5 flex justify-between items-center shrink-0 border-b border-white/5 pt-safe-top">
+               <div className="flex items-center gap-3">
+                 <Icon.ListVideo size={18} className="text-[#E50914] md:w-5 md:h-5" />
+                 <h2 className="text-sm md:text-xl font-black uppercase flex items-center">Chọn Tập</h2>
+               </div>
+               <button onClick={() => setShowEpModal(false)} className="p-1.5 md:p-2 text-gray-400 hover:text-white bg-white/5 rounded-full"><Icon.X size={18} className="md:w-5 md:h-5"/></button>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-4 md:p-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-              {epChunks.length > 1 && (
-                <div className="flex gap-2 overflow-x-auto pb-3 mb-4 border-b border-white/5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                  {epChunks.map((chunk, idx) => (
-                    <button 
-                      key={idx} 
-                      onClick={() => setEpChunkIndex(idx)} 
-                      className={`shrink-0 px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase transition-colors ${
-                        epChunkIndex === idx 
-                        ? "bg-white/10 text-white border border-[#E50914]" 
-                        : "text-gray-500 hover:text-gray-300 border border-transparent"
-                      }`}
-                    >
-                      Từ {idx * chunkSize + 1} - {idx * chunkSize + chunk.length}
-                    </button>
-                  ))}
+            {epChunks.length > 1 && (
+              <div className="p-3 md:p-4 border-b border-white/5 bg-black/40 shrink-0">
+                <div className="w-full overflow-hidden">
+                  <div ref={epScrollRef} onMouseDown={handleMouseDownEp} onMouseLeave={handleMouseLeaveEp} onMouseUp={handleMouseUpEp} onMouseMove={handleMouseMoveEp} className="flex gap-2 overflow-x-auto pb-1 select-none cursor-grab touch-pan-x snap-x [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                    {epChunks.map((chunk, idx) => (
+                      <button key={idx} onClick={() => setEpChunkIndex(idx)} className={`snap-start px-3 py-1.5 md:px-4 md:py-2 text-[10px] md:text-xs font-bold rounded-lg uppercase tracking-wider whitespace-nowrap border shrink-0 ${epChunkIndex === idx ? 'bg-white/10 border-red-500/50 text-white shadow-[0_0_10px_rgba(229,9,20,0.2)]' : 'bg-[#1a1a1a] border-white/5 text-gray-400 hover:bg-white/5 hover:text-white'}`}>TẬP {idx * chunkSize + 1} - {idx * chunkSize + chunk.length}</button>
+                    ))}
+                  </div>
                 </div>
-              )}
-              <div className="grid grid-cols-5 sm:grid-cols-6 lg:grid-cols-8 gap-2">
-                {epChunks[epChunkIndex]?.map((epItem, localIdx) => {
-                  const globalIdx = epChunkIndex * chunkSize + localIdx;
-                  return (
-                    <button 
-                      key={globalIdx} 
-                      onClick={() => handleSelectEpisode(globalIdx, epItem)} 
-                      className={`py-2.5 md:py-3 rounded-md text-xs md:text-sm font-black uppercase transition-all duration-200 ${
-                        currentEpIndex === globalIdx 
-                        ? "bg-[#E50914] text-white shadow-[0_2px_8px_rgba(229,9,20,0.5)] transform scale-105 z-10" 
-                        : "bg-[#1a1a1a] text-gray-400 border border-white/5 hover:bg-white/10 hover:text-white"
-                      }`}
-                    >
-                      {epItem.name.replace(/tập\s*/i, '')}
-                    </button>
-                  )
-                })}
               </div>
+            )}
+            
+            <div className="flex-1 overflow-y-auto p-3 md:p-6 relative [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+               <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2 md:gap-3">
+                 {epChunks[epChunkIndex]?.map((epItem, localIdx) => {
+                    const globalIdx = epChunkIndex * chunkSize + localIdx;
+                    return (
+                      <button key={globalIdx} onClick={() => handleSelectEpisode(globalIdx, epItem)} className={`py-2 md:py-3 rounded-lg text-xs md:text-sm font-bold border transition-colors ${currentEpIndex === globalIdx ? 'bg-[#E50914] text-white border-transparent' : 'bg-[#1a1a1a] text-gray-300 border-white/5 hover:bg-white/10'}`}>{epItem.name.replace(/tập\s*/i, '')}</button>
+                    )
+                 })}
+               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL CHỌN PHIM */}
+      {/* MODAL CHỌN PHIM TRONG PHÒNG ĐÃ TỐI ƯU MOBILE (GIỐNG LOBBY) */}
       {showMovieModal && (
         <div className="fixed inset-0 z-[1000] bg-black/95 backdrop-blur-md flex justify-center items-center p-0 md:p-4">
           <div className="bg-[#111] border-0 md:border border-white/10 md:rounded-2xl w-full h-full md:max-w-5xl md:h-[85vh] flex flex-col shadow-2xl animate-in slide-in-from-bottom-5 duration-300">
@@ -946,7 +929,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
         </div>
       )}
 
-      {/* MAIN LAYOUT */}
+      {/* MAIN LAYOUT: Đã đổi lưới để đáp ứng di động mượt hơn */}
       <div className="flex flex-col lg:grid lg:grid-cols-4 gap-3 md:gap-4 lg:flex-1 lg:min-h-0">
         
         {/* CỘT TRÁI: VIDEO PLAYER */}
@@ -955,6 +938,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
           <div className="shrink-0 flex flex-wrap items-center justify-between bg-[#111] p-3 md:px-4 rounded-xl border border-white/5 gap-3 shadow-lg">
             <div className="flex items-center gap-3"><h1 className="text-base md:text-lg font-black uppercase tracking-tighter truncate max-w-[150px] sm:max-w-xs">{roomData?.name || "Đang tải..."}</h1><span className="text-[10px] text-gray-400 bg-white/5 px-2 py-1 rounded-md font-mono border border-white/10 shrink-0">ID: {roomId}</span></div>
             <div className="flex items-center gap-2">
+               {slug !== "dang-chon-phim" && <button onClick={() => setShowEpModal(true)} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-[10px] md:text-xs font-black rounded-lg uppercase flex items-center gap-2 border border-white/5 transition-colors"><Icon.ListVideo size={14} /> <span className="hidden sm:inline">{isHostRef.current ? "Chọn Tập" : "Yêu Cầu Đổi Tập"}</span></button>}
                <button onClick={() => setShowMovieModal(true)} className="px-3 py-1.5 bg-[#E50914]/10 text-[#E50914] hover:bg-[#E50914] hover:text-white text-[10px] md:text-xs font-black rounded-lg uppercase flex items-center gap-2 border border-[#E50914]/20 transition-colors"><Icon.RefreshCcw size={14} /> <span className="hidden sm:inline">{isHostRef.current ? "Đổi Phim" : "Yêu Cầu Đổi Phim"}</span></button>
                <button onClick={async () => { if(isHostRef.current) await supabase.from('rooms').delete().eq('id', roomId); navigateRef.current({type: 'watch-party-lobby'}); }} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-[10px] md:text-xs font-black rounded-lg uppercase flex items-center gap-2 border border-white/5 transition-colors"><Icon.LogOut size={14} /> <span className="hidden sm:inline">Thoát</span></button>
             </div>
@@ -962,32 +946,15 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
 
           <div ref={containerRef} className="w-full aspect-video lg:aspect-auto lg:flex-1 lg:min-h-0 bg-black rounded-xl overflow-hidden border border-white/5 relative group flex items-center justify-center shadow-2xl">
              <style>{`
-               .art-icon-seek {
-                 width: 20px;
-                 height: 20px;
-                 color: white;
-               }
-
                @media (max-width: 640px) {
-                 .art-controls-left .art-control,
-                 .art-controls-right .art-control {
-                   margin: 0 !important;
-                   padding: 0 4px !important;
-                 }
-                 
-                 .art-control svg, .art-icon-seek {
-                   width: 18px !important;
-                   height: 18px !important;
-                 }
-
-                 .art-control-time {
-                   font-size: 10px !important;
-                   padding: 0 2px !important;
-                 }
+                 .art-controls-right .art-control { margin: 0 4px !important; padding: 0 6px !important; }
+                 .art-controls-right .art-control svg { width: 22px !important; height: 22px !important; }
                }
+               /* Ẩn Spinner mặc định */
                .art-spinner { display: none !important; }
              `}</style>
              
+             {/* MÀN ĐEN CHE PHỦ KHI TẢI */}
              <div className={`absolute inset-0 z-[150] bg-[#050505] flex flex-col justify-center items-center transition-opacity duration-300 ${isLoadingMedia ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
                 <div className="w-12 h-12 md:w-16 md:h-16 border-[4px] border-white/10 border-t-[#E50914] rounded-full animate-spin"></div>
              </div>
@@ -1006,14 +973,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
           <div className="shrink-0 bg-[#111] p-3 md:px-4 rounded-xl border border-white/5 flex items-center justify-between shadow-lg">
              <div className="min-w-0 pr-4">
                 <h2 className="text-sm md:text-base font-black uppercase tracking-tight mb-0.5 line-clamp-1">{movieData?.name || "Chưa chọn phim"}</h2>
-                <div className="flex items-center gap-1.5 mt-1">
-                   <span className="text-[10px] md:text-xs text-gray-500 uppercase tracking-widest font-bold">Đang phát:</span>
-                   {ep?.name && (
-                      <button onClick={() => setShowEpModal(true)} className="bg-[#E50914] text-white text-[10px] md:text-xs font-black px-2.5 py-0.5 rounded shadow-[0_2px_10px_rgba(229,9,20,0.3)] hover:scale-105 transition-transform">
-                         {safeText(ep.name).replace(/tập\s*/i, '')}
-                      </button>
-                   )}
-                </div>
+                <p className="text-[10px] md:text-xs text-gray-500 uppercase tracking-widest font-bold">{ep?.name ? `Tập ${ep.name.replace(/tập\s*/i, '')}` : ""}</p>
              </div>
              <div className={`shrink-0 ${isHostRef.current ? 'bg-[#E50914]/10 text-[#E50914]' : 'bg-white/5 text-gray-400'} text-[9px] font-bold uppercase px-2.5 py-1.5 rounded-md border border-current flex items-center gap-1.5`}>
                 {isHostRef.current ? <><Icon.Key size={12}/> Host</> : <><Icon.User size={12}/> Viewer</>}

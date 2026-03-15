@@ -432,41 +432,18 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
     else if (data?.name) { document.title = `Đang xem: ${data.name} - POLITE`; }
   }, [data, ep]);
 
-  // ĐÃ SỬA LẠI: Áp dụng window.fbAsyncInit chuẩn React để bắt buộc FB phải render
+  // GỌI FACEBOOK SDK SAU KHI PHIM TẢI XONG
   useEffect(() => {
     if (loadingPage) return;
-
-    if (!document.getElementById('fb-root')) {
-      const fbRoot = document.createElement('div');
-      fbRoot.id = 'fb-root';
-      document.body.appendChild(fbRoot);
-    }
-
-    const parseFB = () => {
+    
+    const renderFB = () => {
       if (window.FB) {
         window.FB.XFBML.parse();
       }
     };
-
-    if (!document.getElementById('facebook-jssdk') && !window.FB) {
-      window.fbAsyncInit = function() {
-        window.FB.init({
-          xfbml      : true,
-          version    : 'v19.0'
-        });
-        parseFB();
-      };
-
-      const script = document.createElement('script');
-      script.id = 'facebook-jssdk';
-      script.src = "https://connect.facebook.net/vi_VN/sdk.js";
-      script.async = true;
-      script.defer = true;
-      script.crossOrigin = "anonymous";
-      document.body.appendChild(script);
-    } else {
-      setTimeout(parseFB, 500);
-    }
+    
+    // Chờ giao diện render ra xong thì kích hoạt parse
+    setTimeout(renderFB, 300);
   }, [slug, loadingPage]);
 
   useEffect(() => {
@@ -710,10 +687,11 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
         <h2 className="text-lg md:text-xl font-black text-white uppercase tracking-tight mb-4 flex items-center gap-2">
           <Icon.MessageCircle size={24} className="text-[#E50914]"/> BÌNH LUẬN
         </h2>
-        <div key={`fb-${slug}`} className="w-full bg-white/5 p-2 rounded-lg min-h-[150px]">
+        {/* Div hiển thị Facebook comment */}
+        <div className="w-full bg-white/5 p-2 rounded-lg min-h-[150px]">
           <div 
             className="fb-comments w-full" 
-            data-href={window.location.href} 
+            data-href={`https://politephim.site/xem-phim/${slug}`} 
             data-width="100%" 
             data-numposts="5" 
             data-colorscheme="dark"

@@ -15,9 +15,6 @@ import {
 import Artplayer from "artplayer";
 import Hls from "hls.js";
 
-// THÊM IMPORT THƯ VIỆN REACT-FACEBOOK Ở ĐÂY
-import { FacebookProvider, Comments } from 'react-facebook';
-
 const requestMemoryCache = new Map();
 
 function getCacheKey(url) { return `watch_api_cache:${url}`; }
@@ -435,6 +432,19 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
     else if (data?.name) { document.title = `Đang xem: ${data.name} - POLITE`; }
   }, [data, ep]);
 
+  // CƠ CHẾ BUỘC FACEBOOK LOAD LẠI BÌNH LUẬN SAU KHI WEB ĐÃ HIỂN THỊ
+  useEffect(() => {
+    if (loadingPage) return;
+    
+    const timer = setTimeout(() => {
+      if (window.FB) {
+        window.FB.XFBML.parse();
+      }
+    }, 500); // Đợi 500ms cho React vẽ xong xuôi thẻ div rồi mới kéo FB vào
+    
+    return () => clearTimeout(timer);
+  }, [slug, loadingPage]);
+
   useEffect(() => {
     let isMounted = true;
     if (!data) setLoadingPage(true);
@@ -557,9 +567,9 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
             }
           }
           if (!found) {
-            for (let i = 0; i < extractedServers.length; i++) {
-              const mEp = extractedServers[i].server_data.find(e => e.slug === savedProg.episodeSlug);
-              if (mEp) { targetServerIdx = i; targetEp = mEp; targetTabIdx = Math.floor(extractedServers[i].server_data.indexOf(mEp) / 50); rTime = Number(savedProg.currentTime) || 0; break; }
+            for (let i = 0; i < cached.serverList.length; i++) {
+              const mEp = cached.serverList[i].server_data.find(e => e.slug === savedProg.episodeSlug);
+              if (mEp) { targetServerIdx = i; targetEp = mEp; targetTabIdx = Math.floor(cached.serverList[i].server_data.indexOf(mEp) / 50); rTime = Number(savedProg.currentTime) || 0; break; }
             }
           }
         }
@@ -676,11 +686,15 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
         <h2 className="text-lg md:text-xl font-black text-white uppercase tracking-tight mb-4 flex items-center gap-2">
           <Icon.MessageCircle size={24} className="text-[#E50914]"/> BÌNH LUẬN
         </h2>
-        <div className="w-full bg-white/5 p-2 rounded-lg min-h-[150px]">
-          {/* THAY THẾ KHUNG BÌNH LUẬN CŨ BẰNG THƯ VIỆN REACT-FACEBOOK Ở ĐÂY */}
-          <FacebookProvider appId="1994719144471600">
-            <Comments href={`https://politephim.site/xem-phim/${slug}`} width="100%" colorScheme="dark" numPosts={5} />
-          </FacebookProvider>
+        {/* DÙNG KEY={SLUG} ĐỂ ÉP TẠO DIV MỚI + ĐỢI SETTIMEOUT KÍCH HOẠT */}
+        <div key={`fb-${slug}`} className="w-full bg-white/5 p-2 rounded-lg min-h-[150px]">
+          <div 
+            className="fb-comments w-full" 
+            data-href={`https://politephim.site/xem-phim/${slug}`} 
+            data-width="100%" 
+            data-numposts="5" 
+            data-colorscheme="dark"
+          ></div>
         </div>
       </div>
 

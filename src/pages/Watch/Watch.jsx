@@ -84,6 +84,59 @@ async function fetchOphimDetail(slug) {
   return res?.data?.item || null;
 }
 
+// ==========================================
+// COMPONENT FACEBOOK MỚI: ĐẬP ĐI XÂY LẠI
+// ==========================================
+function FacebookComments({ href }) {
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    // 1. Đập bỏ hoàn toàn tàn tích HTML cũ của Facebook
+    containerRef.current.innerHTML = '';
+
+    // 2. Tự tay tạo thẻ div mới tinh không tì vết
+    const fbDiv = document.createElement('div');
+    fbDiv.className = 'fb-comments';
+    fbDiv.setAttribute('data-href', href);
+    fbDiv.setAttribute('data-width', '100%');
+    fbDiv.setAttribute('data-numposts', '5');
+    fbDiv.setAttribute('data-colorscheme', 'dark');
+
+    // Nhét thẻ mới vào DOM
+    containerRef.current.appendChild(fbDiv);
+
+    // Hàm gọi FB bắt đầu render
+    const initFB = () => {
+      if (window.FB) {
+        // Bắt FB chỉ được quét đúng cái thẻ div mình vừa nhét vào
+        window.FB.XFBML.parse(containerRef.current);
+      }
+    };
+
+    // 3. Tải script nếu chưa có, có rồi thì phang luôn
+    if (!document.getElementById("facebook-jssdk")) {
+      const script = document.createElement("script");
+      script.id = "facebook-jssdk";
+      script.src = "https://connect.facebook.net/vi_VN/sdk.js#xfbml=1&version=v19.0&appId=1994719144471600";
+      script.async = true;
+      script.defer = true;
+      script.crossOrigin = "anonymous";
+      script.onload = () => setTimeout(initFB, 100);
+      document.body.appendChild(script);
+    } else {
+      setTimeout(initFB, 100);
+    }
+  }, [href]); // Mỗi khi đổi phim (đổi href) nó sẽ tự đập đi xây lại từ bước 1
+
+  return (
+    <div className="w-full bg-white/5 p-2 rounded-lg min-h-[150px]">
+       <div ref={containerRef} className="w-full"></div>
+    </div>
+  );
+}
+
 function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieYear, forceIframe, serverSource, serverRawName, onServerTimeout, onWatchPartyClick, user, savedTime, onProgressSaved, autoFullscreen, isSwitchingServer }) {
   const artRef = useRef(null);
   const lastLocalSaveRef = useRef(0);
@@ -432,20 +485,6 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
     else if (data?.name) { document.title = `Đang xem: ${data.name} - POLITE`; }
   }, [data, ep]);
 
-  // GỌI FACEBOOK SDK SAU KHI PHIM TẢI XONG
-  useEffect(() => {
-    if (loadingPage) return;
-    
-    const renderFB = () => {
-      if (window.FB) {
-        window.FB.XFBML.parse();
-      }
-    };
-    
-    // Chờ giao diện render ra xong thì kích hoạt parse
-    setTimeout(renderFB, 300);
-  }, [slug, loadingPage]);
-
   useEffect(() => {
     let isMounted = true;
     if (!data) setLoadingPage(true);
@@ -687,16 +726,10 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
         <h2 className="text-lg md:text-xl font-black text-white uppercase tracking-tight mb-4 flex items-center gap-2">
           <Icon.MessageCircle size={24} className="text-[#E50914]"/> BÌNH LUẬN
         </h2>
-        {/* Div hiển thị Facebook comment */}
-        <div className="w-full bg-white/5 p-2 rounded-lg min-h-[150px]">
-          <div 
-            className="fb-comments w-full" 
-            data-href={`https://politephim.site/xem-phim/${slug}`} 
-            data-width="100%" 
-            data-numposts="5" 
-            data-colorscheme="dark"
-          ></div>
-        </div>
+        
+        {/* NÉM COMPONENT BẠO LỰC VÀO ĐÂY */}
+        <FacebookComments href={`https://politephim.site/xem-phim/${slug}`} />
+        
       </div>
 
       {showEpModal && (

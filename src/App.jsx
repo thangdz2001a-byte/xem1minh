@@ -3,6 +3,7 @@ import * as Icon from "lucide-react";
 
 // ĐOẠN CODE THÊM MỚI: Import Capacitor App để lắng nghe Deep Link
 import { App as CapacitorApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 
 import { supabase } from "./utils/supabaseClient"; 
 import {
@@ -451,6 +452,39 @@ export default function App() {
       }
     };
   }, []);
+  // 2. ĐOẠN CODE ĐỒNG BỘ TÊN (Độc lập 100%, an toàn tuyệt đối)
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchCustomName = async () => {
+      // Chỉ chạy khi có user và chưa tải tên custom
+      if (user && user.uid && !user.customNameLoaded) {
+        try {
+          const { data } = await supabase
+            .from('profiles')
+            .select('display_name')
+            .eq('user_id', user.uid)
+            .maybeSingle();
+
+          if (isMounted && data && data.display_name && data.display_name !== user.displayName) {
+            setUser(prev => ({
+              ...prev,
+              displayName: data.display_name,
+              customNameLoaded: true // Đánh dấu đã tải xong để không gọi DB liên tục
+            }));
+          } else if (isMounted) {
+            setUser(prev => ({ ...prev, customNameLoaded: true }));
+          }
+        } catch (error) {
+          console.error("Lỗi lấy tên từ DB:", error);
+        }
+      }
+    };
+
+    fetchCustomName();
+
+    return () => { isMounted = false; };
+  }, [user?.uid]); // Chỉ kích hoạt khi cái UID thay đổi (Lúc đăng nhập hoặc đăng xuất)
 
   const handleComponentReady = useCallback(() => {
     setReadyCount(prev => prev + 1);
@@ -486,10 +520,17 @@ export default function App() {
 
   const handleLogin = async () => {
     try { 
+      // Dùng Capacitor để check xem đang chạy native (iOS/Android) hay Web
+      const isNative = Capacitor.isNativePlatform();
+      
+      // Nếu là App thì xòe rổ politephim://, nếu là Web thì xòe rổ localhost/domain web
+      const redirectUrl = isNative ? 'politephim://login-callback' : window.location.origin;
+
       await supabase.auth.signInWithOAuth({ 
         provider: 'google', 
-        // ĐÃ SỬA: Thay window.location.origin thành politephim://login-callback
-        options: { redirectTo: 'politephim://login-callback' } 
+        options: { 
+          redirectTo: redirectUrl 
+        } 
       }); 
     } 
     catch (e) { alert("Lỗi đăng nhập Google: " + e.message); }
@@ -510,11 +551,24 @@ export default function App() {
 
   const handleUpdateName = async (newName) => {
     if (!user) { return; }
+    
+    // Đổi tên trên UI ngay lập tức để người dùng thấy luôn
+    setUser((prev) => ({ ...prev, displayName: newName, customNameLoaded: true }));
+
     try {
-      await supabase.auth.updateUser({ data: { full_name: newName } });
-      setUser((prev) => ({ ...prev, displayName: newName }));
-      await supabase.from('profiles').upsert({ user_id: user.uid, display_name: newName }, { onConflict: 'user_id' }).catch(() => {});
-    } catch { alert("Lỗi khi cập nhật tên!"); }
+      // Lưu xuống Database ngầm phía sau
+      const { error } = await supabase
+        .from('profiles')
+        .upsert({ user_id: user.uid, display_name: newName }, { onConflict: 'user_id' });
+        
+      if (error) throw error;
+      
+      // Cập nhật Auth (có catch riêng để tránh chết app nếu bị Supabase rate limit)
+      await supabase.auth.updateUser({ data: { full_name: newName } }).catch(() => {});
+      
+    } catch (error) { 
+      console.error("Lỗi khi cập nhật tên:", error);
+    }
   };
 
   const syncToFirebase = async (newData, field) => {

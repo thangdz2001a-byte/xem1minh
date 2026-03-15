@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import * as Icon from "lucide-react";
 import { supabase } from "../../utils/supabaseClient"; 
-import { API, API_TMDB, fetchWithCache, matchTmdbToOphim, getImg, mergeDuplicateMovies } from "../../utils/helpers"; 
+import { API, API_TMDB, fetchWithCache, matchTmdbToOphim, getImg, mergeDuplicateMovies, safeText } from "../../utils/helpers"; 
 import MovieCard from "../../components/common/MovieCard";
 
 import Artplayer from "artplayer";

@@ -282,11 +282,11 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
     if (isHost) {
         customControls.push({
           position: 'left', index: 10,
-          html: `<svg style="width:20px;height:20px;color:white;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 19 2 12 11 5 11 19"></polygon><polygon points="22 19 13 12 22 5 22 19"></polygon></svg>`,
+          html: `<svg class="art-icon-seek" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 19 2 12 11 5 11 19"></polygon><polygon points="22 19 13 12 22 5 22 19"></polygon></svg>`,
           tooltip: 'Tua lùi 10s', click: () => artInstanceRef.current && (artInstanceRef.current.seek = Math.max(0, artInstanceRef.current.currentTime - 10))
         }, {
           position: 'left', index: 11,
-          html: `<svg style="width:20px;height:20px;color:white;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 19 22 12 13 5 13 19"></polygon><polygon points="2 19 11 12 2 5 2 19"></polygon></svg>`,
+          html: `<svg class="art-icon-seek" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 19 22 12 13 5 13 19"></polygon><polygon points="2 19 11 12 2 5 2 19"></polygon></svg>`,
           tooltip: 'Tua tới 10s', click: () => artInstanceRef.current && (artInstanceRef.current.seek = artInstanceRef.current.currentTime + 10)
         });
     }
@@ -295,7 +295,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
     customControls.push({
       position: 'right',
       index: 90,
-      html: `<svg style="width:20px;height:20px;color:white;margin-right:10px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>`,
+      html: `<svg class="art-icon-fullscreen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>`,
       tooltip: 'Toàn màn hình',
       click: function () {
         if (artInstanceRef.current) {
@@ -946,9 +946,32 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
 
           <div ref={containerRef} className="w-full aspect-video lg:aspect-auto lg:flex-1 lg:min-h-0 bg-black rounded-xl overflow-hidden border border-white/5 relative group flex items-center justify-center shadow-2xl">
              <style>{`
+               /* ĐÃ SỬA CHỖ NÀY ĐỂ BÓP ICON MÀN MOBILE TƯƠNG TỰ WATCH.JSX */
+               .art-icon-seek, .art-icon-fullscreen {
+                 width: 20px;
+                 height: 20px;
+                 color: white;
+               }
+
                @media (max-width: 640px) {
-                 .art-controls-right .art-control { margin: 0 4px !important; padding: 0 6px !important; }
-                 .art-controls-right .art-control svg { width: 22px !important; height: 22px !important; }
+                 /* Ép các nút thu sát lại nhau */
+                 .art-controls-left .art-control,
+                 .art-controls-right .art-control {
+                   margin: 0 !important;
+                   padding: 0 4px !important;
+                 }
+                 
+                 /* Bóp nhỏ kích thước các icon tuỳ chỉnh */
+                 .art-icon-seek, .art-icon-fullscreen {
+                   width: 18px !important;
+                   height: 18px !important;
+                 }
+
+                 /* Thu nhỏ kích thước chữ thời gian để lấy thêm khoảng trống */
+                 .art-control-time {
+                   font-size: 11px !important;
+                   padding: 0 4px !important;
+                 }
                }
                /* Ẩn Spinner mặc định */
                .art-spinner { display: none !important; }

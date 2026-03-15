@@ -205,7 +205,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
     if (slug === "dang-chon-phim") { setLoadingPage(false); setLoadingPlayer(false); setIsLoadingMedia(false); return; }
     
     setEp(null);
-    setMovieData(null); // SỬA: Xóa dữ liệu phim cũ đi để tránh kẹt
+    setMovieData(null); 
     
     if (artInstanceRef.current) {
         try { 
@@ -335,7 +335,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
     });
     artInstanceRef.current = art;
 
-    art.on('ready', () => setIsLoadingMedia(false)); // SỬA: Tắt loading ngay khi dựng xong khung phát
+    art.on('ready', () => setIsLoadingMedia(false)); 
     art.on('video:waiting', () => setIsLoadingMedia(true));
     art.on('video:canplay', () => setIsLoadingMedia(false));
     art.on('video:playing', () => setIsLoadingMedia(false));
@@ -944,7 +944,7 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
           <div className="shrink-0 flex flex-wrap items-center justify-between bg-[#111] p-3 md:px-4 rounded-xl border border-white/5 gap-3 shadow-lg">
             <div className="flex items-center gap-3"><h1 className="text-base md:text-lg font-black uppercase tracking-tighter truncate max-w-[150px] sm:max-w-xs">{roomData?.name || "Đang tải..."}</h1><span className="text-[10px] text-gray-400 bg-white/5 px-2 py-1 rounded-md font-mono border border-white/10 shrink-0">ID: {roomId}</span></div>
             <div className="flex items-center gap-2">
-               <button onClick={() => setShowMovieModal(true)} className="px-3 py-1.5 bg-[#E50914]/10 text-[#E50914] hover:bg-[#E50914] hover:text-white text-[10px] md:text-xs font-black rounded-lg uppercase flex items-center gap-2 border border-[#E50914]/20 transition-colors"><Icon.RefreshCcw size={14} /> <span className="hidden sm:inline">{isHostRef.current ? "Đổi Phim" : "Yêu Cầu Đổi Phim"}</span></button>
+               {/* ĐÃ CHUYỂN BUTTON ĐỔI PHIM XUỐNG DƯỚI */}
                <button onClick={async () => { if(isHostRef.current) await supabase.from('rooms').delete().eq('id', roomId); navigateRef.current({type: 'watch-party-lobby'}); }} className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-[10px] md:text-xs font-black rounded-lg uppercase flex items-center gap-2 border border-white/5 transition-colors"><Icon.LogOut size={14} /> <span className="hidden sm:inline">Thoát</span></button>
             </div>
           </div>
@@ -1000,14 +1000,23 @@ export default function WatchPartyRoom({ roomId, slug, user, navigate }) {
           <div className="shrink-0 bg-[#111] p-3 md:px-4 rounded-xl border border-white/5 flex items-center justify-between shadow-lg">
              <div className="min-w-0 pr-4">
                 <h2 className="text-sm md:text-base font-black uppercase tracking-tight mb-0.5 line-clamp-1">{movieData?.name || "Chưa chọn phim"}</h2>
-                <div className="flex items-center gap-1.5 mt-1">
+                
+                {/* ĐÃ SỬA: CẬP NHẬT UI NÚT CHỌN TẬP VÀ THÊM NÚT ĐỔI PHIM */}
+                <div className="flex items-center flex-wrap gap-2 md:gap-3 mt-1.5">
                    <span className="text-[10px] md:text-xs text-gray-500 uppercase tracking-widest font-bold">Đang phát:</span>
                    {ep?.name && (
-                      <button onClick={() => setShowEpModal(true)} className="bg-[#E50914] text-white text-[10px] md:text-xs font-black px-2.5 py-0.5 rounded shadow-[0_2px_10px_rgba(229,9,20,0.3)] hover:scale-105 transition-transform">
-                         {safeText(ep.name).replace(/tập\s*/i, '')}
+                      <button onClick={() => setShowEpModal(true)} className="group flex items-center gap-1.5 bg-[#E50914] text-white text-[11px] md:text-xs font-black px-3 py-1.5 md:px-4 md:py-2 rounded-md shadow-[0_2px_10px_rgba(229,9,20,0.3)] hover:bg-red-700 hover:scale-105 transition-all duration-200">
+                         <span>Tập {safeText(ep.name).replace(/tập\s*/i, '')}</span>
+                         <Icon.ChevronDown size={14} className="group-hover:translate-y-0.5 transition-transform" />
                       </button>
                    )}
+                   <button onClick={() => setShowMovieModal(true)} className="px-3 py-1.5 md:px-4 md:py-2 bg-transparent text-[#E50914] hover:bg-[#E50914] hover:text-white text-[11px] md:text-xs font-black rounded-md uppercase flex items-center gap-1.5 border border-[#E50914]/20 transition-colors">
+                      <Icon.RefreshCcw size={14} /> 
+                      <span>{isHostRef.current ? "Đổi Phim" : "Yêu Cầu Đổi Phim"}</span>
+                   </button>
                 </div>
+                {/* KẾT THÚC CHỖ SỬA */}
+
              </div>
              <div className={`shrink-0 ${isHostRef.current ? 'bg-[#E50914]/10 text-[#E50914]' : 'bg-white/5 text-gray-400'} text-[9px] font-bold uppercase px-2.5 py-1.5 rounded-md border border-current flex items-center gap-1.5`}>
                 {isHostRef.current ? <><Icon.Key size={12}/> Host</> : <><Icon.User size={12}/> Viewer</>}

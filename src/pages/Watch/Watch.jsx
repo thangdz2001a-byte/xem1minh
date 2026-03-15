@@ -163,6 +163,14 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
 
     hasAutoFullscreened.current = false;
 
+    const attemptPlay = (video, art) => {
+      video.play().catch(() => {
+        video.muted = true;
+        video.play().catch(() => {});
+        art.notice.show = "Đã tắt tiếng để tự động phát. Chạm vào màn hình để bật lại âm.";
+      });
+    };
+
     let artInstance = new Artplayer({
       container: artRef.current,
       url: m3u8Link,
@@ -171,8 +179,8 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
       isLive: false,
       muted: false,
       autoplay: false, 
-      pip: true, 
-      airplay: false, 
+      pip: true,
+      airplay: true,
       autoSize: false,
       autoMini: true,
       setting: true,
@@ -180,7 +188,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
       flip: false,
       playbackRate: true,
       aspectRatio: false,
-      fullscreen: true, 
+      fullscreen: false, // Tắt nút mặc định để dùng nút xịn
       fullscreenWeb: false, 
       subtitleOffset: false,
       miniProgressBar: true,
@@ -230,6 +238,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
         },
       },
       controls: [
+        // SỬA: Đổi tên class icon tua tới/lùi để dễ target CSS ở màn mobile
         { position: 'left', index: 10, html: `<svg class="art-icon-seek" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 19 2 12 11 5 11 19"></polygon><polygon points="22 19 13 12 22 5 22 19"></polygon></svg>`, tooltip: 'Tua lùi 10s', click: function () { if (artInstance) artInstance.seek = Math.max(0, artInstance.currentTime - 10); } },
         { position: 'left', index: 11, html: `<svg class="art-icon-seek" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 19 22 12 13 5 13 19"></polygon><polygon points="2 19 11 12 2 5 2 19"></polygon></svg>`, tooltip: 'Tua tới 10s', click: function () { if (artInstance) artInstance.seek = artInstance.currentTime + 10; } },
         ...(serverSource === "ophim" ? [{ 
@@ -243,6 +252,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
             <style>
               .watch-party-btn { display: flex; align-items: center; gap: 6px; background: rgba(229,9,20,0.9); padding: 6px 12px; border-radius: 6px; font-weight: 900; font-size: 11px; cursor: pointer; color: white; text-transform: uppercase; letter-spacing: 1px; margin-right: 8px; }
               .wp-icon { width: 14px; height: 14px; stroke-width: 2.5px; }
+              /* SỬA CHỖ NÀY: Ép nút Xem chung nhỏ xíu trên đt */
               @media (max-width: 640px) { 
                 .watch-party-text { display: none; } 
                 .watch-party-btn { padding: 4px; border-radius: 50%; margin-right: 0px; background: transparent; } 
@@ -252,7 +262,29 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
           `, 
           tooltip: 'Mở phòng xem chung', 
           click: function () { if (onWatchPartyClick) onWatchPartyClick(); } 
-        }] : [])
+        }] : []),
+        // SỬA: Bỏ margin cứng, thêm class art-icon-fullscreen để điều khiển qua CSS
+        {
+          position: 'right',
+          index: 90,
+          html: `<svg class="art-icon-fullscreen" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path></svg>`,
+          tooltip: 'Toàn màn hình',
+          click: function () {
+            if (artInstance) {
+              if (artInstance.fullscreen) {
+                artInstance.fullscreen = false; // Thoát native
+                if (window.screen && window.screen.orientation && window.screen.orientation.unlock) {
+                  window.screen.orientation.unlock(); 
+                }
+              } else {
+                artInstance.fullscreen = true; // Ép gọi API Native
+                if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+                  window.screen.orientation.lock("landscape").catch(() => {});
+                }
+              }
+            }
+          }
+        }
       ],
     });
 
@@ -260,30 +292,24 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
     artInstance.on('video:canplay', () => setIsLoading(false));
     artInstance.on('video:playing', () => setIsLoading(false));
 
-    artInstance.on('fullscreen', (state) => {
-      try {
-        if (state) {
-          if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
-            window.screen.orientation.lock("landscape").catch(() => {});
-          }
-        } else {
-          if (window.screen && window.screen.orientation && window.screen.orientation.unlock) {
-            window.screen.orientation.unlock();
-          }
-        }
-      } catch (e) {}
-    });
-
     artInstance.on('ready', () => {
       if (autoFullscreen && !hasAutoFullscreened.current) {
         hasAutoFullscreened.current = true;
         
         setTimeout(() => {
+          // GỌI THẲNG NATIVE FULLSCREEN CỦA HỆ ĐIỀU HÀNH
           artInstance.fullscreen = true;
+          
+          if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+            window.screen.orientation.lock("landscape").catch(() => {});
+          }
+
           artInstance.muted = true;
           artInstance.play().then(() => {
             artInstance.notice.show = "Đã tự động phát (Tắt tiếng). Vui lòng chạm bật âm lượng!";
-          }).catch(() => {});
+          }).catch(() => {
+            console.log("Trình duyệt chặn autoplay hoàn toàn.");
+          });
         }, 500); 
       }
     });
@@ -347,32 +373,39 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
   return (
     <div className="relative w-full aspect-video bg-[#050505] shadow-[0_20px_50px_rgba(0,0,0,0.5)] md:rounded-2xl overflow-hidden border border-white/5 flex justify-center items-center">
       <style>{`
-        .art-icon-seek {
+        /* SỬA CHỖ NÀY: Resize toàn bộ icon và bóp khoảng cách ở màn nhỏ (mobile) */
+        .art-icon-seek, .art-icon-fullscreen {
           width: 20px;
           height: 20px;
           color: white;
         }
 
         @media (max-width: 640px) {
+          /* Ép các nút thu sát lại nhau */
           .art-controls-left .art-control,
           .art-controls-right .art-control {
             margin: 0 !important;
-            padding: 0 3px !important;
+            padding: 0 4px !important;
           }
           
-          .art-control svg, .art-icon-seek {
+          /* Bóp nhỏ kích thước các icon tuỳ chỉnh */
+          .art-icon-seek, .art-icon-fullscreen {
             width: 18px !important;
             height: 18px !important;
           }
 
+          /* Thu nhỏ kích thước chữ thời gian để lấy thêm khoảng trống */
           .art-control-time {
-            font-size: 10px !important;
-            padding: 0 2px !important;
+            font-size: 11px !important;
+            padding: 0 4px !important;
           }
         }
+
+        /* Ẩn Spinner mặc định của trình phát để nhường chỗ cho Màn Đen tuỳ chỉnh */
         .art-spinner { display: none !important; }
       `}</style>
 
+      {/* MÀN ĐEN CHE PHỦ KHI TẢI (ĐÃ ĐỔI TỪ TRƯỢT SANG MỜ DẦN ĐỂ ĐỠ GIẬT LAG CHO MÁY YẾU) */}
       <div className={`absolute inset-0 z-[150] bg-[#050505] flex flex-col justify-center items-center transition-opacity duration-300 ${isLoading || isSwitchingServer ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
          <div className="w-12 h-12 md:w-16 md:h-16 border-[4px] border-white/10 border-t-[#E50914] rounded-full animate-spin"></div>
          {isSwitchingServer && <span className="mt-4 text-white text-[10px] md:text-xs font-bold uppercase tracking-widest animate-pulse">Đang đổi máy chủ...</span>}
@@ -407,8 +440,6 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
   const [isCreating, setIsCreating] = useState(false);
 
   const [restoredTime, setRestoredTime] = useState(0);
-  
-  const [showEpModal, setShowEpModal] = useState(false);
 
   const handleCreateRoom = async (e) => {
     e.preventDefault();
@@ -546,16 +577,16 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
         if (savedProg?.episodeSlug) {
           let found = false;
           if (savedProg.serverSource) {
-            const sIdx = cached.serverList.findIndex(s => s.source === savedProg.serverSource);
+            const sIdx = extractedServers.findIndex(s => s.source === savedProg.serverSource);
             if (sIdx !== -1) {
-              const mEp = cached.serverList[sIdx].server_data.find(e => e.slug === savedProg.episodeSlug);
-              if (mEp) { targetServerIdx = sIdx; targetEp = mEp; targetTabIdx = Math.floor(cached.serverList[sIdx].server_data.indexOf(mEp) / 50); found = true; rTime = Number(savedProg.currentTime) || 0; }
+              const mEp = extractedServers[sIdx].server_data.find(e => e.slug === savedProg.episodeSlug);
+              if (mEp) { targetServerIdx = sIdx; targetEp = mEp; targetTabIdx = Math.floor(extractedServers[sIdx].server_data.indexOf(mEp) / 50); found = true; rTime = Number(savedProg.currentTime) || 0; }
             }
           }
           if (!found) {
-            for (let i = 0; i < cached.serverList.length; i++) {
-              const mEp = cached.serverList[i].server_data.find(e => e.slug === savedProg.episodeSlug);
-              if (mEp) { targetServerIdx = i; targetEp = mEp; targetTabIdx = Math.floor(cached.serverList[i].server_data.indexOf(mEp) / 50); rTime = Number(savedProg.currentTime) || 0; break; }
+            for (let i = 0; i < extractedServers.length; i++) {
+              const mEp = extractedServers[i].server_data.find(e => e.slug === savedProg.episodeSlug);
+              if (mEp) { targetServerIdx = i; targetEp = mEp; targetTabIdx = Math.floor(extractedServers[i].server_data.indexOf(mEp) / 50); rTime = Number(savedProg.currentTime) || 0; break; }
             }
           }
         }
@@ -620,134 +651,39 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
         <div className="relative w-full aspect-video bg-[#111] shadow-2xl overflow-hidden flex justify-center items-center animate-pulse"><Icon.Loader2 className="animate-spin text-[#E50914]" size={40} /></div>
       ) : null}
 
-      <div className="mt-4 md:mt-8 bg-[#111] p-4 md:p-8 border-y sm:border border-white/5 shadow-xl md:rounded-2xl">
-        <div className="border-b border-white/10 pb-4">
-          <h1 className="text-lg md:text-3xl font-black text-white uppercase tracking-tight mb-2 line-clamp-2 leading-snug">{safeText(data?.name)}</h1>
-          
-          {ep && (
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] md:text-xs text-gray-400 font-bold uppercase tracking-widest">Đang phát:</span>
-              <button 
-                onClick={() => setShowEpModal(true)} 
-                className="bg-[#E50914] text-white text-[10px] md:text-xs font-black px-2.5 py-1 md:px-3 md:py-1.5 rounded shadow-[0_2px_10px_rgba(229,9,20,0.3)] hover:bg-red-700 transition-colors"
-              >
-                {safeText(ep?.name).replace(/tập\s*/i, '')}
-              </button>
-            </div>
-          )}
-        </div>
+      <div className="mt-6 md:mt-10 bg-[#111] p-5 md:p-8 border-y sm:border border-white/5 shadow-2xl rounded-2xl">
+        <h1 className="text-xl md:text-3xl font-black text-white uppercase mb-2 line-clamp-2">{safeText(data?.name)}</h1>
+        {ep && <p className="text-gray-400 font-bold uppercase mb-8">Đang phát: Tập <span className="text-[#E50914]">{safeText(ep?.name)}</span></p>}
 
         {serverList.length > 0 && (
-          <div className="mt-4 md:mt-6">
-            <div className="flex flex-col gap-3">
+          <div>
+            <div className="mb-6">
               {Object.entries(serverList.reduce((acc, s, idx) => { if (!acc[s.groupType]) acc[s.groupType] = []; acc[s.groupType].push({ ...s, originalIndex: idx }); return acc; }, {})).map(([type, servers]) => (
-                <div key={type} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                  <span className="text-gray-500 text-[10px] md:text-xs font-black uppercase w-20 md:w-24 shrink-0 tracking-widest">{type}</span>
-                  <div className="flex flex-wrap gap-2">
+                <div key={type} className="mb-4">
+                  <p className="text-gray-400 text-xs font-bold uppercase mb-2">MÁY CHỦ : {type}</p>
+                  <div className="flex flex-wrap gap-3">
                     {servers.map((s) => (
-                      <button 
-                        key={s.originalIndex} 
-                        onClick={() => handleServerChange(s.originalIndex)} 
-                        className={`px-3 py-1.5 md:px-4 md:py-2 rounded-full text-[10px] md:text-xs font-bold uppercase tracking-wide transition-all duration-200 ${
-                          activeServerIdx === s.originalIndex 
-                          ? "bg-[#E50914] text-white shadow-[0_2px_10px_rgba(229,9,20,0.4)] border border-[#E50914]" 
-                          : "bg-[#1a1a1a] text-gray-400 border border-white/10 hover:bg-white/10 hover:text-white"
-                        }`}
-                      >
-                        {s.source === "ophim" ? "MÁY CHỦ 1" : "MÁY CHỦ 2"}
-                      </button>
+                      <button key={s.originalIndex} onClick={() => handleServerChange(s.originalIndex)} className={`px-4 py-2 border rounded-lg font-bold uppercase ${activeServerIdx === s.originalIndex ? "border-[#E50914] bg-[#E50914]/10 text-white" : "border-white/10 text-gray-400 hover:text-white"}`}>{s.sourceName}</button>
                     ))}
                   </div>
                 </div>
               ))}
             </div>
-
             {episodeChunks.length > 1 && (
-              <div className="flex gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] border-b border-white/5">
+              <div className="mb-6 flex flex-wrap gap-2">
                 {episodeChunks.map((_, idx) => (
-                  <button 
-                    key={idx} 
-                    onClick={() => setActiveTabIdx(idx)} 
-                    className={`shrink-0 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase transition-colors ${
-                      activeTabIdx === idx 
-                      ? "bg-white/10 text-white border-b-2 border-[#E50914] rounded-b-none" 
-                      : "text-gray-500 hover:text-gray-300 border-b-2 border-transparent"
-                    }`}
-                  >
-                    Từ {idx * 50 + 1} - {Math.min((idx + 1) * 50, episodes.length)}
-                  </button>
+                  <button key={idx} onClick={() => setActiveTabIdx(idx)} className={`px-4 py-2 font-bold rounded-lg border ${activeTabIdx === idx ? "border-[#E50914] text-[#E50914] bg-[#E50914]/10" : "border-white/10 text-gray-400 hover:text-white"}`}>Tập {idx * 50 + 1} - {Math.min((idx + 1) * 50, episodes.length)}</button>
                 ))}
               </div>
             )}
-
-            <div className="grid grid-cols-5 sm:grid-cols-8 lg:grid-cols-12 gap-1.5 md:gap-2">
+            <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-10 gap-2 md:gap-3">
               {currentChunk.map((e, idx) => (
-                <button 
-                  key={idx} 
-                  onClick={() => { setEp(e); setRestoredTime(0); window.scrollTo(0, 0); }} 
-                  className={`py-2 md:py-2.5 rounded-md text-[11px] md:text-sm font-black uppercase transition-all duration-200 ${
-                    ep?.name === e.name 
-                    ? "bg-[#E50914] text-white shadow-[0_2px_8px_rgba(229,9,20,0.5)] transform scale-105 z-10" 
-                    : "bg-[#1a1a1a] text-gray-400 border border-white/5 hover:bg-white/10 hover:text-white"
-                  }`}
-                >
-                  {safeText(e.name).replace(/tập\s*/i, '')}
-                </button>
+                <button key={idx} onClick={() => { setEp(e); setRestoredTime(0); window.scrollTo(0, 0); }} className={`py-3 rounded-lg font-black uppercase border ${ep?.name === e.name ? "bg-[#E50914] border-[#E50914] text-white scale-105" : "bg-white/5 border-white/5 text-gray-400 hover:text-white"}`}>{safeText(e.name)}</button>
               ))}
             </div>
           </div>
         )}
       </div>
-
-      {showEpModal && (
-        <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 transition-opacity duration-300" onClick={() => setShowEpModal(false)}>
-          <div className="bg-[#111] w-full sm:w-[600px] max-h-[75vh] sm:max-h-[85vh] rounded-t-3xl sm:rounded-2xl flex flex-col shadow-[0_-10px_50px_rgba(0,0,0,0.5)] animate-in slide-in-from-bottom-full duration-300 border-t border-white/10 sm:border-0" onClick={(e) => e.stopPropagation()}>
-            <div className="p-4 md:p-5 flex justify-between items-center border-b border-white/10 shrink-0">
-              <h3 className="text-sm md:text-base font-black uppercase tracking-widest text-white flex items-center gap-2">
-                <Icon.ListVideo size={18} className="text-[#E50914]"/> CHỌN TẬP
-              </h3>
-              <button onClick={() => setShowEpModal(false)} className="p-1.5 bg-white/5 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition">
-                <Icon.X size={18} />
-              </button>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto p-4 md:p-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-              {episodeChunks.length > 1 && (
-                <div className="flex gap-2 overflow-x-auto pb-3 mb-4 border-b border-white/5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                  {episodeChunks.map((_, idx) => (
-                    <button 
-                      key={idx} 
-                      onClick={() => setActiveTabIdx(idx)} 
-                      className={`shrink-0 px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase transition-colors ${
-                        activeTabIdx === idx 
-                        ? "bg-white/10 text-white border border-[#E50914]" 
-                        : "text-gray-500 hover:text-gray-300 border border-transparent"
-                      }`}
-                    >
-                      Từ {idx * 50 + 1} - {Math.min((idx + 1) * 50, episodes.length)}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <div className="grid grid-cols-5 sm:grid-cols-6 lg:grid-cols-8 gap-2">
-                {currentChunk.map((e, idx) => (
-                  <button 
-                    key={idx} 
-                    onClick={() => { setEp(e); setRestoredTime(0); setShowEpModal(false); window.scrollTo(0, 0); }} 
-                    className={`py-2.5 md:py-3 rounded-md text-xs md:text-sm font-black uppercase transition-all duration-200 ${
-                      ep?.name === e.name 
-                      ? "bg-[#E50914] text-white shadow-[0_2px_8px_rgba(229,9,20,0.5)] transform scale-105 z-10" 
-                      : "bg-[#1a1a1a] text-gray-400 border border-white/5 hover:bg-white/10 hover:text-white"
-                    }`}
-                  >
-                    {safeText(e.name).replace(/tập\s*/i, '')}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {showPartyModal && (
         <div className="fixed inset-0 z-[500] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 shadow-2xl">

@@ -32,7 +32,8 @@ const SplashScreen = ({ isFading }) => (
 );
 // ==========================================
 
-export default function MovieDetail({ slug, movieData, navigate, user, onLogin, favorites, setFavorites, syncToFirebase }) {
+// TAO CHỈ ĐỔI TÊN HÀM Ở ĐÂY, BỎ EXPORT DEFAULT ĐI
+function MovieDetailContent({ slug, movieData, navigate, user, onLogin, favorites, setFavorites, syncToFirebase }) {
   const [m, setM] = useState(movieData ? { item: movieData } : null);
   const [cast, setCast] = useState([]);
   const [error, setError] = useState(false);
@@ -151,7 +152,6 @@ export default function MovieDetail({ slug, movieData, navigate, user, onLogin, 
           return;
         }
 
-        // --- ĐÂY LÀ DÒNG CHÚNG TA THÊM VÀO ĐỂ LỘT MẶT NẠ ID FAKE ---
         itemOphim = verifyAndCleanTmdbId(itemOphim);
 
         setM(prev => {
@@ -356,7 +356,6 @@ export default function MovieDetail({ slug, movieData, navigate, user, onLogin, 
   const renderImg = imgSrc || "https://placehold.co/400x600/111/333?text=Chưa+Có+Ảnh";
   const isFavorited = !!favorites[slug];
   
-  // BIẾN KIỂM TRA PHIM CHỈ CÓ TRAILER (Trạng thái trailer hoặc tập hiện tại ghi chữ trailer)
   const isTrailerOnly = i.status === "trailer" || String(i.episode_current).toLowerCase().includes("trailer");
 
   return (
@@ -415,7 +414,6 @@ export default function MovieDetail({ slug, movieData, navigate, user, onLogin, 
               </div>
               
               <div className="flex flex-col md:flex-row gap-3 md:gap-4 w-full md:w-auto">
-                {/* Ẩn Xem Ngay và Yêu Thích nếu phim chỉ có trailer */}
                 {!isTrailerOnly && (
                   <>
                     <button onClick={() => navigate({ type: "watch", slug: i.slug, movieData: m })} className="w-full md:w-auto justify-center bg-[#E50914] text-white px-8 md:px-10 py-3 md:py-4 rounded-full font-black flex items-center gap-2 transition-transform hover:scale-105 shadow-[0_4px_15px_rgba(229,9,20,0.4)] uppercase text-xs md:text-sm">
@@ -434,7 +432,6 @@ export default function MovieDetail({ slug, movieData, navigate, user, onLogin, 
                   </>
                 )}
 
-                {/* Nút Trailer luôn hiện nếu có link trailer */}
                 {trailerKey && (
                   <button onClick={() => setShowTrailerModal(true)} className="w-full md:w-auto justify-center bg-white/5 border border-white/20 text-white px-6 md:px-8 py-3 md:py-4 rounded-full font-black flex items-center gap-2 transition-transform hover:scale-105 backdrop-blur-md uppercase text-xs md:text-sm">
                     <Icon.Youtube size={18} /> TRAILER
@@ -485,4 +482,9 @@ export default function MovieDetail({ slug, movieData, navigate, user, onLogin, 
       </div>
     </>
   );
+}
+
+// ĐÂY LÀ "TRÒ BẨN" CỨU TINH CỦA MÀY ĐÂY. BỌC LẠI BẰNG KEY ĐỂ NÓ RESET 100% MỖI LẦN CHUYỂN PHIM
+export default function MovieDetail(props) {
+  return <MovieDetailContent key={props.slug} {...props} />;
 }

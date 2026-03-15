@@ -245,10 +245,23 @@ export default function Header({ navigate, categories, countries, user, onLogin,
     setShowNameModal(true);
   };
 
-  const handleSubmitName = (e) => {
+  // ĐÃ SỬA: Thêm lưu dữ liệu vào Supabase
+  const handleSubmitName = async (e) => {
     e.preventDefault();
-    if (editName.trim() && editName.trim() !== user.displayName) {
-      if (onUpdateName) onUpdateName(editName.trim());
+    const newName = editName.trim();
+    if (newName && newName !== user.displayName) {
+      try {
+        if (user && user.uid) {
+          const { error } = await supabase
+            .from('profiles')
+            .upsert({ user_id: user.uid, display_name: newName }, { onConflict: 'user_id' });
+          if (error) throw error;
+        }
+        
+        if (onUpdateName) onUpdateName(newName);
+      } catch (err) {
+        console.error("Lỗi cập nhật tên:", err);
+      }
     }
     setShowNameModal(false);
   };

@@ -432,8 +432,10 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
     else if (data?.name) { document.title = `Đang xem: ${data.name} - POLITE`; }
   }, [data, ep]);
 
-  // THÊM MỚI: Tự động tải và cập nhật Facebook SDK cho bình luận
+  // ĐÃ SỬA LẠI: Thêm loadingPage vào mảng dependency và chặn parse khi chưa render xong
   useEffect(() => {
+    if (loadingPage) return; // Chỉ bắt đầu tải/parse SDK khi DOM (phim) đã load xong
+
     if (!document.getElementById('facebook-jssdk')) {
       const script = document.createElement('script');
       script.id = 'facebook-jssdk';
@@ -442,10 +444,17 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
       script.defer = true;
       script.crossOrigin = "anonymous";
       document.body.appendChild(script);
+      
+      script.onload = () => {
+        if (window.FB) window.FB.XFBML.parse();
+      };
     } else if (window.FB) {
-      window.FB.XFBML.parse();
+      // Dùng setTimeout để đảm bảo React đã thực sự nhúng div facebook vào DOM
+      setTimeout(() => {
+        window.FB.XFBML.parse();
+      }, 200);
     }
-  }, [slug]);
+  }, [slug, loadingPage]); // Phải có loadingPage ở đây!
 
   useEffect(() => {
     let isMounted = true;
@@ -656,7 +665,6 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
           )}
         </div>
 
-        {/* CHỈ CÒN GIỮ LẠI NÚT CHỌN MÁY CHỦ CHO GỌN NHẸ */}
         {serverList.length > 0 && (
           <div className="mt-4 md:mt-6">
             <div className="flex flex-col gap-3">
@@ -685,7 +693,6 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
         )}
       </div>
 
-      {/* THÊM MỚI: GIAO DIỆN BÌNH LUẬN FACEBOOK */}
       <div className="mt-4 md:mt-8 bg-[#111] p-4 md:p-8 border-y sm:border border-white/5 shadow-xl md:rounded-2xl">
         <h2 className="text-lg md:text-xl font-black text-white uppercase tracking-tight mb-4 flex items-center gap-2">
           <Icon.MessageCircle size={24} className="text-[#E50914]"/> BÌNH LUẬN

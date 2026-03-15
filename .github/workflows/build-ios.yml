@@ -16,23 +16,17 @@ jobs:
           
       - run: npm install
       
-      # ĐÃ XÓA: Dòng ép cài Capacitor v6 để đồng bộ hoàn toàn với bản v8 trong package.json
-      
       - run: npm run build
       
-      # ĐÃ SỬA: Thay rm -rf và cap add bằng lệnh sync để BẢO TOÀN file Info.plist của bạn
+      # Đồng bộ code Web mới nhất vào thư mục ios (Giữ nguyên vẹn Info.plist của bạn)
       - run: npx cap sync ios
       
       - name: Build Unsigned IPA
         run: |
           cd ios/App
           
-          # ĐOẠN CODE THÊM MỚI: Tự động nâng iOS Deployment Target lên 14.0 để khớp với Capacitor v8
-          sed -i '' "s/platform :ios, '[0-9.]*'/platform :ios, '14.0'/" Podfile
-          
-          pod install --repo-update
-          
-          # ÉP XCODE NHẢ FILE VÀO ĐÚNG THƯ MỤC BUILD CỦA MÌNH
+          # Không cần pod install nữa vì bạn dùng Swift Package Manager
+          # Ép XCODE chạy và tự động tải thư viện qua SPM, sau đó nhả file vào đúng thư mục
           xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -sdk iphoneos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGNING_IDENTITY="" SYMROOT="$(PWD)/build" build
           
           cd build/Release-iphoneos

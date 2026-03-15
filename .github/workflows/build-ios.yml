@@ -16,17 +16,20 @@ jobs:
           
       - run: npm install
       
-      - run: npm install @capacitor/cli@6 @capacitor/core@6 @capacitor/ios@6 --legacy-peer-deps
+      # ĐÃ XÓA: Dòng ép cài Capacitor v6 để đồng bộ hoàn toàn với bản v8 trong package.json
       
       - run: npm run build
       
-      - run: rm -rf ios
-      
-      - run: npx cap add ios
+      # ĐÃ SỬA: Thay rm -rf và cap add bằng lệnh sync để BẢO TOÀN file Info.plist của bạn
+      - run: npx cap sync ios
       
       - name: Build Unsigned IPA
         run: |
           cd ios/App
+          
+          # ĐOẠN CODE THÊM MỚI: Tự động nâng iOS Deployment Target lên 14.0 để khớp với Capacitor v8
+          sed -i '' "s/platform :ios, '[0-9.]*'/platform :ios, '14.0'/" Podfile
+          
           pod install --repo-update
           
           # ÉP XCODE NHẢ FILE VÀO ĐÚNG THƯ MỤC BUILD CỦA MÌNH

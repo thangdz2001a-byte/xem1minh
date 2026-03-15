@@ -644,50 +644,40 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
         </div>
 
         {serverList.length > 0 && (
-          <div className="mt-4 md:mt-6">
-            <div className="flex flex-col gap-3">
-              {Object.entries(serverList.reduce((acc, s, idx) => { if (!acc[s.groupType]) acc[s.groupType] = []; acc[s.groupType].push({ ...s, originalIndex: idx }); return acc; }, {})).map(([type, servers]) => (
-                <div key={type} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-                  <span className="text-gray-500 text-[10px] md:text-xs font-black uppercase w-20 md:w-24 shrink-0 tracking-widest">{type}</span>
-                  <div className="flex flex-wrap gap-2">
-                    {servers.map((s) => (
-                      <button 
-                        key={s.originalIndex} 
-                        onClick={() => handleServerChange(s.originalIndex)} 
-                        className={`px-3 py-1.5 md:px-4 md:py-2 rounded-full text-[10px] md:text-xs font-bold uppercase tracking-wide transition-all duration-200 ${
-                          activeServerIdx === s.originalIndex 
-                          ? "bg-[#E50914] text-white shadow-[0_2px_10px_rgba(229,9,20,0.4)] border border-[#E50914]" 
-                          : "bg-[#1a1a1a] text-gray-400 border border-white/10 hover:bg-white/10 hover:text-white"
-                        }`}
-                      >
-                        {s.source === "ophim" ? "MÁY CHỦ 1" : "MÁY CHỦ 2"}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {episodeChunks.length > 1 && (
-              <div className="flex gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] border-b border-white/5 mt-4">
-                {episodeChunks.map((_, idx) => (
-                  <button 
-                    key={idx} 
-                    onClick={() => setActiveTabIdx(idx)} 
-                    className={`shrink-0 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase transition-colors ${
-                      activeTabIdx === idx 
-                      ? "bg-white/10 text-white border-b-2 border-[#E50914] rounded-b-none" 
-                      : "text-gray-500 hover:text-gray-300 border-b-2 border-transparent"
-                    }`}
-                  >
-                    Từ {idx * 50 + 1} - {Math.min((idx + 1) * 50, episodes.length)}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            
-
+  <div className="mt-4 md:mt-6">
+    <div className="flex flex-col gap-3">
+      {Object.entries(
+        serverList.reduce((acc, s, idx) => {
+          if (!acc[s.groupType]) acc[s.groupType] = [];
+          acc[s.groupType].push({ ...s, originalIndex: idx });
+          return acc;
+        }, {})
+      ).map(([type, servers]) => (
+        <div key={type} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+          <span className="text-gray-500 text-[10px] md:text-xs font-black uppercase w-20 md:w-24 shrink-0 tracking-widest">
+            {type}
+          </span>
+          <div className="flex flex-wrap gap-2">
+            {servers.map((s) => (
+              <button
+                key={s.originalIndex}
+                onClick={() => handleServerChange(s.originalIndex)}
+                className={`px-3 py-1.5 md:px-4 md:py-2 rounded-full text-[10px] md:text-xs font-bold uppercase tracking-wide transition-all duration-200 ${
+                  activeServerIdx === s.originalIndex
+                    ? "bg-[#E50914] text-white shadow-[0_2px_10px_rgba(229,9,20,0.4)] border border-[#E50914]"
+                    : "bg-[#1a1a1a] text-gray-400 border border-white/10 hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                {s.source === "ophim" ? "MÁY CHỦ 1" : "MÁY CHỦ 2"}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
+      </div>
       {showEpModal && (
         <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 transition-opacity duration-300" onClick={() => setShowEpModal(false)}>
           <div className="bg-[#111] w-full sm:w-[600px] max-h-[75vh] sm:max-h-[85vh] rounded-t-3xl sm:rounded-2xl flex flex-col shadow-[0_-10px_50px_rgba(0,0,0,0.5)] animate-in slide-in-from-bottom-full duration-300 border-t border-white/10 sm:border-0" onClick={(e) => e.stopPropagation()}>

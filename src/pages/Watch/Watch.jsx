@@ -686,24 +686,7 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
               </div>
             )}
 
-            <div className="grid grid-cols-5 sm:grid-cols-8 lg:grid-cols-12 gap-1.5 md:gap-2 mt-4">
-              {currentChunk.map((e, idx) => (
-                <button 
-                  key={idx} 
-                  onClick={() => { setEp(e); setRestoredTime(0); window.scrollTo(0, 0); }} 
-                  className={`py-2 md:py-2.5 rounded-md text-[11px] md:text-sm font-black uppercase transition-all duration-200 ${
-                    ep?.name === e.name 
-                    ? "bg-[#E50914] text-white shadow-[0_2px_8px_rgba(229,9,20,0.5)] transform scale-105 z-10" 
-                    : "bg-[#1a1a1a] text-gray-400 border border-white/5 hover:bg-white/10 hover:text-white"
-                  }`}
-                >
-                  {safeText(e.name).replace(/tập\s*/i, '')}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+            
 
       {showEpModal && (
         <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 transition-opacity duration-300" onClick={() => setShowEpModal(false)}>

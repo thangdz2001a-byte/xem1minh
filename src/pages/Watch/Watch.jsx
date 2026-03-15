@@ -432,35 +432,40 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
     else if (data?.name) { document.title = `Đang xem: ${data.name} - POLITE`; }
   }, [data, ep]);
 
-  // ĐÃ SỬA LẠI: Thêm fb-root và tối ưu vòng đời để chắc chắn Facebook chạy được
+  // ĐÃ SỬA LẠI: Áp dụng window.fbAsyncInit chuẩn React để bắt buộc FB phải render
   useEffect(() => {
     if (loadingPage) return;
 
-    // Facebook bắt buộc phải có thẻ này trong body
     if (!document.getElementById('fb-root')) {
       const fbRoot = document.createElement('div');
       fbRoot.id = 'fb-root';
       document.body.appendChild(fbRoot);
     }
 
-    const renderFB = () => {
+    const parseFB = () => {
       if (window.FB) {
         window.FB.XFBML.parse();
       }
     };
 
-    if (!document.getElementById('facebook-jssdk')) {
+    if (!document.getElementById('facebook-jssdk') && !window.FB) {
+      window.fbAsyncInit = function() {
+        window.FB.init({
+          xfbml      : true,
+          version    : 'v19.0'
+        });
+        parseFB();
+      };
+
       const script = document.createElement('script');
       script.id = 'facebook-jssdk';
-      script.src = "https://connect.facebook.net/vi_VN/sdk.js#xfbml=1&version=v19.0";
+      script.src = "https://connect.facebook.net/vi_VN/sdk.js";
       script.async = true;
       script.defer = true;
       script.crossOrigin = "anonymous";
       document.body.appendChild(script);
-      
-      script.onload = renderFB;
     } else {
-      setTimeout(renderFB, 500);
+      setTimeout(parseFB, 500);
     }
   }, [slug, loadingPage]);
 
@@ -586,9 +591,9 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
             }
           }
           if (!found) {
-            for (let i = 0; i < extractedServers.length; i++) {
-              const mEp = extractedServers[i].server_data.find(e => e.slug === savedProg.episodeSlug);
-              if (mEp) { targetServerIdx = i; targetEp = mEp; targetTabIdx = Math.floor(extractedServers[i].server_data.indexOf(mEp) / 50); rTime = Number(savedProg.currentTime) || 0; break; }
+            for (let i = 0; i < cached.serverList.length; i++) {
+              const mEp = cached.serverList[i].server_data.find(e => e.slug === savedProg.episodeSlug);
+              if (mEp) { targetServerIdx = i; targetEp = mEp; targetTabIdx = Math.floor(cached.serverList[i].server_data.indexOf(mEp) / 50); rTime = Number(savedProg.currentTime) || 0; break; }
             }
           }
         }
@@ -701,7 +706,6 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
         )}
       </div>
 
-      {/* ĐÃ SỬA LẠI: Thêm key={slug} để bắt React đập đi xây lại khi đổi phim */}
       <div className="mt-4 md:mt-8 bg-[#111] p-4 md:p-8 border-y sm:border border-white/5 shadow-xl md:rounded-2xl">
         <h2 className="text-lg md:text-xl font-black text-white uppercase tracking-tight mb-4 flex items-center gap-2">
           <Icon.MessageCircle size={24} className="text-[#E50914]"/> BÌNH LUẬN

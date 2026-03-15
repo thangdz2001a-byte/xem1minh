@@ -432,9 +432,22 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
     else if (data?.name) { document.title = `Đang xem: ${data.name} - POLITE`; }
   }, [data, ep]);
 
-  // ĐÃ SỬA LẠI: Thêm loadingPage vào mảng dependency và chặn parse khi chưa render xong
+  // ĐÃ SỬA LẠI: Thêm fb-root và tối ưu vòng đời để chắc chắn Facebook chạy được
   useEffect(() => {
-    if (loadingPage) return; // Chỉ bắt đầu tải/parse SDK khi DOM (phim) đã load xong
+    if (loadingPage) return;
+
+    // Facebook bắt buộc phải có thẻ này trong body
+    if (!document.getElementById('fb-root')) {
+      const fbRoot = document.createElement('div');
+      fbRoot.id = 'fb-root';
+      document.body.appendChild(fbRoot);
+    }
+
+    const renderFB = () => {
+      if (window.FB) {
+        window.FB.XFBML.parse();
+      }
+    };
 
     if (!document.getElementById('facebook-jssdk')) {
       const script = document.createElement('script');
@@ -445,16 +458,11 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
       script.crossOrigin = "anonymous";
       document.body.appendChild(script);
       
-      script.onload = () => {
-        if (window.FB) window.FB.XFBML.parse();
-      };
-    } else if (window.FB) {
-      // Dùng setTimeout để đảm bảo React đã thực sự nhúng div facebook vào DOM
-      setTimeout(() => {
-        window.FB.XFBML.parse();
-      }, 200);
+      script.onload = renderFB;
+    } else {
+      setTimeout(renderFB, 500);
     }
-  }, [slug, loadingPage]); // Phải có loadingPage ở đây!
+  }, [slug, loadingPage]);
 
   useEffect(() => {
     let isMounted = true;
@@ -693,11 +701,12 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
         )}
       </div>
 
+      {/* ĐÃ SỬA LẠI: Thêm key={slug} để bắt React đập đi xây lại khi đổi phim */}
       <div className="mt-4 md:mt-8 bg-[#111] p-4 md:p-8 border-y sm:border border-white/5 shadow-xl md:rounded-2xl">
         <h2 className="text-lg md:text-xl font-black text-white uppercase tracking-tight mb-4 flex items-center gap-2">
           <Icon.MessageCircle size={24} className="text-[#E50914]"/> BÌNH LUẬN
         </h2>
-        <div className="w-full bg-white/5 p-2 rounded-lg">
+        <div key={`fb-${slug}`} className="w-full bg-white/5 p-2 rounded-lg min-h-[150px]">
           <div 
             className="fb-comments w-full" 
             data-href={window.location.href} 

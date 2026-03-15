@@ -544,6 +544,7 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
 
         let targetServerIdx = 0; let targetEp = extractedServers[0].server_data[0]; let targetTabIdx = 0; let rTime = 0;
         
+        // ĐÃ SỬA LỖI ĐỒNG BỘ LỊCH SỬ Ở ĐÂY: Sử dụng extractedServers thay vì cached.serverList
         if (savedProg?.episodeSlug) {
           let found = false;
           if (savedProg.serverSource) {
@@ -629,6 +630,7 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
             <div className="flex items-center gap-2">
               <span className="text-[10px] md:text-xs text-gray-400 font-bold uppercase tracking-widest">Đang phát:</span>
               
+              {/* ĐÃ NÂNG CẤP NÚT CHỌN TẬP Ở ĐÂY: Thêm chữ Tập, Icon mũi tên và hiệu ứng Hover */}
               <button 
                 onClick={() => setShowEpModal(true)} 
                 className="group flex items-center gap-1.5 bg-[#E50914] text-white text-[11px] md:text-xs font-black px-3 py-1.5 md:px-4 md:py-2 rounded-md shadow-[0_2px_10px_rgba(229,9,20,0.3)] hover:bg-red-700 hover:scale-105 transition-all duration-200"
@@ -641,7 +643,6 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
           )}
         </div>
 
-        {/* CHỈ CÒN GIỮ LẠI NÚT CHỌN MÁY CHỦ CHO GỌN NHẸ */}
         {serverList.length > 0 && (
           <div className="mt-4 md:mt-6">
             <div className="flex flex-col gap-3">
@@ -664,6 +665,40 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
                     ))}
                   </div>
                 </div>
+              ))}
+            </div>
+
+            {episodeChunks.length > 1 && (
+              <div className="flex gap-2 overflow-x-auto pb-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] border-b border-white/5 mt-4">
+                {episodeChunks.map((_, idx) => (
+                  <button 
+                    key={idx} 
+                    onClick={() => setActiveTabIdx(idx)} 
+                    className={`shrink-0 px-3 py-1.5 md:px-4 md:py-2 rounded-lg text-[10px] md:text-xs font-bold uppercase transition-colors ${
+                      activeTabIdx === idx 
+                      ? "bg-white/10 text-white border-b-2 border-[#E50914] rounded-b-none" 
+                      : "text-gray-500 hover:text-gray-300 border-b-2 border-transparent"
+                    }`}
+                  >
+                    Từ {idx * 50 + 1} - {Math.min((idx + 1) * 50, episodes.length)}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="grid grid-cols-5 sm:grid-cols-8 lg:grid-cols-12 gap-1.5 md:gap-2 mt-4">
+              {currentChunk.map((e, idx) => (
+                <button 
+                  key={idx} 
+                  onClick={() => { setEp(e); setRestoredTime(0); window.scrollTo(0, 0); }} 
+                  className={`py-2 md:py-2.5 rounded-md text-[11px] md:text-sm font-black uppercase transition-all duration-200 ${
+                    ep?.name === e.name 
+                    ? "bg-[#E50914] text-white shadow-[0_2px_8px_rgba(229,9,20,0.5)] transform scale-105 z-10" 
+                    : "bg-[#1a1a1a] text-gray-400 border border-white/5 hover:bg-white/10 hover:text-white"
+                  }`}
+                >
+                  {safeText(e.name).replace(/tập\s*/i, '')}
+                </button>
               ))}
             </div>
           </div>

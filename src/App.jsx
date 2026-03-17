@@ -538,22 +538,22 @@ export default function App() {
   }, [isAppReady, readyCount, view.type, showSplash]);
 
   const handleLogin = async () => {
-    try { 
-      // Dùng Capacitor để check xem đang chạy native (iOS/Android) hay Web
-      const isNative = Capacitor.isNativePlatform();
-      
-      // Nếu là App thì xòe rổ politephim://, nếu là Web thì xòe rổ localhost/domain web
-      const redirectUrl = isNative ? 'politephim://login-callback' : window.location.origin;
+    try { 
+      // Dùng Capacitor để check xem đang chạy native (iOS/Android) hay Web
+      const isNative = Capacitor.isNativePlatform();
+      
+      // ĐOẠN ĐÃ SỬA: Ép cứng link redirect về domain thật của web thay vì link supabase
+      const redirectUrl = isNative ? 'politephim://login-callback' : 'https://politephim.site';
 
-      await supabase.auth.signInWithOAuth({ 
-        provider: 'google', 
-        options: { 
-          redirectTo: redirectUrl 
-        } 
-      }); 
-    } 
-    catch (e) { alert("Lỗi đăng nhập Google: " + e.message); }
-  };
+      await supabase.auth.signInWithOAuth({ 
+        provider: 'google', 
+        options: { 
+          redirectTo: redirectUrl 
+        } 
+      }); 
+    } 
+    catch (e) { alert("Lỗi đăng nhập Google: " + e.message); }
+  };
 
   const handleLogout = async () => {
     try { await supabase.auth.signOut(); } catch {}

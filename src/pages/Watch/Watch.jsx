@@ -673,7 +673,7 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
           )}
         </div>
 
-        {serverList.length > 0 && (
+{serverList.length > 0 && (
   <div className="mt-4 md:mt-6">
     <div className="flex flex-col gap-3">
       {Object.entries(
@@ -684,9 +684,10 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
         }, {})
       ).map(([type, servers]) => (
         <div key={type} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-          <span className="text-gray-500 text-[10px] md:text-xs font-black uppercase w-20 md:w-24 shrink-0 tracking-widest">
+          <span className="text-gray-500 text-[10px] md:text-xs font-black uppercase w-20 md:w-24 shrink-0 tracking-widest whitespace-nowrap">
             {type}
           </span>
+
           <div className="flex flex-wrap gap-2">
             {servers.map((s) => (
               <button

@@ -16,8 +16,12 @@ export default function SearchItem({ m, navigate, onClose }) {
   const originName = m.origin_name || m.original_name || "";
   const movieName = safeText(m.name, "");
 
-  const rawOphimPoster = m.poster_url || "";
+  // HACK TRỊ OPHIM: Nếu API lười giấu link, tự lấy slug ráp thành link CDN luôn!
+  const rawOphimPoster = m.poster_url || (m.slug ? `${m.slug}-poster.jpg` : "");
+  const rawOphimThumb = m.thumb_url || m.thumb || (m.slug ? `${m.slug}-thumb.jpg` : "");
+
   const ophimPoster = rawOphimPoster ? getImg(rawOphimPoster) : "";
+  const ophimThumb = rawOphimThumb ? getImg(rawOphimThumb) : "";
 
   const isValidSrc = (src) => {
     if (!src) return false;
@@ -30,6 +34,7 @@ export default function SearchItem({ m, navigate, onClose }) {
 
   const hasValidTmdbPoster = isValidSrc(posterSrc);
   const hasValidOphimPoster = isValidSrc(ophimPoster);
+  const hasValidOphimThumb = isValidSrc(ophimThumb);
 
   useEffect(() => {
     if (hasValidTmdbPoster) {
@@ -38,29 +43,45 @@ export default function SearchItem({ m, navigate, onClose }) {
     } else if (hasValidOphimPoster) {
       setImgSrc(ophimPoster);
       setImgStep("ophimPoster");
+    } else if (hasValidOphimThumb) {
+      setImgSrc(ophimThumb);
+      setImgStep("ophimThumb");
     } else {
       setImgSrc("");
       setImgStep("done");
     }
-  }, [posterSrc, ophimPoster, hasValidTmdbPoster, hasValidOphimPoster]);
+  }, [posterSrc, ophimPoster, ophimThumb, hasValidTmdbPoster, hasValidOphimPoster, hasValidOphimThumb]);
 
   const handleImageError = () => {
-    if (imgStep === "tmdb" && hasValidOphimPoster) {
-      setImgSrc(ophimPoster);
-      setImgStep("ophimPoster");
-      return;
+    if (imgStep === "tmdb") {
+      if (hasValidOphimPoster) {
+        setImgSrc(ophimPoster);
+        setImgStep("ophimPoster");
+        return;
+      }
+      if (hasValidOphimThumb) {
+        setImgSrc(ophimThumb);
+        setImgStep("ophimThumb");
+        return;
+      }
     }
+
+    if (imgStep === "ophimPoster") {
+      if (hasValidOphimThumb) {
+        setImgSrc(ophimThumb);
+        setImgStep("ophimThumb");
+        return;
+      }
+    }
+
     setImgSrc("");
     setImgStep("done");
   };
 
-  // Dùng trực tiếp isLoading để gọi hiệu ứng vòng đỏ
   const isFetching = isLoading;
-
   let imageContent = null;
 
   if (isFetching) {
-    // Render hiệu ứng vòng quay đỏ khi đang fetch data
     imageContent = <div className="search-poster-loading"></div>;
   } else {
     if (imgSrc) {
@@ -74,7 +95,6 @@ export default function SearchItem({ m, navigate, onClose }) {
         />
       );
     } else {
-      // Ảnh đen dự phòng "Chưa Có Ảnh" khi tất cả các link đều tịt
       imageContent = (
         <img
           src="https://placehold.co/400x600/111/333?text=Chưa+Có+Ảnh"
@@ -152,13 +172,10 @@ export default function SearchItem({ m, navigate, onClose }) {
           <span className="bg-[#E50914] text-white px-1.5 py-0.5 rounded text-[9px] md:text-[10px] font-black tracking-wider uppercase">
             {safeText(m.quality, "HD")}
           </span>
-
           <span className="shrink-0">•</span>
-
           <span className="truncate text-gray-300">
             {safeText(m.episode_current || "Full")}
           </span>
-
           {hasVote && (
             <>
               <span className="shrink-0">•</span>

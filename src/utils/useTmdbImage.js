@@ -4,6 +4,12 @@ import { fetchTMDB } from "./helpers";
 const TMDB_API_KEY = "0e620a51728a0fea887a8506831d8866";
 const tmdbCache = new Map();
 
+// HÀM LỌC RÁC: Xóa chữ "Phần 1", "Season 2" để TMDB không bị ngu
+const cleanTitleForTMDB = (title) => {
+  if (!title) return "";
+  return title.replace(/(phần|mùa|season|part)\s*\d+/gi, '').replace(/\s+/g, ' ').trim();
+};
+
 export default function useTmdbImage(m, enableTmdb = true) {
   const fallbackImg = "https://placehold.co/400x600/111/333?text=Chưa+Có+Ảnh";
   
@@ -62,6 +68,7 @@ export default function useTmdbImage(m, enableTmdb = true) {
       try {
         let tmdbId = m.tmdb?.id || m.tmdb?.tmdb_id || m.tmdb?.id_tmdb || m.tmdbId || m.tmdb_id || m.id_tmdb;
         if (typeof m.tmdb === 'number' || (typeof m.tmdb === 'string' && !isNaN(m.tmdb))) tmdbId = m.tmdb;
+        if (tmdbId == "0") tmdbId = null; // OPhim hay trả về ID "0" mạo danh
 
         let mediaType = (m.type === 'series' || m.type === 'tvshows' || m.type === 'phimbo' || m.tmdb?.type === 'tv') ? 'tv' : 'movie';
         const isValidTmdbId = tmdbId && String(tmdbId) !== "undefined" && String(tmdbId) !== "null";
@@ -69,7 +76,10 @@ export default function useTmdbImage(m, enableTmdb = true) {
 
         // BƯỚC 3.1: Nếu không có ID -> Search TMDB -> Giật luôn ảnh từ kết quả search cho nhanh
         if (!isValidTmdbId) {
-          const match = await fetchTMDB(m.origin_name, m.original_name, m.name, m.slug, m.year, m.type);
+          const cleanOrigin = cleanTitleForTMDB(m.origin_name || m.original_name);
+          const cleanName = cleanTitleForTMDB(m.name);
+
+          const match = await fetchTMDB(cleanOrigin, m.original_name, cleanName, m.slug, m.year, m.type);
           if (match && match.id) {
             tmdbId = match.id;
             mediaType = match.media_type || mediaType;

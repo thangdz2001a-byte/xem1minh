@@ -64,25 +64,25 @@ function isCrossMatch(m1, m2) {
   return false;
 }
 
-async function fetchNguoncSearch(keyword) {
-  const res = await fetchJsonCached(`${API_NGUONC}/search?keyword=${encodeURIComponent(keyword)}`);
+async function fetchNguoncSearch(keyword, options = {}) {
+  const res = await fetchJsonCached(`${API_NGUONC}/search?keyword=${encodeURIComponent(keyword)}`, options);
   return res?.items || res?.data?.items || res?.data || [];
 }
 
-async function fetchOphimSearch(keyword) {
-  const res = await fetchJsonCached(`${API}/tim-kiem?keyword=${encodeURIComponent(keyword)}`);
+async function fetchOphimSearch(keyword, options = {}) {
+  const res = await fetchJsonCached(`${API}/tim-kiem?keyword=${encodeURIComponent(keyword)}`, options);
   return res?.data?.items || [];
 }
 
-async function fetchNguoncDetail(slug) {
-  const res = await fetchJsonCached(`${API_NGUONC_DETAIL}/${slug}`);
+async function fetchNguoncDetail(slug, options = {}) {
+  const res = await fetchJsonCached(`${API_NGUONC_DETAIL}/${slug}`, options);
   let item = res?.movie || res?.item || res;
   if (item) item.episodes = item.episodes || res?.episodes || [];
   return item || null;
 }
 
-async function fetchOphimDetail(slug) {
-  const res = await fetchJsonCached(`${API}/phim/${slug}`);
+async function fetchOphimDetail(slug, options = {}) {
+  const res = await fetchJsonCached(`${API}/phim/${slug}`, options);
   return res?.data?.item || null;
 }
 
@@ -375,7 +375,7 @@ function Player({ ep, poster, movieSlug, movieName, originName, thumbUrl, movieY
         .art-spinner { display: none !important; }
       `}</style>
 
-      <div className={`absolute inset-0 z-[150] bg-[#050505] flex flex-col justify-center items-center transition-opacity duration-300 ${isLoading || isSwitchingServer ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
+      <div className={`absolute inset-0 z-[150] bg-transparent flex flex-col justify-center items-center transition-opacity duration-300 ${isLoading || isSwitchingServer ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
          <div className="w-12 h-12 md:w-16 md:h-16 border-[4px] border-white/10 border-t-[#E50914] rounded-full animate-spin"></div>
          {isSwitchingServer && <span className="mt-4 text-white text-[10px] md:text-xs font-bold uppercase tracking-widest animate-pulse">Đang đổi máy chủ...</span>}
       </div>
@@ -510,23 +510,49 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
         if (!isMounted) return;
         if ((oItem || nItem) && !earlyPageOpened) { setData(oItem || nItem); setLoadingPage(false); earlyPageOpened = true; }
 
+        const fallbackController = new AbortController();
+        const fallbackTimeoutId = setTimeout(() => fallbackController.abort(), 3000);
+        const fetchOpts = { signal: fallbackController.signal };
+
         if (oItem && (!nItem || !nItem.episodes || nItem.episodes.length === 0)) {
           const queries = [oItem.origin_name, oItem.original_name, oItem.name].filter(Boolean).slice(0, 2);
-          for (const q of queries) { try { const itemsList = await fetchNguoncSearch(q); let match = itemsList.find((i) => isCrossMatch(oItem, i)); if (!match && itemsList.length > 0) match = itemsList[0]; if (match?.slug) { const dItem = await fetchNguoncDetail(match.slug); if (dItem?.episodes?.length > 0) { nItem = dItem; break; } } } catch {} }
+          try {
+            const searchResults = await Promise.all(queries.map(q => fetchNguoncSearch(q, fetchOpts).catch(() => [])));
+            const allItems = searchResults.flat();
+            let match = allItems.find((i) => isCrossMatch(oItem, i)) || allItems[0];
+            if (match?.slug) {
+              const dItem = await fetchNguoncDetail(match.slug, fetchOpts);
+              if (dItem?.episodes?.length > 0) nItem = dItem;
+            }
+          } catch (e) {}
         } else if (!oItem && nItem) {
           const queries = [nItem.origin_name, nItem.original_name, nItem.name].filter(Boolean).slice(0, 2);
-          for (const q of queries) { try { const itemsList = await fetchOphimSearch(q); let match = itemsList.find((i) => isCrossMatch(nItem, i)); if (!match && itemsList.length > 0) match = itemsList[0]; if (match?.slug) { const dItem = await fetchOphimDetail(match.slug); if (dItem) { oItem = dItem; break; } } } catch {} }
+          try {
+            const searchResults = await Promise.all(queries.map(q => fetchOphimSearch(q, fetchOpts).catch(() => [])));
+            const allItems = searchResults.flat();
+            let match = allItems.find((i) => isCrossMatch(nItem, i)) || allItems[0];
+            if (match?.slug) {
+              const dItem = await fetchOphimDetail(match.slug, fetchOpts);
+              if (dItem) oItem = dItem;
+            }
+          } catch (e) {}
         } else if (!oItem && !nItem) {
           const searchSlug = String(slug || "").replace(/-/g, " ");
-          const [oList, nList] = await Promise.allSettled([ fetchOphimSearch(searchSlug), fetchNguoncSearch(searchSlug) ]);
-          const ophimItems = oList.status === "fulfilled" ? oList.value : [];
-          const nguoncItems = nList.status === "fulfilled" ? nList.value : [];
-          const oMatchSlug = ophimItems[0]?.slug;
-          let nMatchSlug = nguoncItems.find((i) => (ophimItems[0] ? isCrossMatch(ophimItems[0], i) : true))?.slug;
-          if (!nMatchSlug && nguoncItems.length > 0) nMatchSlug = nguoncItems[0]?.slug;
-          const [fbO, fbN] = await Promise.allSettled([ oMatchSlug ? fetchOphimDetail(oMatchSlug) : Promise.resolve(null), nMatchSlug ? fetchNguoncDetail(nMatchSlug) : Promise.resolve(null) ]);
-          oItem = fbO.status === "fulfilled" ? fbO.value : null; nItem = fbN.status === "fulfilled" ? fbN.value : null;
+          try {
+            const [oList, nList] = await Promise.allSettled([ fetchOphimSearch(searchSlug, fetchOpts), fetchNguoncSearch(searchSlug, fetchOpts) ]);
+            const ophimItems = oList.status === "fulfilled" ? oList.value : [];
+            const nguoncItems = nList.status === "fulfilled" ? nList.value : [];
+            const oMatchSlug = ophimItems[0]?.slug;
+            let nMatchSlug = nguoncItems.find((i) => (ophimItems[0] ? isCrossMatch(ophimItems[0], i) : true))?.slug || nguoncItems[0]?.slug;
+            const [fbO, fbN] = await Promise.allSettled([ 
+              oMatchSlug ? fetchOphimDetail(oMatchSlug, fetchOpts) : Promise.resolve(null), 
+              nMatchSlug ? fetchNguoncDetail(nMatchSlug, fetchOpts) : Promise.resolve(null) 
+            ]);
+            oItem = fbO.status === "fulfilled" ? fbO.value : null; 
+            nItem = fbN.status === "fulfilled" ? fbN.value : null;
+          } catch(e) {}
         }
+        clearTimeout(fallbackTimeoutId);
 
         if (!isMounted) return;
         if (!oItem && !nItem) { setError(true); setLoadingPage(false); setLoadingPlayer(false); return; }
@@ -624,7 +650,7 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
           isSwitchingServer={isSwitchingServer}
         />
       ) : loadingPlayer ? (
-        <div className="relative w-full aspect-video bg-[#111] shadow-2xl overflow-hidden flex justify-center items-center animate-pulse"><Icon.Loader2 className="animate-spin text-[#E50914]" size={40} /></div>
+        <div className="relative w-full aspect-video bg-transparent shadow-2xl overflow-hidden flex justify-center items-center animate-pulse"><Icon.Loader2 className="animate-spin text-[#E50914]" size={40} /></div>
       ) : null}
 
       <div className="mt-4 md:mt-8 bg-[#111] p-4 md:p-8 border-y sm:border border-white/5 shadow-xl md:rounded-2xl">

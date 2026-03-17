@@ -41,8 +41,9 @@ const MovieCard = memo(function MovieCard({
   const originName = m.origin_name || m.original_name || "";
   const movieName = safeText(m.name, "");
 
-  const rawOphimPoster = m.poster_url || "";
-  const rawOphimThumb = m.thumb_url || m.thumb || "";
+  // HACK TRỊ OPHIM: Nếu API lười giấu link, tự lấy slug ráp thành link CDN luôn!
+  const rawOphimPoster = m.poster_url || (m.slug ? `${m.slug}-poster.jpg` : "");
+  const rawOphimThumb = m.thumb_url || m.thumb || (m.slug ? `${m.slug}-thumb.jpg` : "");
 
   const ophimPoster = rawOphimPoster ? getImg(rawOphimPoster) : "";
   const ophimThumb = rawOphimThumb ? getImg(rawOphimThumb) : "";
@@ -114,15 +115,12 @@ const MovieCard = memo(function MovieCard({
         if (stored[m.slug]) latestProg = stored[m.slug];
       } catch (e) {}
 
-      // LOGIC CHUẨN XÁC: Có history (>0s) và chưa xem xong (<99%) thì vào thẳng player
       const hasHistory = latestProg && latestProg.currentTime > 0;
       const percentage = Math.max(0, Math.min(100, Number(latestProg?.percentage || 0)));
 
       if (hasHistory && percentage < 99) {
-        // Có xem dở -> Phóng thẳng player và truyền cờ autoFullscreen
         navigate({ type: "watch", slug: m.slug, autoFullscreen: true });
       } else {
-        // Chưa xem bao giờ hoặc xem xong rồi -> Vào chi tiết bình thường
         navigate({ type: "detail", slug: m.slug, movieData: m });
       }
       window.scrollTo(0, 0);
@@ -251,21 +249,18 @@ const MovieCard = memo(function MovieCard({
         </div>
       </div>
 
-      {/* THÔNG TIN PHIM ĐÃ ĐƯỢC SẮP XẾP LẠI */}
+      {/* THÔNG TIN PHIM */}
       <div className="mt-2 md:mt-3 flex flex-col flex-1 px-1">
-        {/* Tên Việt */}
         <h3 className="text-[13px] md:text-[15px] font-bold text-gray-200 line-clamp-2 uppercase group-hover/card:text-[#E50914] transition-colors leading-tight">
           {movieName}
         </h3>
 
-        {/* Tên Gốc */}
         {originName && originName.toLowerCase() !== m.name?.toLowerCase() && (
           <p className="text-[11px] md:text-[12px] text-gray-400 mt-1 truncate">
             {originName}
           </p>
         )}
 
-        {/* Năm & Chất lượng */}
         <div className="flex items-center gap-2 mt-1.5 text-[10px] md:text-[11px] text-gray-500 font-medium">
           <span>{safeText(m.year, "2025")}</span>
           <span className="bg-[#E50914] text-white px-1.5 py-[2px] rounded-[3px] font-bold uppercase tracking-wider">

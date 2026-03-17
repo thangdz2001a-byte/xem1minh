@@ -4,6 +4,12 @@ import { Helmet } from "react-helmet-async";
 import { API, TMDB_API_KEY, safeText, safeJoin, fetchTMDB, verifyAndCleanTmdbId, getImg } from "../../utils/helpers";
 import useTmdbImage from "../../utils/useTmdbImage";
 
+// HÀM LỌC RÁC TÊN PHIM
+const cleanTitleForTMDB = (title) => {
+  if (!title) return "";
+  return title.replace(/(phần|mùa|season|part)\s*\d+/gi, '').replace(/\s+/g, ' ').trim();
+};
+
 // ==========================================
 // COMPONENT SPLASH SCREEN
 // ==========================================
@@ -58,9 +64,6 @@ function MovieDetailContent({ slug, movieData, navigate, user, onLogin, favorite
   const [showSplash, setShowSplash] = useState(true);
   const [fadeSplash, setFadeSplash] = useState(false);
 
-  // ==========================================
-  // [TƯ DUY MỚI] ĐỌC Ổ CỨNG TRƯỚC KHI RENDER
-  // ==========================================
   const getCachedPoster = () => {
     try {
       const cached = localStorage.getItem(`polite_sync_poster_${slug}`);
@@ -71,14 +74,16 @@ function MovieDetailContent({ slug, movieData, navigate, user, onLogin, favorite
 
   const initialCached = getCachedPoster();
 
-  // Khởi tạo state với ảnh từ ổ cứng (nếu có) -> Tốc độ ánh sáng lúc F5
   const [imgSrc, setImgSrc] = useState(initialCached || "");
   const [imgStep, setImgStep] = useState(initialCached ? "tmdb" : "loading");
 
   const { posterSrc: tmdbPosterSrc, isLoading: isPosterLoading } = useTmdbImage(m?.item);
 
   const rawOphimPosterPath = m?.item?.poster_url || "";
+  const rawOphimThumbPath = m?.item?.thumb_url || m?.item?.thumb || "";
+
   const ophimPosterSrc = rawOphimPosterPath ? getImg(rawOphimPosterPath) : "";
+  const ophimThumbSrc = rawOphimThumbPath ? getImg(rawOphimThumbPath) : "";
 
   const isValidSrc = (src) => {
     if (!src) return false;
@@ -91,37 +96,48 @@ function MovieDetailContent({ slug, movieData, navigate, user, onLogin, favorite
 
   const hasValidTmdbPoster = isValidSrc(tmdbPosterSrc);
   const hasValidOphimPoster = isValidSrc(ophimPosterSrc);
+  const hasValidOphimThumb = isValidSrc(ophimThumbSrc);
 
-  // ==========================================
-  // LOGIC FIX LỖI NHÁY ẢNH NGANG LÚC F5 + KHÓA Ổ CỨNG
-  // ==========================================
   useEffect(() => {
-    // 1. TMDB trả về ảnh dọc đẹp -> Lấy dùng và Khóa vào ổ cứng
     if (hasValidTmdbPoster) {
       setImgSrc(tmdbPosterSrc);
       setImgStep("tmdb");
       try { localStorage.setItem(`polite_sync_poster_${slug}`, tmdbPosterSrc); } catch(e) {}
     } 
-    // 2. NẾU VẪN ĐANG TÌM TMDB -> Tuyệt đối không cho OPhim chèn ảnh vào
     else if (!tmdbFetched || isPosterLoading) {
-      // Án binh bất động (Nếu F5 thì nó đang hiện ảnh từ localStorage rồi)
+      // Đợi TMDB lùng sục
     } 
-    // 3. TMDB chịu thua -> Lấy OPhim (chỉ áp dụng nếu chưa có ảnh TMDB nào)
     else if (hasValidOphimPoster && imgStep !== "tmdb") {
       setImgSrc(ophimPosterSrc);
       setImgStep("ophimPoster");
     } 
-    // 4. Chịu thua toàn tập
+    else if (hasValidOphimThumb && imgStep !== "tmdb" && imgStep !== "ophimPoster") {
+      // MỞ KHÓA LẠI THUMB_URL CHO CHI TIẾT PHIM ĐỂ VỚT CÁC PHIM NHƯ NẮNG NHẪN LỚN RỒI
+      setImgSrc(ophimThumbSrc);
+      setImgStep("ophimThumb");
+    }
     else if (imgStep !== "tmdb") {
       setImgSrc("");
       setImgStep("done");
     }
-  }, [tmdbPosterSrc, ophimPosterSrc, hasValidTmdbPoster, hasValidOphimPoster, isPosterLoading, tmdbFetched, slug, imgStep]);
+  }, [tmdbPosterSrc, ophimPosterSrc, ophimThumbSrc, hasValidTmdbPoster, hasValidOphimPoster, hasValidOphimThumb, isPosterLoading, tmdbFetched, slug, imgStep]);
 
   const handleImageError = () => {
-    if (imgStep === "tmdb" && hasValidOphimPoster) {
-      setImgSrc(ophimPosterSrc);
-      setImgStep("ophimPoster");
+    if (imgStep === "tmdb") {
+      if (hasValidOphimPoster) {
+        setImgSrc(ophimPosterSrc);
+        setImgStep("ophimPoster");
+        return;
+      }
+      if (hasValidOphimThumb) {
+        setImgSrc(ophimThumbSrc);
+        setImgStep("ophimThumb");
+        return;
+      }
+    }
+    if (imgStep === "ophimPoster" && hasValidOphimThumb) {
+      setImgSrc(ophimThumbSrc);
+      setImgStep("ophimThumb");
       return;
     }
     setImgSrc("");
@@ -199,13 +215,10 @@ function MovieDetailContent({ slug, movieData, navigate, user, onLogin, favorite
         let mediaType = (m?.item?.tmdb?.type === "tv" || m?.item?.type === "series" || m?.item?.type === "phimbo") ? "tv" : "movie";
 
         if (!tmdbId) {
-          const match = await fetchTMDB(
-            m?.item?.name,
-            m?.item?.origin_name || m?.item?.original_name,
-            slug,
-            m?.item?.year,
-            m?.item?.country
-          );
+          const cleanName = cleanTitleForTMDB(m?.item?.name);
+          const cleanOrigin = cleanTitleForTMDB(m?.item?.origin_name || m?.item?.original_name);
+          
+          const match = await fetchTMDB(cleanName, cleanOrigin, slug, m?.item?.year, m?.item?.country);
           if (match && match.id) {
             tmdbId = match.id;
             mediaType = match.media_type || mediaType;
@@ -377,7 +390,12 @@ function MovieDetailContent({ slug, movieData, navigate, user, onLogin, favorite
       <div className="h-screen flex flex-col justify-center items-center bg-[#050505] w-full px-4 text-center text-white">
         <Icon.AlertTriangle className="text-[#E50914] mb-4" size={48} />
         <h2 className="text-xl font-bold">Lỗi tải phim!</h2>
-        <button onClick={() => navigate({ type: "home" })} className="mt-6 bg-[#E50914] px-6 py-2.5 rounded-full font-bold uppercase text-xs">Về Trang Chủ</button>
+        <button 
+          onClick={() => navigate({ type: "home" })} 
+          className="mt-6 bg-[#E50914] px-6 py-2.5 rounded-full font-bold uppercase text-xs"
+        >
+          Về Trang Chủ
+        </button>
       </div>
     );
   }
@@ -406,13 +424,21 @@ function MovieDetailContent({ slug, movieData, navigate, user, onLogin, favorite
       {showSplash && <SplashScreen isFading={fadeSplash} />}
 
       <div className={`pb-20 bg-[#050505] relative w-full overflow-x-hidden transition-opacity duration-1000 ${showSplash ? "opacity-0 h-screen overflow-hidden" : "opacity-100"}`}>
+        
         {showTrailerModal && trailerKey && (
           <div className="fixed inset-0 z-[9999] bg-black/95 flex justify-center items-center p-4">
             <div className="w-full max-w-6xl aspect-video relative">
-              <button onClick={() => setShowTrailerModal(false)} className="absolute -top-12 right-0 text-white hover:text-[#E50914] transition-colors">
+              <button 
+                onClick={() => setShowTrailerModal(false)} 
+                className="absolute -top-12 right-0 text-white hover:text-[#E50914] transition-colors"
+              >
                 <Icon.X size={32} />
               </button>
-              <iframe className="w-full h-full" src={`https://www.youtube.com/embed/${trailerKey}?autoplay=1`} allowFullScreen></iframe>
+              <iframe 
+                className="w-full h-full" 
+                src={`https://www.youtube.com/embed/${trailerKey}?autoplay=1`} 
+                allowFullScreen
+              ></iframe>
             </div>
           </div>
         )}
@@ -436,7 +462,10 @@ function MovieDetailContent({ slug, movieData, navigate, user, onLogin, favorite
           <div className="absolute top-0 left-0 w-full h-[55vh] md:h-[80vh] z-10 bg-gradient-to-b from-transparent via-[#050505]/70 to-[#050505]"></div>
 
           <div className="relative z-20 w-full max-w-[1440px] px-4 md:px-12 pb-8 md:pb-12 flex flex-col md:flex-row gap-6 md:gap-10 items-center md:items-end mt-[15vh] md:mt-[30vh]">
-            <div className="relative aspect-[2/3] w-[150px] sm:w-[180px] md:w-[224px] shadow-2xl rounded-xl overflow-hidden border border-white/10 bg-black shrink-0">
+            <div 
+              className="relative w-[150px] sm:w-[180px] md:w-[224px] shadow-2xl rounded-xl overflow-hidden border border-white/10 bg-black shrink-0" 
+              style={{aspectRatio: "2/3"}}
+            >
               <img
                 src={renderImg}
                 onError={handleImageError}
@@ -451,8 +480,10 @@ function MovieDetailContent({ slug, movieData, navigate, user, onLogin, favorite
               </h1>
 
               <div className="flex flex-wrap justify-center md:justify-start gap-2 md:gap-4 mb-6 md:mb-8 text-gray-300 font-bold uppercase text-[10px] md:text-xs items-center">
-                <span className="text-[#E50914]">{i.year}</span><span className="hidden md:inline">|</span>
-                <span className="bg-[#E50914] px-2 py-0.5 rounded text-white">{i.quality}</span><span className="hidden md:inline">|</span>
+                <span className="text-[#E50914]">{i.year}</span>
+                <span className="hidden md:inline">|</span>
+                <span className="bg-[#E50914] px-2 py-0.5 rounded text-white">{i.quality}</span>
+                <span className="hidden md:inline">|</span>
                 <span>{i.episode_current}</span>
               </div>
 
@@ -536,7 +567,7 @@ function MovieDetailContent({ slug, movieData, navigate, user, onLogin, favorite
   );
 }
 
-// ĐÂY LÀ "TRÒ BẨN" CỨU TINH CỦA MÀY ĐÂY. BỌC LẠI BẰNG KEY ĐỂ NÓ RESET 100% MỖI LẦN CHUYỂN PHIM
+// BỌC LẠI BẰNG KEY ĐỂ NÓ RESET 100% MỖI LẦN CHUYỂN PHIM
 export default function MovieDetail(props) {
   return <MovieDetailContent key={props.slug} {...props} />;
 }

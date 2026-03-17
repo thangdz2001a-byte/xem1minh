@@ -32,7 +32,7 @@ const HeroBackdrop = memo(({ movie }) => {
   return (
     <img 
       src={posterSrc || "https://placehold.co/1920x1080/111/333?text=No+Backdrop"} 
-      className="w-full h-full object-cover blur-[60px] opacity-25 scale-110 transition-all duration-1000" 
+      className="w-full h-full object-cover blur-[30px] md:blur-[60px] opacity-40 md:opacity-25 scale-[1.15] md:scale-110 transition-all duration-1000" 
       alt="backdrop" 
     />
   );
@@ -212,7 +212,7 @@ export default function Hero({ navigate, onReady }) {
       
       <div className="absolute inset-0 z-0">
         <HeroBackdrop movie={currentMovie} />
-        <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/40 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/50 md:via-[#050505]/40 to-transparent" />
       </div>
 
       <div className="relative z-10 w-full flex flex-col items-center pt-12 md:pt-16">

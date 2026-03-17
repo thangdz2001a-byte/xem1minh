@@ -14,7 +14,8 @@ import {
 
 import Artplayer from "artplayer";
 import Hls from "hls.js";
-import CommentSection from "./CommentSection"; // ĐOẠN MỚI THÊM: Import file bình luận cùng thư mục
+import CommentSection from "./CommentSection";
+import useTmdbImage from "../../utils/useTmdbImage"; // ĐOẠN MỚI THÊM: Import cỗ máy săn ảnh
 
 const requestMemoryCache = new Map();
 
@@ -393,6 +394,9 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
   const [ep, setEp] = useState(null);
   const [serverList, setServerList] = useState([]);
 
+  // ĐOẠN MỚI THÊM: Gọi cỗ máy săn ảnh TMDB vào đây
+  const { posterSrc: tmdbPoster } = useTmdbImage(data);
+
   const [activeServerIdx, setActiveServerIdx] = useState(0);
   const [activeTabIdx, setActiveTabIdx] = useState(0);
 
@@ -545,7 +549,6 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
 
         let targetServerIdx = 0; let targetEp = extractedServers[0].server_data[0]; let targetTabIdx = 0; let rTime = 0;
         
-        // ĐÃ SỬA LỖI ĐỒNG BỘ LỊCH SỬ Ở ĐÂY: Sử dụng extractedServers thay vì cached.serverList
         if (savedProg?.episodeSlug) {
           let found = false;
           if (savedProg.serverSource) {
@@ -606,7 +609,8 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
           movieSlug={slug}
           movieName={data?.name}
           originName={data?.origin_name || data?.original_name}
-          thumbUrl={data?.thumb_url || data?.poster_url}
+          /* ĐOẠN MỚI SỬA: ÉP TRUYỀN ẢNH TMDB VÀO THUMB ĐỂ LƯU SUPABASE */
+          thumbUrl={tmdbPoster || data?.poster_url || data?.thumb_url}
           movieYear={data?.year}
           forceIframe={currentServer?.isIframe}
           serverSource={currentServer?.source}
@@ -631,7 +635,6 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
             <div className="flex items-center gap-2">
               <span className="text-[10px] md:text-xs text-gray-400 font-bold uppercase tracking-widest">Đang phát:</span>
               
-              {/* ĐÃ NÂNG CẤP NÚT CHỌN TẬP Ở ĐÂY: Thêm chữ Tập, Icon mũi tên và hiệu ứng Hover */}
               <button 
                 onClick={() => setShowEpModal(true)} 
                 className="group flex items-center gap-1.5 bg-[#E50914] text-white text-[11px] md:text-xs font-black px-3 py-1.5 md:px-4 md:py-2 rounded-md shadow-[0_2px_10px_rgba(229,9,20,0.3)] hover:bg-red-700 hover:scale-105 transition-all duration-200"
@@ -680,9 +683,7 @@ export default function Watch({ slug, movieData, navigate, user, onLogin, onProg
 )}
       </div>
 
-      {/* ĐOẠN MỚI THÊM: Bắt đầu phần Bình Luận */}
       <CommentSection slug={slug} user={user} onLogin={onLogin} />
-      {/* ĐOẠN MỚI THÊM: Kết thúc phần Bình Luận */}
 
       {showEpModal && (
         <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 transition-opacity duration-300" onClick={() => setShowEpModal(false)}>

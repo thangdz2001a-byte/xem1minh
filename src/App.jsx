@@ -7,14 +7,14 @@ import { Capacitor } from '@capacitor/core';
 
 import { supabase } from "./utils/supabaseClient"; 
 import {
-  API,
-  API_TMDB,
-  API_NGUONC_DETAIL,
-  globalDisplayedSlugs,
-  fetchWithCache,
-  getMoviePoster,
-  getImg,
-  matchTmdbToOphim
+  API,
+  API_TMDB,
+  API_NGUONC_DETAIL,
+  globalDisplayedSlugs,
+  fetchWithCache,
+  getMoviePoster,
+  getImg,
+  matchTmdbToOphim
 } from "./utils/helpers"; 
 
 import Header from "./components/layout/Header";
@@ -35,1192 +35,1368 @@ import AdminComments from "./pages/Admin/AdminComments";
 // COMPONENT SPLASH SCREEN
 // ==========================================
 const SplashScreen = ({ isFading }) => (
-  <div className={`fixed inset-0 z-[9999] bg-[#050505] flex flex-col items-center justify-center transition-all duration-700 ease-out ${isFading ? "opacity-0 scale-110 pointer-events-none" : "opacity-100 scale-100"}`}>
-    <div className="flex flex-col items-center">
-      <h1 className="text-5xl md:text-7xl font-black text-[#E50914] tracking-[0.3em] uppercase ml-[0.3em] drop-shadow-[0_0_25px_rgba(229,9,20,0.6)] animate-[pulseGlow_2s_ease-in-out_infinite]">
-        POLITE
-      </h1>
-      <div className="w-48 md:w-64 h-[3px] bg-white/10 mt-8 rounded-full overflow-hidden shadow-[0_0_10px_rgba(229,9,20,0.3)]">
-        <div className="w-full h-full bg-[#E50914] origin-left animate-[loadingBar_2s_cubic-bezier(0.4,0,0.2,1)_infinite_alternate]"></div>
-      </div>
-    </div>
-    <style>{`
-      @keyframes loadingBar {
-        0% { transform: scaleX(0); transform-origin: left; }
-        49% { transform: scaleX(1); transform-origin: left; }
-        50% { transform: scaleX(1); transform-origin: right; }
-        100% { transform: scaleX(0); transform-origin: right; }
-      }
-      @keyframes pulseGlow {
-        0%, 100% { filter: drop-shadow(0 0 15px rgba(229,9,20,0.4)); transform: scale(1); }
-        50% { filter: drop-shadow(0 0 35px rgba(229,9,20,0.8)); transform: scale(1.02); }
-      }
-    `}</style>
-  </div>
+  <div className={`fixed inset-0 z-[9999] bg-[#050505] flex flex-col items-center justify-center transition-all duration-700 ease-out ${isFading ? "opacity-0 scale-110 pointer-events-none" : "opacity-100 scale-100"}`}>
+    <div className="flex flex-col items-center">
+      <h1 className="text-5xl md:text-7xl font-black text-[#E50914] tracking-[0.3em] uppercase ml-[0.3em] drop-shadow-[0_0_25px_rgba(229,9,20,0.6)] animate-[pulseGlow_2s_ease-in-out_infinite]">
+        POLITE
+      </h1>
+      <div className="w-48 md:w-64 h-[3px] bg-white/10 mt-8 rounded-full overflow-hidden shadow-[0_0_10px_rgba(229,9,20,0.3)]">
+        <div className="w-full h-full bg-[#E50914] origin-left animate-[loadingBar_2s_cubic-bezier(0.4,0,0.2,1)_infinite_alternate]"></div>
+      </div>
+    </div>
+    <style>{`
+      @keyframes loadingBar {
+        0% { transform: scaleX(0); transform-origin: left; }
+        49% { transform: scaleX(1); transform-origin: left; }
+        50% { transform: scaleX(1); transform-origin: right; }
+        100% { transform: scaleX(0); transform-origin: right; }
+      }
+      @keyframes pulseGlow {
+        0%, 100% { filter: drop-shadow(0 0 15px rgba(229,9,20,0.4)); transform: scale(1); }
+        50% { filter: drop-shadow(0 0 35px rgba(229,9,20,0.8)); transform: scale(1.02); }
+      }
+    `}</style>
+  </div>
 );
 // ==========================================
 
 const getViewUrl = (view) => {
-  switch (view.type) {
-    case "home": return "/";
-    case "detail": return `/phim/${view.slug}`;
-    case "watch": return `/xem-phim/${view.slug}`;
-    case "watch-party-lobby": return "/xem-chung";
-    case "watch-room": return `/phong/${view.roomId}/${view.slug}`;
-    case "search": return `/tim-kiem?q=${encodeURIComponent(view.keyword || "")}`;
-    case "list": return `/danh-sach/${view.mode}/${view.slug}`;
-    case "history": return "/phim-da-xem";
-    case "favorites": return "/phim-yeu-thich";
-    case "admin-comments": return "/admin/comments"; // ĐOẠN CODE THÊM MỚI
-    default: return "/";
-  }
+  switch (view.type) {
+    case "home": return "/";
+    case "detail": return `/phim/${view.slug}`;
+    case "watch": return `/xem-phim/${view.slug}`;
+    case "watch-party-lobby": return "/xem-chung";
+    case "watch-room": return `/phong/${view.roomId}/${view.slug}`;
+    case "search": return `/tim-kiem?q=${encodeURIComponent(view.keyword || "")}`;
+    case "list": return `/danh-sach/${view.mode}/${view.slug}`;
+    case "history": return "/phim-da-xem";
+    case "favorites": return "/phim-yeu-thich";
+    case "admin-comments": return "/admin/comments"; // ĐOẠN CODE THÊM MỚI
+    case "terms": return "/dieu-khoan-su-dung"; 
+    case "dmca": return "/dmca"; 
+    case "privacy": return "/chinh-sach-bao-mat"; 
+    default: return "/";
+  }
 };
 
 const parseUrlToView = () => {
-  const path = window.location.pathname;
-  const searchParams = new URLSearchParams(window.location.search);
+  const path = window.location.pathname;
+  const searchParams = new URLSearchParams(window.location.search);
 
-  if (path === "/" || path === "") return { type: "home" };
-  if (path === "/phim-da-xem") return { type: "history" };
-  if (path === "/phim-yeu-thich") return { type: "favorites" };
-  if (path === "/admin/comments") return { type: "admin-comments" }; // ĐOẠN CODE THÊM MỚI
-  if (path.startsWith("/phim/")) return { type: "detail", slug: path.split("/")[2] };
-  if (path.startsWith("/xem-phim/")) return { type: "watch", slug: path.split("/")[2] };
-  if (path === "/xem-chung") return { type: "watch-party-lobby" };
-  if (path.startsWith("/phong/")) {
-    const parts = path.split("/");
-    return { type: "watch-room", roomId: parts[2], slug: parts[3] };
-  }
-  if (path.startsWith("/tim-kiem")) {
-    return { type: "search", keyword: searchParams.get("q") || "" };
-  }
-  if (path.startsWith("/danh-sach/")) {
-    const parts = path.split("/");
-    return { type: "list", mode: parts[2], slug: parts[3], title: "Danh sách phim" };
-  }
-  return { type: "home" };
+  if (path === "/" || path === "") return { type: "home" };
+  if (path === "/phim-da-xem") return { type: "history" };
+  if (path === "/phim-yeu-thich") return { type: "favorites" };
+  if (path === "/admin/comments") return { type: "admin-comments" }; // ĐOẠN CODE THÊM MỚI
+  if (path === "/dieu-khoan-su-dung") return { type: "terms" }; 
+  if (path === "/dmca") return { type: "dmca" }; 
+  if (path === "/chinh-sach-bao-mat") return { type: "privacy" }; 
+  if (path.startsWith("/phim/")) return { type: "detail", slug: path.split("/")[2] };
+  if (path.startsWith("/xem-phim/")) return { type: "watch", slug: path.split("/")[2] };
+  if (path === "/xem-chung") return { type: "watch-party-lobby" };
+  if (path.startsWith("/phong/")) {
+    const parts = path.split("/");
+    return { type: "watch-room", roomId: parts[2], slug: parts[3] };
+  }
+  if (path.startsWith("/tim-kiem")) {
+    return { type: "search", keyword: searchParams.get("q") || "" };
+  }
+  if (path.startsWith("/danh-sach/")) {
+    const parts = path.split("/");
+    return { type: "list", mode: parts[2], slug: parts[3], title: "Danh sách phim" };
+  }
+  return { type: "home" };
 };
 
 const TmdbMatcher = ({ slug, setView }) => {
-  const [statusText, setStatusText] = useState("Đang kiểm tra dữ liệu trên hệ thống OPhim...");
+  const [statusText, setStatusText] = useState("Đang kiểm tra dữ liệu trên hệ thống OPhim...");
 
-  useEffect(() => {
-    let isMounted = true;
-    const runMatch = async () => {
-      try {
-        const parts = slug.split('-');
-        const mediaType = parts[1];
-        const tmdbId = parts[2];
+  useEffect(() => {
+    let isMounted = true;
+    const runMatch = async () => {
+      try {
+        const parts = slug.split('-');
+        const mediaType = parts[1];
+        const tmdbId = parts[2];
 
-        const tmdbRes = await fetchWithCache(`${API_TMDB}/${mediaType}/${tmdbId}?language=vi`, 300000);
-        if (!tmdbRes) {
-          if (isMounted) {
-            alert("Lỗi khi kết nối đến TMDB.");
-          }
-          window.history.back();
-          return;
-        }
+        const tmdbRes = await fetchWithCache(`${API_TMDB}/${mediaType}/${tmdbId}?language=vi`, 300000);
+        if (!tmdbRes) {
+          if (isMounted) {
+            alert("Lỗi khi kết nối đến TMDB.");
+          }
+          window.history.back();
+          return;
+        }
 
-        const tmdbItem = { ...tmdbRes, media_type: mediaType };
-        const ophimMatch = await matchTmdbToOphim(tmdbItem);
+        const tmdbItem = { ...tmdbRes, media_type: mediaType };
+        const ophimMatch = await matchTmdbToOphim(tmdbItem);
 
-        if (ophimMatch) {
-          if (ophimMatch.slug) {
-            if (isMounted) {
-              const newView = { type: "detail", slug: ophimMatch.slug };
-              window.history.replaceState(newView, "", `/phim/${ophimMatch.slug}`);
-              setView(newView);
-            }
-          } else {
-            if (isMounted) {
-              alert("Phim này hiện chưa được cập nhật trên hệ thống để xem!");
-              window.history.back();
-            }
-          }
-        } else {
-          if (isMounted) {
-            alert("Phim này hiện chưa được cập nhật trên hệ thống để xem!");
-            window.history.back();
-          }
-        }
-      } catch (e) {
-        if (isMounted) {
-          alert("Có lỗi xảy ra khi kiểm tra dữ liệu.");
-          window.history.back();
-        }
-      }
-    };
-    runMatch();
-    return () => { isMounted = false; };
-  }, [slug, setView]);
+        if (ophimMatch) {
+          if (ophimMatch.slug) {
+            if (isMounted) {
+              const newView = { type: "detail", slug: ophimMatch.slug };
+              window.history.replaceState(newView, "", `/phim/${ophimMatch.slug}`);
+              setView(newView);
+            }
+          } else {
+            if (isMounted) {
+              alert("Phim này hiện chưa được cập nhật trên hệ thống để xem!");
+              window.history.back();
+            }
+          }
+        } else {
+          if (isMounted) {
+            alert("Phim này hiện chưa được cập nhật trên hệ thống để xem!");
+            window.history.back();
+          }
+        }
+      } catch (e) {
+        if (isMounted) {
+          alert("Có lỗi xảy ra khi kiểm tra dữ liệu.");
+          window.history.back();
+        }
+      }
+    };
+    runMatch();
+    return () => { isMounted = false; };
+  }, [slug, setView]);
 
-  return (
-    <div className="flex flex-col justify-center items-center h-[80vh] bg-[#050505]">
-      <Icon.Loader2 className="animate-spin text-[#E50914] mb-4" size={50} />
-      <p className="text-white text-lg font-bold">{statusText}</p>
-    </div>
-  );
+  return (
+    <div className="flex flex-col justify-center items-center h-[80vh] bg-[#050505]">
+      <Icon.Loader2 className="animate-spin text-[#E50914] mb-4" size={50} />
+      <p className="text-white text-lg font-bold">{statusText}</p>
+    </div>
+  );
 };
 
 export default function App() {
-  const [isAppReady, setIsAppReady] = useState(false);
-  
-  // STATE SPLASH SCREEN 
-  const [showSplash, setShowSplash] = useState(true);
-  const [fadeSplash, setFadeSplash] = useState(false);
-  const [readyCount, setReadyCount] = useState(0); 
-  const fadeLockRef = useRef(false);
-
-  // ==========================================
-  // STATE CHO POPUP CHÀO MỪNG LẦN ĐẦU TIÊN
-  // ==========================================
-  const [showWelcomePopup, setShowWelcomePopup] = useState(false);
-  const [dontShowWelcomeAgain, setDontShowWelcomeAgain] = useState(false);
-
-  useEffect(() => {
-    const hasSeenWelcome = localStorage.getItem("skip_welcome_popup");
-    // Nếu chưa đánh dấu skip và ĐÃ QUA Splash Screen thì chờ 1s rồi hiển thị Popup
-    if (!hasSeenWelcome && !showSplash) {
-      const timer = setTimeout(() => {
-        setShowWelcomePopup(true);
-      }, 1000); 
-      return () => clearTimeout(timer);
-    }
-  }, [showSplash]);
-
-  const handleCloseWelcomePopup = () => {
-    if (dontShowWelcomeAgain) {
-      localStorage.setItem("skip_welcome_popup", "true");
-    }
-    setShowWelcomePopup(false);
-  };
-  // ==========================================
-
- // ==========================================
-  // ĐOẠN CODE THÊM MỚI: Bắt URL Scheme trả về từ Safari/Trình duyệt (ĐÃ FIX SUPABASE)
-  // ==========================================
-  useEffect(() => {
-    const setupDeepLinks = async () => {
-      CapacitorApp.addListener('appUrlOpen', async (event) => {
-        const url = event.url;
-        
-        if (url.includes('politephim://login-callback')) {
-          
-          // Trích xuất Token nạp thẳng vào Supabase
-          // 1. Dành cho luồng Implicit Flow (trả về #access_token=)
-          if (url.includes('#access_token=')) {
-            const hashFragment = url.split('#')[1];
-            const params = new URLSearchParams(hashFragment);
-            const accessToken = params.get('access_token');
-            const refreshToken = params.get('refresh_token');
-
-            if (accessToken && refreshToken) {
-              await supabase.auth.setSession({
-                access_token: accessToken,
-                refresh_token: refreshToken
-              });
-            }
-          } 
-          // 2. Dành cho luồng PKCE Flow (trả về ?code=)
-          else if (url.includes('?code=')) {
-            const queryString = url.split('?')[1];
-            const params = new URLSearchParams(queryString);
-            const code = params.get('code');
-            
-            if (code) {
-              await supabase.auth.exchangeCodeForSession(code);
-            }
-          }
-        }
-      });
-    };
-
-    setupDeepLinks();
-
-    return () => {
-      CapacitorApp.removeAllListeners();
-    };
-  }, []);
-  // ==========================================
-
-  // STATE TRANSITION ANIMATION (Hiệu ứng dịu nhẹ)
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const transitionTimeoutRef = useRef(null);
-
-  const [view, setView] = useState(() => parseUrlToView());
-  const [movies, setMovies] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [cats, setCats] = useState([]);
-  const [countries, setCountries] = useState([]);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [progressData, setProgressData] = useState({});
-  const [user, setUser] = useState(null);
-  const [favorites, setFavorites] = useState({});
-  const [historyMovies, setHistoryMovies] = useState([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
-
-  const [hiddenContinueWatching, setHiddenContinueWatching] = useState(() => {
-    try {
-      const localHidden = localStorage.getItem("hidden_continue_watching");
-      if (localHidden) {
-        return JSON.parse(localHidden);
-      } else {
-        return [];
-      }
-    } catch (e) { 
-      return []; 
-    }
-  });
-
-  const normalizeUser = (sessionUser) => {
-    if (!sessionUser) {
-      return null;
-    }
-    
-    let userDisplayName = "";
-    if (sessionUser.user_metadata) {
-      if (sessionUser.user_metadata.full_name) {
-        userDisplayName = sessionUser.user_metadata.full_name;
-      } else if (sessionUser.user_metadata.name) {
-        userDisplayName = sessionUser.user_metadata.name;
-      } else if (sessionUser.email) {
-        userDisplayName = sessionUser.email.split('@')[0];
-      }
-    } else if (sessionUser.email) {
-      userDisplayName = sessionUser.email.split('@')[0];
-    }
-    
-    let photo = "";
-    if (sessionUser.user_metadata) {
-      if (sessionUser.user_metadata.avatar_url) {
-        photo = sessionUser.user_metadata.avatar_url;
-      } else if (sessionUser.user_metadata.picture) {
-        photo = sessionUser.user_metadata.picture;
-      }
-    }
-
-    return {
-      uid: sessionUser.id,
-      email: sessionUser.email,
-      displayName: userDisplayName,
-      photoURL: photo
-    };
-  };
-
-  const handleProgressSaved = (slug, newProgressObj) => {
-    setProgressData(prev => {
-      const updated = { ...prev };
-      if (newProgressObj) {
-        if (newProgressObj.currentTime > 0) {
-          updated[slug] = { ...updated[slug], ...newProgressObj, timestamp: Date.now() };
-        }
-      }
-      return updated;
-    });
-  };
-
-  const loadAndSyncProgress = async (currentUser) => {
-    let lastUid = null;
-    try { 
-      lastUid = localStorage.getItem("last_uid"); 
-    } catch (e) {}
-
-    if (currentUser) {
-      if (lastUid) {
-        if (lastUid !== currentUser.uid) {
-          try { localStorage.removeItem("hidden_continue_watching"); } catch (e) {}
-          setHiddenContinueWatching([]);
-        }
-      }
-      try { localStorage.setItem("last_uid", currentUser.uid); } catch (e) {}
-    } else {
-      if (lastUid) {
-        try {
-          localStorage.removeItem("hidden_continue_watching");
-          localStorage.removeItem("last_uid");
-        } catch (e) {}
-        setHiddenContinueWatching([]);
-      }
-      setProgressData({});
-      setFavorites({});
-      return;
-    }
-
-    try {
-      const { data: favData } = await supabase
-        .from('favorites')
-        .select('*')
-        .eq('user_id', currentUser.uid);
-        
-      const formattedFavs = {};
-      if (favData) {
-        favData.forEach(item => {
-          formattedFavs[item.movie_slug] = {
-            name: item.movie_name,
-            thumb_url: item.thumb_url,
-            year: item.year
-          };
-        });
-      }
-      setFavorites(formattedFavs);
-    } catch (e) { 
-      setFavorites({}); 
-    }
-
-    try {
-      const { data: historyData } = await supabase
-        .from('watch_history')
-        .select('*')
-        .eq('user_id', currentUser.uid)
-        .order('updated_at', { ascending: true });
-
-      const formattedProgress = {};
-      const dbHiddenSlugs = [];
-
-      if (historyData) {
-        historyData.forEach(item => {
-          formattedProgress[item.movie_slug] = {
-            episodeSlug: item.episode_slug, 
-            episode_name: item.episode_name, 
-            currentTime: item.current_time, 
-            percentage: item.percentage,
-            name: item.movie_name, 
-            origin_name: item.origin_name, 
-            thumb: item.thumb_url, 
-            year: item.year,
-            serverSource: item.server_source, 
-            serverRawName: item.server_raw_name, 
-            timestamp: new Date(item.updated_at).getTime()
-          };
-
-          if (item.is_hidden === true) {
-            dbHiddenSlugs.push(item.movie_slug);
-          }
-        });
-      }
-      setProgressData(formattedProgress);
-      
-      setHiddenContinueWatching(dbHiddenSlugs);
-      try { localStorage.setItem("hidden_continue_watching", JSON.stringify(dbHiddenSlugs)); } catch (e) {}
-
-    } catch (e) { 
-      setProgressData({}); 
-    }
-    
-    try { localStorage.removeItem("movieProgress"); } catch {}
-  };
-
-  useEffect(() => {
-    let isMounted = true;
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (isMounted) {
-        let currentUser = null;
-        if (session) {
-          if (session.user) {
-            currentUser = normalizeUser(session.user);
-          }
-        }
-        setUser(currentUser); 
-        setIsAppReady(true); 
-        loadAndSyncProgress(currentUser); 
-      }
-    }).catch(() => {
-      if (isMounted) {
-        setIsAppReady(true);
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!isMounted) {
-        return;
-      }
-      if (event === 'INITIAL_SESSION') {
-        return;
-      }
-      
-      let currentUser = null;
-      if (session) {
-        if (session.user) {
-          currentUser = normalizeUser(session.user);
-        }
-      }
-      setUser(currentUser); 
-      loadAndSyncProgress(currentUser);
-    });
-
-    return () => { 
-      isMounted = false; 
-      if (subscription) {
-        subscription.unsubscribe(); 
-      }
-    };
-  }, []);
-  // 2. ĐOẠN CODE ĐỒNG BỘ TÊN (Độc lập 100%, an toàn tuyệt đối)
-  useEffect(() => {
-    let isMounted = true;
-
-    const fetchCustomName = async () => {
-      // Chỉ chạy khi có user và chưa tải tên custom
-      if (user && user.uid && !user.customNameLoaded) {
-        try {
-          const { data } = await supabase
-            .from('profiles')
-            .select('display_name')
-            .eq('user_id', user.uid)
-            .maybeSingle();
-
-          if (isMounted && data && data.display_name && data.display_name !== user.displayName) {
-            setUser(prev => ({
-              ...prev,
-              displayName: data.display_name,
-              customNameLoaded: true // Đánh dấu đã tải xong để không gọi DB liên tục
-            }));
-          } else if (isMounted) {
-            setUser(prev => ({ ...prev, customNameLoaded: true }));
-          }
-        } catch (error) {
-          console.error("Lỗi lấy tên từ DB:", error);
-        }
-      }
-    };
-
-    fetchCustomName();
-
-    return () => { isMounted = false; };
-  }, [user?.uid]); // Chỉ kích hoạt khi cái UID thay đổi (Lúc đăng nhập hoặc đăng xuất)
-
-  const handleComponentReady = useCallback(() => {
-    setReadyCount(prev => prev + 1);
-  }, []);
-
-  useEffect(() => {
-    if (!isAppReady) { return; }
-    if (!showSplash) { return; }
-
-    const hideSplashSequence = () => {
-      if (fadeLockRef.current) { return; }
-      fadeLockRef.current = true; 
-      setFadeSplash(true); 
-      setTimeout(() => {
-        setShowSplash(false);
-      }, 700);
-    };
-
-    if (view.type !== "home") {
-      hideSplashSequence();
-    } else {
-      if (readyCount >= 10) {
-        hideSplashSequence();
-      }
-    }
-
-    const fallbackTimer = setTimeout(() => {
-      hideSplashSequence();
-    }, 8000); 
-
-    return () => clearTimeout(fallbackTimer);
-  }, [isAppReady, readyCount, view.type, showSplash]);
-
-  const handleLogin = async () => {
-    try { 
-      // Dùng Capacitor để check xem đang chạy native (iOS/Android) hay Web
-      const isNative = Capacitor.isNativePlatform();
-      
-      // Nếu là App thì xòe rổ politephim://, nếu là Web thì xòe rổ localhost/domain web
-      const redirectUrl = isNative ? 'politephim://login-callback' : window.location.origin;
-
-      await supabase.auth.signInWithOAuth({ 
-        provider: 'google', 
-        options: { 
-          redirectTo: redirectUrl 
-        } 
-      }); 
-    } 
-    catch (e) { alert("Lỗi đăng nhập Google: " + e.message); }
-  };
-
-  const handleLogout = async () => {
-    try { await supabase.auth.signOut(); } catch {}
-    setUser(null); 
-    setProgressData({}); 
-    setFavorites({}); 
-    setHiddenContinueWatching([]);
-    try { 
-      localStorage.removeItem("movieProgress"); 
-      localStorage.removeItem("last_uid"); 
-      localStorage.removeItem("hidden_continue_watching"); 
-    } catch {}
-  };
-
-  const handleUpdateName = async (newName) => {
-    if (!user) { return; }
-    
-    // Đổi tên trên UI ngay lập tức để người dùng thấy luôn
-    setUser((prev) => ({ ...prev, displayName: newName, customNameLoaded: true }));
-
-    try {
-      // Lưu xuống Database ngầm phía sau
-      const { error } = await supabase
-        .from('profiles')
-        .upsert({ user_id: user.uid, display_name: newName }, { onConflict: 'user_id' });
-        
-      if (error) throw error;
-      
-      // Cập nhật Auth (có catch riêng để tránh chết app nếu bị Supabase rate limit)
-      await supabase.auth.updateUser({ data: { full_name: newName } }).catch(() => {});
-      
-    } catch (error) { 
-      console.error("Lỗi khi cập nhật tên:", error);
-    }
-  };
-
-  const syncToFirebase = async (newData, field) => {
-    if (!user || !user.uid) { return; }
-    
-    if (field === 'favorites') { 
-      try { 
-        const slugs = Object.keys(newData);
-        const lastSlug = slugs[slugs.length - 1];
-        const movie = newData[lastSlug];
-
-        if (movie && lastSlug) {
-          await supabase.from('favorites').upsert({ 
-            user_id: user.uid, 
-            movie_slug: lastSlug,
-            movie_name: movie.name,
-            thumb_url: movie.thumb_url,
-            year: movie.year
-          }, { onConflict: 'user_id,movie_slug' }); 
-        }
-      } catch (e) {
-        console.error("Lỗi đồng bộ yêu thích:", e);
-      } 
-    }
-  };
-
-  const hideContinueWatching = async (slug) => {
-    if (!slug) { return; }
-    
-    setHiddenContinueWatching((prev) => {
-      if (prev.includes(slug)) {
-        return prev;
-      } else {
-        const updated = [...prev, slug];
-        try { localStorage.setItem("hidden_continue_watching", JSON.stringify(updated)); } catch (e) {}
-        return updated;
-      }
-    });
-
-    if (user && user.uid) {
-      try {
-        await supabase
-          .from('watch_history') 
-          .update({ is_hidden: true })
-          .match({ user_id: user.uid, movie_slug: slug });
-      } catch (error) {
-        console.error("Lỗi khi update is_hidden lên DB:", error);
-      }
-    }
-  };
-
-  const removeProgressPermanently = async (slug) => {
-    if (!slug) { return; }
-    const backupProgressData = { ...progressData };
-    const backupHistoryMovies = [...historyMovies];
-    
-    setProgressData((prev) => { 
-      const updated = { ...prev }; 
-      delete updated[slug]; 
-      return updated; 
-    });
-    setHistoryMovies((prev) => {
-      let updated = [];
-      for (let i = 0; i < prev.length; i++) {
-        if (prev[i].slug !== slug) {
-          updated.push(prev[i]);
-        }
-      }
-      return updated;
-    });
-    
-    if (user) {
-      if (user.uid) { 
-        try { 
-          await supabase.from('watch_history').delete().match({ user_id: user.uid, movie_slug: slug }); 
-        } catch (e) { 
-          setProgressData(backupProgressData); 
-          setHistoryMovies(backupHistoryMovies); 
-        } 
-      }
-    }
-  };
-
-  const removeFavorite = async (slug) => {
-    if (!slug) { return; }
-    
-    setFavorites((prev) => { 
-      const updated = { ...prev }; 
-      delete updated[slug]; 
-      return updated; 
-    });
-    
-    if (user && user.uid) {
-      try { 
-        await supabase.from('favorites')
-        .delete()
-        .match({ user_id: user.uid, movie_slug: slug }); 
-      } catch (e) {
-        console.error("Lỗi xóa yêu thích:", e);
-      }
-    }
-  };
-
-  // ==========================================
-  // HÀM NAVIGATE VỚI HIỆU ỨNG NHẸ NHÀNG, CHẬM RÃI
-  // ==========================================
-  const navigate = useCallback((newView) => {
-    if (isTransitioning) return;
-    
-    const newUrl = getViewUrl(newView);
-    if (window.location.pathname + window.location.search === newUrl) return;
-
-    if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
-
-    // Kích hoạt làm mờ (opacity 0)
-    setIsTransitioning(true);
-
-    // Chờ 400ms để màn hình mờ hẳn đi, sau đó đổi dữ liệu
-    transitionTimeoutRef.current = setTimeout(() => {
-      window.history.pushState(newView, "", newUrl); 
-      setView(newView); 
-      window.scrollTo(0, 0);
-
-      // Cho trang hiện rõ lại từ từ
-      setTimeout(() => {
-        setIsTransitioning(false);
-      }, 50); 
-    }, 400); 
-  }, [isTransitioning]);
-
-  useEffect(() => {
-    if (view.type === "home") { 
-      globalDisplayedSlugs.clear(); 
-      document.title = "POLITE - Trang Chủ"; 
-    } else {
-      if (view.type === "search") {
-        document.title = `Tìm kiếm: ${view.keyword} - POLITE`;
-      } else if (view.type === "list") {
-        let pageTitle = "Danh sách";
-        if (view.title) {
-          pageTitle = view.title;
-        }
-        document.title = `${pageTitle} - POLITE`;
-      } else if (view.type === "watch-party-lobby") {
-        document.title = "Sảnh Xem Chung - POLITE";
-      } else if (view.type === "history") {
-        document.title = "Phim Đã Xem - POLITE";
-      } else if (view.type === "favorites") {
-        document.title = "Phim Yêu Thích - POLITE";
-      } else if (view.type === "admin-comments") { // ĐOẠN CODE THÊM MỚI
-        document.title = "Duyệt Bình Luận - POLITE"; 
-      }
-    }
-  }, [view.type, view.keyword, view.title, user?.uid]); 
-
-  useEffect(() => {
-    if (view.type === "watch" || view.type === "detail" || view.type === "watch-room") {
-      const currentSlug = view.slug;
-      if (currentSlug) {
-        setHiddenContinueWatching((prev) => {
-          if (prev.includes(currentSlug)) {
-            let updated = [];
-            for(let i = 0; i < prev.length; i++) {
-              if (prev[i] !== currentSlug) {
-                updated.push(prev[i]);
-              }
-            }
-            try { localStorage.setItem("hidden_continue_watching", JSON.stringify(updated)); } catch (e) {}
-            
-            if (user && user.uid) {
-              supabase
-                .from('watch_history')
-                .update({ is_hidden: false })
-                .match({ user_id: user.uid, movie_slug: currentSlug })
-                .then(); 
-            }
-
-            return updated;
-          } else {
-            return prev;
-          }
-        });
-      }
-    }
-  }, [view.type, view.slug, user]);
-
-  // XỬ LÝ NÚT BACK/FORWARD CỦA TRÌNH DUYỆT (Nhẹ nhàng)
-  useEffect(() => {
-    const handlePopState = (event) => {
-      if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
-      setIsTransitioning(true);
-
-      transitionTimeoutRef.current = setTimeout(() => {
-        if (event.state) {
-          setView(event.state); 
-        } else {
-          setView(parseUrlToView());
-        }
-        
-        if (user && user.uid) {
-          loadAndSyncProgress(user);
-        }
-
-        setTimeout(() => {
-          setIsTransitioning(false);
-        }, 50);
-      }, 400); // 400ms chờ mờ dần
-    };
-    
-    window.addEventListener("popstate", handlePopState);
-    
-    const hash = window.location.hash; 
-    const search = window.location.search;
-    let isAuthRedirect = false;
-    
-    if (hash.includes("access_token")) {
-      isAuthRedirect = true;
-    } else if (search.includes("code=")) {
-      isAuthRedirect = true;
-    }
-    
-    if (!isAuthRedirect) {
-      window.history.replaceState(view, "", getViewUrl(view));
-    }
-
-    Promise.all([
-      fetchWithCache(`${API}/the-loai`, 86400000), 
-      fetchWithCache(`${API}/quoc-gia`, 86400000)
-    ]).then(([catsRes, countriesRes]) => {
-      let items = [];
-      if (catsRes && catsRes.data && catsRes.data.items) {
-        items = catsRes.data.items;
-      }
-      
-      let filteredItems = [];
-      for (let i = 0; i < items.length; i++) {
-        if (items[i].slug !== "hoat-hinh") {
-          filteredItems.push(items[i]);
-        }
-      }
-      filteredItems.unshift({ name: "Hoạt Hình", slug: "hoat-hinh" });
-      setCats(filteredItems); 
-      
-      if (countriesRes && countriesRes.data && countriesRes.data.items) {
-        setCountries(countriesRes.data.items);
-      } else {
-        setCountries([]);
-      }
-    }).catch(() => {});
-
-    return () => { window.removeEventListener("popstate", handlePopState); };
-  }, [user]);
-
-  const historySlugsForPage = Object.keys(progressData)
-    .sort((a, b) => {
-      let timeA = progressData[a].timestamp || 0;
-      let timeB = progressData[b].timestamp || 0;
-      return timeB - timeA;
-    })
-    .join(",");
-
-  useEffect(() => {
-    if (view.type !== "history") return;
-    
-    const fetchHistoryMovies = async () => {
-      setHistoryLoading(true);
-      const slugs = historySlugsForPage.split(",").filter(Boolean);
-
-      const fetchedMovies = await Promise.all(slugs.map(async (slug) => {
-        try {
-          const prog = progressData[slug];
-          if (prog) {
-            let originName = prog.origin_name || prog.original_name || "";
-            return { 
-              slug: slug, 
-              name: prog.name, 
-              origin_name: originName, 
-              year: prog.year, 
-              thumb_url: getImg(prog.thumb), 
-              poster_url: getImg(prog.thumb) 
-            };
-          }
-          return null;
-        } catch (e) { 
-          return null; 
-        }
-      }));
-
-      setHistoryMovies(fetchedMovies.filter(Boolean));
-      setHistoryLoading(false);
-    };
-    
-    fetchHistoryMovies();
-  }, [view.type, historySlugsForPage, progressData]);
-
-  const fetchData = async (pageNum, isNewView = false) => {
-    let currentMode = view.mode || "";
-    let currentSlug = view.slug || "";
-    let currentKeyword = view.keyword || "";
-
-    const cacheKey = `polite_list_${view.type}_${currentMode}_${currentSlug}_${currentKeyword}_page_${pageNum}`;
-    const CACHE_TTL = 3600000;
-
-    if (isNewView) { 
-      setLoading(true); 
-      setMovies([]); 
-    } else { 
-      setLoadingMore(true); 
-    }
-
-    if (view.type === "actor" || view.type === "history" || view.type === "favorites") { 
-      setLoading(false); 
-      setLoadingMore(false); 
-      return; 
-    }
-
-    try {
-      const cachedStr = localStorage.getItem(cacheKey);
-      if (cachedStr) {
-        const parsed = JSON.parse(cachedStr);
-        if (Date.now() - parsed.timestamp < CACHE_TTL) {
-          setMovies((prev) => {
-            let combined = isNewView ? parsed.data : [...prev, ...parsed.data];
-            let mapObj = new Map();
-            for (let i = 0; i < combined.length; i++) {
-              mapObj.set(combined[i].slug, combined[i]);
-            }
-            return Array.from(mapObj.values());
-          });
-          
-          setHasMore(parsed.data.length > 0);
-          setLoading(false); 
-          setLoadingMore(false); 
-          return;
-        }
-      }
-    } catch (e) {}
-
-    let fetches = []; 
-    let isFetchingFromTmdb = false;
-
-    if (view.type === "search") {
-      let qStr = view.keyword || "";
-      const q = encodeURIComponent(String(qStr).trim()); 
-      fetches = [`${API}/tim-kiem?keyword=${q}&page=${pageNum}`];
-    } else if (view.type === "list") {
-      if (view.mode === "the-loai") {
-        const lang = `&language=vi&sort_by=popularity.desc&page=${pageNum}`; 
-        let mGenres = "", tGenres = "", extra = "";
-        
-        switch (view.slug) {
-          case "hanh-dong": mGenres = "28"; tGenres = "10759"; break;
-          case "tinh-cam": mGenres = "10749"; tGenres = "10768"; break;
-          case "kinh-di": mGenres = "27"; tGenres = "9648"; break;
-          case "hai-huoc": mGenres = "35"; tGenres = "35"; break;
-          case "hoat-hinh": mGenres = "16"; tGenres = "16"; break;
-          case "anime": mGenres = "16"; tGenres = "16"; extra = "&with_original_language=ja"; break;
-          case "vien-tuong": mGenres = "878"; tGenres = "10765"; break;
-          case "hinh-su": mGenres = "80"; tGenres = "80"; break;
-          case "co-trang": mGenres = "36"; tGenres = "10768"; extra = "&with_origin_country=CN|KR|JP"; break;
-          case "chien-tranh": mGenres = "10752"; tGenres = "10768"; break;
-          case "tam-ly": mGenres = "18"; tGenres = "18"; break;
-          case "tai-lieu": mGenres = "99"; tGenres = "99"; break;
-          case "phieu-luu": mGenres = "12"; tGenres = "10759"; break;
-          case "gia-dinh": mGenres = "10751"; tGenres = "10751"; break;
-          case "bi-an": mGenres = "9648"; tGenres = "9648"; break;
-          case "am-nhac": mGenres = "1044"; break;
-          case "vo-thuat": mGenres = "28"; extra = "&with_keywords=779"; break; 
-          case "phim-han": 
-            isFetchingFromTmdb = true; 
-            fetches = [ 
-              `${API_TMDB}/discover/movie?with_origin_country=KR${lang}`, 
-              `${API_TMDB}/discover/tv?with_origin_country=KR&without_genres=10764,10767,10763${lang}` 
-            ]; 
-            break;
-          default: break;
-        }
-        
-        if (fetches.length === 0) {
-          if (mGenres || tGenres) {
-            isFetchingFromTmdb = true;
-            if (mGenres) { fetches.push(`${API_TMDB}/discover/movie?with_genres=${mGenres}${extra}${lang}`); }
-            if (tGenres) { fetches.push(`${API_TMDB}/discover/tv?with_genres=${tGenres}${extra}${lang}`); }
-          } else { 
-            fetches = [`${API}/${view.mode}/${view.slug}?page=${pageNum}`]; 
-          }
-        }
-      } else {
-        if (view.slug === "phim-moi-cap-nhat") { 
-          fetches = [`${API}/danh-sach/phim-moi-cap-nhat?page=${pageNum}`]; 
-        } else { 
-          fetches = [`${API}/${view.mode}/${view.slug}?page=${pageNum}`]; 
-        }
-      }
-    } else { 
-      fetches = [`${API}/danh-sach/phim-moi-cap-nhat?page=${pageNum}`]; 
-    }
-
-    try {
-      const results = await Promise.allSettled(fetches.map((url) => fetchWithCache(url, 300000)));
-      let newItems = [];
-      
-      if (isFetchingFromTmdb) {
-        let tmdbItems = [];
-        results.forEach((res, idx) => {
-          if (res.status === "fulfilled" && res.value && res.value.results) {
-            const isTv = fetches[idx].includes('/discover/tv');
-            const items = res.value.results.map(item => {
-              let mType = item.media_type || (isTv ? "tv" : "movie");
-              return { ...item, media_type: mType };
-            });
-            tmdbItems = [...tmdbItems, ...items];
-          }
-        });
-        
-        tmdbItems.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-        
-        const matchPromises = tmdbItems.map(async (tItem) => {
-          const ophimMatch = await matchTmdbToOphim(tItem);
-          if (ophimMatch && ophimMatch.slug) {
-            let movieName = tItem.title || tItem.name || ophimMatch.name;
-            let originName = tItem.original_title || tItem.original_name || ophimMatch.origin_name;
-            let releaseYear = "";
-            if (tItem.release_date) releaseYear = tItem.release_date.split("-")[0];
-            else if (tItem.first_air_date) releaseYear = tItem.first_air_date.split("-")[0];
-
-            return { 
-              ...ophimMatch, 
-              slug: ophimMatch.slug, 
-              name: movieName, 
-              origin_name: originName, 
-              poster_path: tItem.poster_path, 
-              year: releaseYear, 
-              tmdb: { ...tItem, poster_path: tItem.poster_path } 
-            };
-          } 
-          return null; 
-        });
-        
-        const resolvedMatches = await Promise.all(matchPromises);
-        newItems = resolvedMatches.filter(Boolean);
-      } else {
-        results.forEach((res) => {
-          if (res.status === "fulfilled") { 
-            let items = res.value?.items || res.value?.data?.items;
-            if (Array.isArray(items)) { 
-              newItems = [...newItems, ...items]; 
-            } 
-          }
-        });
-      }
-      
-      try { localStorage.setItem(cacheKey, JSON.stringify({ timestamp: Date.now(), data: newItems })); } catch (e) {}
-      
-      setMovies((prev) => { 
-        let combined = isNewView ? newItems : [...prev, ...newItems];
-        let mapObj = new Map();
-        for (let i = 0; i < combined.length; i++) {
-          mapObj.set(combined[i].slug, combined[i]);
-        }
-        return Array.from(mapObj.values()); 
-      });
-      
-      setHasMore(newItems.length > 0);
-      
-    } catch { 
-      if (isNewView) setMovies([]); 
-      setHasMore(false); 
-    } finally { 
-      setLoading(false); 
-      setLoadingMore(false); 
-    }
-  };
-
-  useEffect(() => {
-    // ĐOẠN CODE SỬA NHẸ: Thêm "admin-comments" vào danh sách không tự động fetch phim
-    const skipTypes = ["home", "detail", "watch", "watch-party-lobby", "watch-room", "history", "favorites", "admin-comments"];
-    if (!skipTypes.includes(view.type)) {
-      setPage(1); 
-      fetchData(1, true);
-    }
-  }, [view.type, view.mode, view.slug, view.keyword]);
-
-  const loadNextPage = () => { 
-    if (!loadingMore && hasMore) { 
-      setPage((prev) => { 
-        const next = prev + 1; 
-        fetchData(next, false); 
-        return next; 
-      }); 
-    }
-  };
-
-  return (
-    <>
-      {showSplash && <SplashScreen isFading={fadeSplash} />}
-
-      <div className={`bg-[#050505] min-h-screen text-white font-sans antialiased selection:bg-[#E50914] selection:text-white pb-16 md:pb-10 overflow-x-hidden ${showSplash ? "opacity-0 h-screen overflow-hidden" : ""}`}>
-        <Header navigate={navigate} categories={cats} countries={countries} user={user} onLogin={handleLogin} onLogout={handleLogout} onUpdateName={handleUpdateName} />
-
-        {/* ============================================== */}
-        {/* WRAPPER CHỨA HIỆU ỨNG TỪ TỪ, NHẸ NHÀNG DỊU MẮT */}
-        {/* ============================================== */}
-        <div 
-          className={`transition-opacity duration-500 ease-in-out ${isTransitioning ? "opacity-0" : "opacity-100"}`}
-        >
-          {view.type === "home" ? (
-            <div className="flex flex-col">
-              <Hero navigate={navigate} onReady={handleComponentReady} />
-              <div className="max-w-[1400px] mx-auto w-full px-4 md:px-12 relative z-20 pb-20 pt-8 md:pt-12">
-                
-                <ContinueWatching navigate={navigate} progressData={progressData} hiddenSlugs={hiddenContinueWatching} onRemove={hideContinueWatching} isLoggedIn={!!user} />
-                
-                {[
-                  { title: "Phim Mới Cập Nhật", slug: "phim-moi-cap-nhat", type: "danh-sach" },
-                  { title: "Phim Hàn", slug: "phim-han", type: "the-loai" },
-                  { title: "Anime", slug: "anime", type: "the-loai" },
-                  { title: "Phim bộ", slug: "phim-bo", type: "danh-sach" },
-                  { title: "Phim lẻ", slug: "phim-le", type: "danh-sach" },
-                  { title: "Hành động", slug: "hanh-dong", type: "the-loai" },
-                  { title: "Tình cảm", slug: "tinh-cam", type: "the-loai" },
-                  { title: "Kinh dị", slug: "kinh-di", type: "the-loai" },
-                  { title: "Viễn tưởng", slug: "vien-tuong", type: "the-loai" }
-                ].map((section, index) => (
-                  <MovieSection 
-                    key={`${section.slug}-${index}`} 
-                    title={section.title} 
-                    slug={section.slug} 
-                    type={section.type} 
-                    navigate={navigate} 
-                    progressData={progressData} 
-                    onReady={handleComponentReady} 
-                  />
-                ))}
-              </div>
-            </div>
-          ) : view.type === "detail" ? (
-            view.slug?.startsWith("tmdb-") ? <TmdbMatcher slug={view.slug} setView={setView} /> : <MovieDetail slug={view.slug} movieData={view.movieData} navigate={navigate} user={user} onLogin={handleLogin} favorites={favorites} setFavorites={setFavorites} syncToFirebase={syncToFirebase} />
-          ) : view.type === "watch" ? (<Watch slug={view.slug} movieData={view.movieData} navigate={navigate} user={user} onLogin={handleLogin} onProgressSaved={handleProgressSaved} progressData={progressData} autoFullscreen={view.autoFullscreen} />
-            
-          ) : view.type === "watch-party-lobby" ? (
-            <WatchPartyLobby navigate={navigate} user={user} onLogin={handleLogin} />
-          ) : view.type === "watch-room" ? (
-            <WatchPartyRoom roomId={view.roomId} slug={view.slug} navigate={navigate} user={user} />
-          ) : view.type === "history" ? (
-            <MovieGrid title="Phim Đã Xem" movies={historyMovies} loading={historyLoading} navigate={navigate} hasMore={false} onRemove={removeProgressPermanently} progressData={progressData} />
-          ) : view.type === "favorites" ? (
-            <MovieGrid title="Phim Yêu Thích" movies={Object.keys(favorites).map((slug) => { const fav = favorites[slug]; const finalPosterUrl = getMoviePoster(fav, {}, getImg); return { slug, name: fav.name, origin_name: fav.origin_name || fav.original_name || "", thumb_url: finalPosterUrl, poster_url: finalPosterUrl, year: fav.year }; }).reverse()} loading={false} navigate={navigate} hasMore={false} onRemove={removeFavorite} />
-          ) : view.type === "admin-comments" ? (
-            <AdminComments user={user} navigate={navigate} /> // ĐOẠN CODE THÊM MỚI
-          ) : (
-            <MovieGrid title={view.type === "search" ? `Tìm kiếm: ${view.keyword}` : view.title} movies={movies} loading={loading} navigate={navigate} onLoadMore={loadNextPage} hasMore={hasMore} loadingMore={loadingMore} />
-          )}
-        </div>
-        {/* ============================================== */}
-        
-        <BottomNav navigate={navigate} setView={setView} categories={cats} countries={countries} currentView={view.type} />
-      </div>
-
-      {/* ============================================== */}
-      {/* POPUP CHÀO MỪNG LẦN ĐẦU TIÊN (Chỉ hiện khi chưa đăng nhập) */}
-      {/* ============================================== */}
-      {showWelcomePopup && !user && (
-        <div className="fixed inset-0 z-[99999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-300">
-          <div className="bg-[#111] border border-white/10 rounded-2xl p-6 md:p-8 max-w-md w-full shadow-2xl relative overflow-hidden">
-            
-            {/* Hiệu ứng mờ đỏ góc trên cùng */}
-            <div className="absolute top-0 right-0 w-32 h-32 bg-[#E50914] rounded-full mix-blend-screen filter blur-[70px] opacity-30 pointer-events-none"></div>
-
-            <div className="flex flex-col items-center mb-6 text-center">
-              <div className="w-16 h-16 bg-[#E50914]/10 rounded-full flex items-center justify-center mb-4 border border-[#E50914]/20">
-                <Icon.Clapperboard size={32} className="text-[#E50914]" />
-              </div>
-              <h3 className="text-2xl md:text-3xl font-black text-white uppercase tracking-wider mb-2">
-                Chào Mừng Bạn Đến <span className="text-[#E50914]">POLITE</span>
-              </h3>
-              <p className="text-gray-400 text-sm md:text-base">
-                Đăng nhập ngay hôm nay để mở khóa trải nghiệm điện ảnh trọn vẹn nhất.
-              </p>
-            </div>
-
-            <div className="space-y-4 mb-8">
-              <div className="flex items-start gap-4 p-3 bg-white/5 rounded-xl border border-white/5">
-                <Icon.History className="text-[#E50914] shrink-0 mt-0.5" size={20} />
-                <div>
-                  <h4 className="text-white font-bold text-sm">Lưu Tiến Trình & Đồng Bộ</h4>
-                  <p className="text-xs text-gray-400 mt-1">Dữ liệu cá nhân hóa của bạn luôn được đồng bộ thời gian thực. Bất kể bạn dùng thiết bị hay trình duyệt nào, phim bạn xem vẫn luôn ở đúng khung hình.</p>
-                </div>
-              </div>
-              
-              <div className="flex items-start gap-4 p-3 bg-white/5 rounded-xl border border-white/5">
-                <Icon.Heart className="text-[#E50914] shrink-0 mt-0.5" size={20} />
-                <div>
-                  <h4 className="text-white font-bold text-sm">Bộ Sưu Tập Yêu Thích</h4>
-                  <p className="text-xs text-gray-400 mt-1">Tạo riêng cho mình danh sách những bộ phim tâm đắc nhất.</p>
-                </div>
-              </div>
-              
-              <div className="flex items-start gap-4 p-3 bg-white/5 rounded-xl border border-white/5">
-                <Icon.Users className="text-[#E50914] shrink-0 mt-0.5" size={20} />
-                <div>
-                  <h4 className="text-white font-bold text-sm">Phòng Xem Chung</h4>
-                  <p className="text-xs text-gray-400 mt-1">Tạo phòng xem phim và chat trực tiếp cùng bạn bè.</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Checkbox Không hiện lại */}
-            <div 
-              className="flex items-center justify-center gap-2.5 mb-6 cursor-pointer group"
-              onClick={() => setDontShowWelcomeAgain(!dontShowWelcomeAgain)}
-            >
-              <div className={`w-[18px] h-[18px] rounded-md flex items-center justify-center border transition-all duration-200 ${
-                dontShowWelcomeAgain 
-                  ? 'bg-[#E50914] border-[#E50914]' 
-                  : 'border-white/30 bg-white/5 group-hover:border-white/60'
-              }`}>
-                {dontShowWelcomeAgain && <Icon.Check size={14} strokeWidth={4} className="text-white" />}
-              </div>
-              <span className="text-sm text-gray-400 select-none group-hover:text-gray-200 transition-colors">
-                Không hiện lại thông báo này
-              </span>
-            </div>
-
-            <div className="flex flex-col gap-3">
-              <button 
-                onClick={() => {
-                  handleCloseWelcomePopup();
-                  handleLogin();
-                }} 
-                className="w-full py-3.5 rounded-xl font-bold text-sm bg-[#E50914] hover:bg-red-700 text-white transition-colors uppercase tracking-widest shadow-[0_4px_15px_rgba(229,9,20,0.4)] flex justify-center items-center gap-2"
-              >
-                <Icon.LogIn size={18} />
-                Đăng Nhập Ngay
-              </button>
-              <button 
-                onClick={handleCloseWelcomePopup} 
-                className="w-full py-3 rounded-xl font-bold text-sm text-gray-400 hover:text-white bg-transparent hover:bg-white/5 transition-colors uppercase tracking-wider"
-              >
-                Bỏ Qua
-              </button>
-            </div>
-
-          </div>
-        </div>
-      )}
-      {/* ============================================== */}
-    </>
-  );
+  const [isAppReady, setIsAppReady] = useState(false);
+  
+  // STATE SPLASH SCREEN 
+  const [showSplash, setShowSplash] = useState(true);
+  const [fadeSplash, setFadeSplash] = useState(false);
+  const [readyCount, setReadyCount] = useState(0); 
+  const fadeLockRef = useRef(false);
+
+  // ==========================================
+  // STATE CHO POPUP CHÀO MỪNG LẦN ĐẦU TIÊN
+  // ==========================================
+  const [showWelcomePopup, setShowWelcomePopup] = useState(false);
+  const [dontShowWelcomeAgain, setDontShowWelcomeAgain] = useState(false);
+
+  useEffect(() => {
+    const hasSeenWelcome = localStorage.getItem("skip_welcome_popup");
+    // Nếu chưa đánh dấu skip và ĐÃ QUA Splash Screen thì chờ 1s rồi hiển thị Popup
+    if (!hasSeenWelcome && !showSplash) {
+      const timer = setTimeout(() => {
+        setShowWelcomePopup(true);
+      }, 1000); 
+      return () => clearTimeout(timer);
+    }
+  }, [showSplash]);
+
+  const handleCloseWelcomePopup = () => {
+    if (dontShowWelcomeAgain) {
+      localStorage.setItem("skip_welcome_popup", "true");
+    }
+    setShowWelcomePopup(false);
+  };
+  // ==========================================
+
+ // ==========================================
+  // ĐOẠN CODE THÊM MỚI: Bắt URL Scheme trả về từ Safari/Trình duyệt (ĐÃ FIX SUPABASE)
+  // ==========================================
+  useEffect(() => {
+    const setupDeepLinks = async () => {
+      CapacitorApp.addListener('appUrlOpen', async (event) => {
+        const url = event.url;
+        
+        if (url.includes('politephim://login-callback')) {
+          
+          // Trích xuất Token nạp thẳng vào Supabase
+          // 1. Dành cho luồng Implicit Flow (trả về #access_token=)
+          if (url.includes('#access_token=')) {
+            const hashFragment = url.split('#')[1];
+            const params = new URLSearchParams(hashFragment);
+            const accessToken = params.get('access_token');
+            const refreshToken = params.get('refresh_token');
+
+            if (accessToken && refreshToken) {
+              await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken
+              });
+            }
+          } 
+          // 2. Dành cho luồng PKCE Flow (trả về ?code=)
+          else if (url.includes('?code=')) {
+            const queryString = url.split('?')[1];
+            const params = new URLSearchParams(queryString);
+            const code = params.get('code');
+            
+            if (code) {
+              await supabase.auth.exchangeCodeForSession(code);
+            }
+          }
+        }
+      });
+    };
+
+    setupDeepLinks();
+
+    return () => {
+      CapacitorApp.removeAllListeners();
+    };
+  }, []);
+  // ==========================================
+
+  // STATE TRANSITION ANIMATION (Hiệu ứng dịu nhẹ)
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const transitionTimeoutRef = useRef(null);
+
+  const [view, setView] = useState(() => parseUrlToView());
+  const [movies, setMovies] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [cats, setCats] = useState([]);
+  const [countries, setCountries] = useState([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [progressData, setProgressData] = useState({});
+  const [user, setUser] = useState(null);
+  const [favorites, setFavorites] = useState({});
+  const [historyMovies, setHistoryMovies] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const [hiddenContinueWatching, setHiddenContinueWatching] = useState(() => {
+    try {
+      const localHidden = localStorage.getItem("hidden_continue_watching");
+      if (localHidden) {
+        return JSON.parse(localHidden);
+      } else {
+        return [];
+      }
+    } catch (e) { 
+      return []; 
+    }
+  });
+
+  const normalizeUser = (sessionUser) => {
+    if (!sessionUser) {
+      return null;
+    }
+    
+    let userDisplayName = "";
+    if (sessionUser.user_metadata) {
+      if (sessionUser.user_metadata.full_name) {
+        userDisplayName = sessionUser.user_metadata.full_name;
+      } else if (sessionUser.user_metadata.name) {
+        userDisplayName = sessionUser.user_metadata.name;
+      } else if (sessionUser.email) {
+        userDisplayName = sessionUser.email.split('@')[0];
+      }
+    } else if (sessionUser.email) {
+      userDisplayName = sessionUser.email.split('@')[0];
+    }
+    
+    let photo = "";
+    if (sessionUser.user_metadata) {
+      if (sessionUser.user_metadata.avatar_url) {
+        photo = sessionUser.user_metadata.avatar_url;
+      } else if (sessionUser.user_metadata.picture) {
+        photo = sessionUser.user_metadata.picture;
+      }
+    }
+
+    return {
+      uid: sessionUser.id,
+      email: sessionUser.email,
+      displayName: userDisplayName,
+      photoURL: photo
+    };
+  };
+
+  const handleProgressSaved = (slug, newProgressObj) => {
+    setProgressData(prev => {
+      const updated = { ...prev };
+      if (newProgressObj) {
+        if (newProgressObj.currentTime > 0) {
+          updated[slug] = { ...updated[slug], ...newProgressObj, timestamp: Date.now() };
+        }
+      }
+      return updated;
+    });
+  };
+
+  const loadAndSyncProgress = async (currentUser) => {
+    let lastUid = null;
+    try { 
+      lastUid = localStorage.getItem("last_uid"); 
+    } catch (e) {}
+
+    if (currentUser) {
+      if (lastUid) {
+        if (lastUid !== currentUser.uid) {
+          try { localStorage.removeItem("hidden_continue_watching"); } catch (e) {}
+          setHiddenContinueWatching([]);
+        }
+      }
+      try { localStorage.setItem("last_uid", currentUser.uid); } catch (e) {}
+    } else {
+      if (lastUid) {
+        try {
+          localStorage.removeItem("hidden_continue_watching");
+          localStorage.removeItem("last_uid");
+        } catch (e) {}
+        setHiddenContinueWatching([]);
+      }
+      setProgressData({});
+      setFavorites({});
+      return;
+    }
+
+    try {
+      const { data: favData } = await supabase
+        .from('favorites')
+        .select('*')
+        .eq('user_id', currentUser.uid);
+        
+      const formattedFavs = {};
+      if (favData) {
+        favData.forEach(item => {
+          formattedFavs[item.movie_slug] = {
+            name: item.movie_name,
+            thumb_url: item.thumb_url,
+            year: item.year
+          };
+        });
+      }
+      setFavorites(formattedFavs);
+    } catch (e) { 
+      setFavorites({}); 
+    }
+
+    try {
+      const { data: historyData } = await supabase
+        .from('watch_history')
+        .select('*')
+        .eq('user_id', currentUser.uid)
+        .order('updated_at', { ascending: true });
+
+      const formattedProgress = {};
+      const dbHiddenSlugs = [];
+
+      if (historyData) {
+        historyData.forEach(item => {
+          formattedProgress[item.movie_slug] = {
+            episodeSlug: item.episode_slug, 
+            episode_name: item.episode_name, 
+            currentTime: item.current_time, 
+            percentage: item.percentage,
+            name: item.movie_name, 
+            origin_name: item.origin_name, 
+            thumb: item.thumb_url, 
+            year: item.year,
+            serverSource: item.server_source, 
+            serverRawName: item.server_raw_name, 
+            timestamp: new Date(item.updated_at).getTime()
+          };
+
+          if (item.is_hidden === true) {
+            dbHiddenSlugs.push(item.movie_slug);
+          }
+        });
+      }
+      setProgressData(formattedProgress);
+      
+      setHiddenContinueWatching(dbHiddenSlugs);
+      try { localStorage.setItem("hidden_continue_watching", JSON.stringify(dbHiddenSlugs)); } catch (e) {}
+
+    } catch (e) { 
+      setProgressData({}); 
+    }
+    
+    try { localStorage.removeItem("movieProgress"); } catch {}
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (isMounted) {
+        let currentUser = null;
+        if (session) {
+          if (session.user) {
+            currentUser = normalizeUser(session.user);
+          }
+        }
+        setUser(currentUser); 
+        setIsAppReady(true); 
+        loadAndSyncProgress(currentUser); 
+      }
+    }).catch(() => {
+      if (isMounted) {
+        setIsAppReady(true);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!isMounted) {
+        return;
+      }
+      if (event === 'INITIAL_SESSION') {
+        return;
+      }
+      
+      let currentUser = null;
+      if (session) {
+        if (session.user) {
+          currentUser = normalizeUser(session.user);
+        }
+      }
+      setUser(currentUser); 
+      loadAndSyncProgress(currentUser);
+    });
+
+    return () => { 
+      isMounted = false; 
+      if (subscription) {
+        subscription.unsubscribe(); 
+      }
+    };
+  }, []);
+  // 2. ĐOẠN CODE ĐỒNG BỘ TÊN (Độc lập 100%, an toàn tuyệt đối)
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchCustomName = async () => {
+      // Chỉ chạy khi có user và chưa tải tên custom
+      if (user && user.uid && !user.customNameLoaded) {
+        try {
+          const { data } = await supabase
+            .from('profiles')
+            .select('display_name')
+            .eq('user_id', user.uid)
+            .maybeSingle();
+
+          if (isMounted && data && data.display_name && data.display_name !== user.displayName) {
+            setUser(prev => ({
+              ...prev,
+              displayName: data.display_name,
+              customNameLoaded: true // Đánh dấu đã tải xong để không gọi DB liên tục
+            }));
+          } else if (isMounted) {
+            setUser(prev => ({ ...prev, customNameLoaded: true }));
+          }
+        } catch (error) {
+          console.error("Lỗi lấy tên từ DB:", error);
+        }
+      }
+    };
+
+    fetchCustomName();
+
+    return () => { isMounted = false; };
+  }, [user?.uid]); // Chỉ kích hoạt khi cái UID thay đổi (Lúc đăng nhập hoặc đăng xuất)
+
+  const handleComponentReady = useCallback(() => {
+    setReadyCount(prev => prev + 1);
+  }, []);
+
+  useEffect(() => {
+    if (!isAppReady) { return; }
+    if (!showSplash) { return; }
+
+    const hideSplashSequence = () => {
+      if (fadeLockRef.current) { return; }
+      fadeLockRef.current = true; 
+      setFadeSplash(true); 
+      setTimeout(() => {
+        setShowSplash(false);
+      }, 700);
+    };
+
+    if (view.type !== "home") {
+      hideSplashSequence();
+    } else {
+      if (readyCount >= 10) {
+        hideSplashSequence();
+      }
+    }
+
+    const fallbackTimer = setTimeout(() => {
+      hideSplashSequence();
+    }, 8000); 
+
+    return () => clearTimeout(fallbackTimer);
+  }, [isAppReady, readyCount, view.type, showSplash]);
+
+  const handleLogin = async () => {
+    try { 
+      // Dùng Capacitor để check xem đang chạy native (iOS/Android) hay Web
+      const isNative = Capacitor.isNativePlatform();
+      
+      // Nếu là App thì xòe rổ politephim://, nếu là Web thì xòe rổ localhost/domain web
+      const redirectUrl = isNative ? 'politephim://login-callback' : window.location.origin;
+
+      await supabase.auth.signInWithOAuth({ 
+        provider: 'google', 
+        options: { 
+          redirectTo: redirectUrl 
+        } 
+      }); 
+    } 
+    catch (e) { alert("Lỗi đăng nhập Google: " + e.message); }
+  };
+
+  const handleLogout = async () => {
+    try { await supabase.auth.signOut(); } catch {}
+    setUser(null); 
+    setProgressData({}); 
+    setFavorites({}); 
+    setHiddenContinueWatching([]);
+    try { 
+      localStorage.removeItem("movieProgress"); 
+      localStorage.removeItem("last_uid"); 
+      localStorage.removeItem("hidden_continue_watching"); 
+    } catch {}
+  };
+
+  const handleUpdateName = async (newName) => {
+    if (!user) { return; }
+    
+    // Đổi tên trên UI ngay lập tức để người dùng thấy luôn
+    setUser((prev) => ({ ...prev, displayName: newName, customNameLoaded: true }));
+
+    try {
+      // Lưu xuống Database ngầm phía sau
+      const { error } = await supabase
+        .from('profiles')
+        .upsert({ user_id: user.uid, display_name: newName }, { onConflict: 'user_id' });
+        
+      if (error) throw error;
+      
+      // Cập nhật Auth (có catch riêng để tránh chết app nếu bị Supabase rate limit)
+      await supabase.auth.updateUser({ data: { full_name: newName } }).catch(() => {});
+      
+    } catch (error) { 
+      console.error("Lỗi khi cập nhật tên:", error);
+    }
+  };
+
+  const syncToFirebase = async (newData, field) => {
+    if (!user || !user.uid) { return; }
+    
+    if (field === 'favorites') { 
+      try { 
+        const slugs = Object.keys(newData);
+        const lastSlug = slugs[slugs.length - 1];
+        const movie = newData[lastSlug];
+
+        if (movie && lastSlug) {
+          await supabase.from('favorites').upsert({ 
+            user_id: user.uid, 
+            movie_slug: lastSlug,
+            movie_name: movie.name,
+            thumb_url: movie.thumb_url,
+            year: movie.year
+          }, { onConflict: 'user_id,movie_slug' }); 
+        }
+      } catch (e) {
+        console.error("Lỗi đồng bộ yêu thích:", e);
+      } 
+    }
+  };
+
+  const hideContinueWatching = async (slug) => {
+    if (!slug) { return; }
+    
+    setHiddenContinueWatching((prev) => {
+      if (prev.includes(slug)) {
+        return prev;
+      } else {
+        const updated = [...prev, slug];
+        try { localStorage.setItem("hidden_continue_watching", JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      }
+    });
+
+    if (user && user.uid) {
+      try {
+        await supabase
+          .from('watch_history') 
+          .update({ is_hidden: true })
+          .match({ user_id: user.uid, movie_slug: slug });
+      } catch (error) {
+        console.error("Lỗi khi update is_hidden lên DB:", error);
+      }
+    }
+  };
+
+  const removeProgressPermanently = async (slug) => {
+    if (!slug) { return; }
+    const backupProgressData = { ...progressData };
+    const backupHistoryMovies = [...historyMovies];
+    
+    setProgressData((prev) => { 
+      const updated = { ...prev }; 
+      delete updated[slug]; 
+      return updated; 
+    });
+    setHistoryMovies((prev) => {
+      let updated = [];
+      for (let i = 0; i < prev.length; i++) {
+        if (prev[i].slug !== slug) {
+          updated.push(prev[i]);
+        }
+      }
+      return updated;
+    });
+    
+    if (user) {
+      if (user.uid) { 
+        try { 
+          await supabase.from('watch_history').delete().match({ user_id: user.uid, movie_slug: slug }); 
+        } catch (e) { 
+          setProgressData(backupProgressData); 
+          setHistoryMovies(backupHistoryMovies); 
+        } 
+      }
+    }
+  };
+
+  const removeFavorite = async (slug) => {
+    if (!slug) { return; }
+    
+    setFavorites((prev) => { 
+      const updated = { ...prev }; 
+      delete updated[slug]; 
+      return updated; 
+    });
+    
+    if (user && user.uid) {
+      try { 
+        await supabase.from('favorites')
+        .delete()
+        .match({ user_id: user.uid, movie_slug: slug }); 
+      } catch (e) {
+        console.error("Lỗi xóa yêu thích:", e);
+      }
+    }
+  };
+
+  // ==========================================
+  // HÀM NAVIGATE VỚI HIỆU ỨNG NHẸ NHÀNG, CHẬM RÃI
+  // ==========================================
+  const navigate = useCallback((newView) => {
+    if (isTransitioning) return;
+    
+    const newUrl = getViewUrl(newView);
+    if (window.location.pathname + window.location.search === newUrl) return;
+
+    if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
+
+    // Kích hoạt làm mờ (opacity 0)
+    setIsTransitioning(true);
+
+    // Chờ 400ms để màn hình mờ hẳn đi, sau đó đổi dữ liệu
+    transitionTimeoutRef.current = setTimeout(() => {
+      window.history.pushState(newView, "", newUrl); 
+      setView(newView); 
+      window.scrollTo(0, 0);
+
+      // Cho trang hiện rõ lại từ từ
+      setTimeout(() => {
+        setIsTransitioning(false);
+      }, 50); 
+    }, 400); 
+  }, [isTransitioning]);
+
+  useEffect(() => {
+    if (view.type === "home") { 
+      globalDisplayedSlugs.clear(); 
+      document.title = "POLITE - Trang Chủ"; 
+    } else {
+      if (view.type === "search") {
+        document.title = `Tìm kiếm: ${view.keyword} - POLITE`;
+      } else if (view.type === "list") {
+        let pageTitle = "Danh sách";
+        if (view.title) {
+          pageTitle = view.title;
+        }
+        document.title = `${pageTitle} - POLITE`;
+      } else if (view.type === "watch-party-lobby") {
+        document.title = "Sảnh Xem Chung - POLITE";
+      } else if (view.type === "history") {
+        document.title = "Phim Đã Xem - POLITE";
+      } else if (view.type === "favorites") {
+        document.title = "Phim Yêu Thích - POLITE";
+      } else if (view.type === "admin-comments") { // ĐOẠN CODE THÊM MỚI
+        document.title = "Duyệt Bình Luận - POLITE"; 
+      } else if (view.type === "terms") { 
+        document.title = "Điều khoản sử dụng - POLITE"; 
+      } else if (view.type === "dmca") { 
+        document.title = "DMCA - POLITE"; 
+      } else if (view.type === "privacy") { 
+        document.title = "Chính sách bảo mật - POLITE"; 
+      }
+    }
+  }, [view.type, view.keyword, view.title, user?.uid]); 
+
+  useEffect(() => {
+    if (view.type === "watch" || view.type === "detail" || view.type === "watch-room") {
+      const currentSlug = view.slug;
+      if (currentSlug) {
+        setHiddenContinueWatching((prev) => {
+          if (prev.includes(currentSlug)) {
+            let updated = [];
+            for(let i = 0; i < prev.length; i++) {
+              if (prev[i] !== currentSlug) {
+                updated.push(prev[i]);
+              }
+            }
+            try { localStorage.setItem("hidden_continue_watching", JSON.stringify(updated)); } catch (e) {}
+            
+            if (user && user.uid) {
+              supabase
+                .from('watch_history')
+                .update({ is_hidden: false })
+                .match({ user_id: user.uid, movie_slug: currentSlug })
+                .then(); 
+            }
+
+            return updated;
+          } else {
+            return prev;
+          }
+        });
+      }
+    }
+  }, [view.type, view.slug, user]);
+
+  // XỬ LÝ NÚT BACK/FORWARD CỦA TRÌNH DUYỆT (Nhẹ nhàng)
+  useEffect(() => {
+    const handlePopState = (event) => {
+      if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
+      setIsTransitioning(true);
+
+      transitionTimeoutRef.current = setTimeout(() => {
+        if (event.state) {
+          setView(event.state); 
+        } else {
+          setView(parseUrlToView());
+        }
+        
+        if (user && user.uid) {
+          loadAndSyncProgress(user);
+        }
+
+        setTimeout(() => {
+          setIsTransitioning(false);
+        }, 50);
+      }, 400); // 400ms chờ mờ dần
+    };
+    
+    window.addEventListener("popstate", handlePopState);
+    
+    const hash = window.location.hash; 
+    const search = window.location.search;
+    let isAuthRedirect = false;
+    
+    if (hash.includes("access_token")) {
+      isAuthRedirect = true;
+    } else if (search.includes("code=")) {
+      isAuthRedirect = true;
+    }
+    
+    if (!isAuthRedirect) {
+      window.history.replaceState(view, "", getViewUrl(view));
+    }
+
+    Promise.all([
+      fetchWithCache(`${API}/the-loai`, 86400000), 
+      fetchWithCache(`${API}/quoc-gia`, 86400000)
+    ]).then(([catsRes, countriesRes]) => {
+      let items = [];
+      if (catsRes && catsRes.data && catsRes.data.items) {
+        items = catsRes.data.items;
+      }
+      
+      let filteredItems = [];
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].slug !== "hoat-hinh") {
+          filteredItems.push(items[i]);
+        }
+      }
+      filteredItems.unshift({ name: "Hoạt Hình", slug: "hoat-hinh" });
+      setCats(filteredItems); 
+      
+      if (countriesRes && countriesRes.data && countriesRes.data.items) {
+        setCountries(countriesRes.data.items);
+      } else {
+        setCountries([]);
+      }
+    }).catch(() => {});
+
+    return () => { window.removeEventListener("popstate", handlePopState); };
+  }, [user]);
+
+  const historySlugsForPage = Object.keys(progressData)
+    .sort((a, b) => {
+      let timeA = progressData[a].timestamp || 0;
+      let timeB = progressData[b].timestamp || 0;
+      return timeB - timeA;
+    })
+    .join(",");
+
+  useEffect(() => {
+    if (view.type !== "history") return;
+    
+    const fetchHistoryMovies = async () => {
+      setHistoryLoading(true);
+      const slugs = historySlugsForPage.split(",").filter(Boolean);
+
+      const fetchedMovies = await Promise.all(slugs.map(async (slug) => {
+        try {
+          const prog = progressData[slug];
+          if (prog) {
+            let originName = prog.origin_name || prog.original_name || "";
+            return { 
+              slug: slug, 
+              name: prog.name, 
+              origin_name: originName, 
+              year: prog.year, 
+              thumb_url: getImg(prog.thumb), 
+              poster_url: getImg(prog.thumb) 
+            };
+          }
+          return null;
+        } catch (e) { 
+          return null; 
+        }
+      }));
+
+      setHistoryMovies(fetchedMovies.filter(Boolean));
+      setHistoryLoading(false);
+    };
+    
+    fetchHistoryMovies();
+  }, [view.type, historySlugsForPage, progressData]);
+
+  const fetchData = async (pageNum, isNewView = false) => {
+    let currentMode = view.mode || "";
+    let currentSlug = view.slug || "";
+    let currentKeyword = view.keyword || "";
+
+    const cacheKey = `polite_list_${view.type}_${currentMode}_${currentSlug}_${currentKeyword}_page_${pageNum}`;
+    const CACHE_TTL = 3600000;
+
+    if (isNewView) { 
+      setLoading(true); 
+      setMovies([]); 
+    } else { 
+      setLoadingMore(true); 
+    }
+
+    if (view.type === "actor" || view.type === "history" || view.type === "favorites") { 
+      setLoading(false); 
+      setLoadingMore(false); 
+      return; 
+    }
+
+    try {
+      const cachedStr = localStorage.getItem(cacheKey);
+      if (cachedStr) {
+        const parsed = JSON.parse(cachedStr);
+        if (Date.now() - parsed.timestamp < CACHE_TTL) {
+          setMovies((prev) => {
+            let combined = isNewView ? parsed.data : [...prev, ...parsed.data];
+            let mapObj = new Map();
+            for (let i = 0; i < combined.length; i++) {
+              mapObj.set(combined[i].slug, combined[i]);
+            }
+            return Array.from(mapObj.values());
+          });
+          
+          setHasMore(parsed.data.length > 0);
+          setLoading(false); 
+          setLoadingMore(false); 
+          return;
+        }
+      }
+    } catch (e) {}
+
+    let fetches = []; 
+    let isFetchingFromTmdb = false;
+
+    if (view.type === "search") {
+      let qStr = view.keyword || "";
+      const q = encodeURIComponent(String(qStr).trim()); 
+      fetches = [`${API}/tim-kiem?keyword=${q}&page=${pageNum}`];
+    } else if (view.type === "list") {
+      if (view.mode === "the-loai") {
+        const lang = `&language=vi&sort_by=popularity.desc&page=${pageNum}`; 
+        let mGenres = "", tGenres = "", extra = "";
+        
+        switch (view.slug) {
+          case "hanh-dong": mGenres = "28"; tGenres = "10759"; break;
+          case "tinh-cam": mGenres = "10749"; tGenres = "10768"; break;
+          case "kinh-di": mGenres = "27"; tGenres = "9648"; break;
+          case "hai-huoc": mGenres = "35"; tGenres = "35"; break;
+          case "hoat-hinh": mGenres = "16"; tGenres = "16"; break;
+          case "anime": mGenres = "16"; tGenres = "16"; extra = "&with_original_language=ja"; break;
+          case "vien-tuong": mGenres = "878"; tGenres = "10765"; break;
+          case "hinh-su": mGenres = "80"; tGenres = "80"; break;
+          case "co-trang": mGenres = "36"; tGenres = "10768"; extra = "&with_origin_country=CN|KR|JP"; break;
+          case "chien-tranh": mGenres = "10752"; tGenres = "10768"; break;
+          case "tam-ly": mGenres = "18"; tGenres = "18"; break;
+          case "tai-lieu": mGenres = "99"; tGenres = "99"; break;
+          case "phieu-luu": mGenres = "12"; tGenres = "10759"; break;
+          case "gia-dinh": mGenres = "10751"; tGenres = "10751"; break;
+          case "bi-an": mGenres = "9648"; tGenres = "9648"; break;
+          case "am-nhac": mGenres = "1044"; break;
+          case "vo-thuat": mGenres = "28"; extra = "&with_keywords=779"; break; 
+          case "phim-han": 
+            isFetchingFromTmdb = true; 
+            fetches = [ 
+              `${API_TMDB}/discover/movie?with_origin_country=KR${lang}`, 
+              `${API_TMDB}/discover/tv?with_origin_country=KR&without_genres=10764,10767,10763${lang}` 
+            ]; 
+            break;
+          default: break;
+        }
+        
+        if (fetches.length === 0) {
+          if (mGenres || tGenres) {
+            isFetchingFromTmdb = true;
+            if (mGenres) { fetches.push(`${API_TMDB}/discover/movie?with_genres=${mGenres}${extra}${lang}`); }
+            if (tGenres) { fetches.push(`${API_TMDB}/discover/tv?with_genres=${tGenres}${extra}${lang}`); }
+          } else { 
+            fetches = [`${API}/${view.mode}/${view.slug}?page=${pageNum}`]; 
+          }
+        }
+      } else {
+        if (view.slug === "phim-moi-cap-nhat") { 
+          fetches = [`${API}/danh-sach/phim-moi-cap-nhat?page=${pageNum}`]; 
+        } else { 
+          fetches = [`${API}/${view.mode}/${view.slug}?page=${pageNum}`]; 
+        }
+      }
+    } else { 
+      fetches = [`${API}/danh-sach/phim-moi-cap-nhat?page=${pageNum}`]; 
+    }
+
+    try {
+      const results = await Promise.allSettled(fetches.map((url) => fetchWithCache(url, 300000)));
+      let newItems = [];
+      
+      if (isFetchingFromTmdb) {
+        let tmdbItems = [];
+        results.forEach((res, idx) => {
+          if (res.status === "fulfilled" && res.value && res.value.results) {
+            const isTv = fetches[idx].includes('/discover/tv');
+            const items = res.value.results.map(item => {
+              let mType = item.media_type || (isTv ? "tv" : "movie");
+              return { ...item, media_type: mType };
+            });
+            tmdbItems = [...tmdbItems, ...items];
+          }
+        });
+        
+        tmdbItems.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+        
+        const matchPromises = tmdbItems.map(async (tItem) => {
+          const ophimMatch = await matchTmdbToOphim(tItem);
+          if (ophimMatch && ophimMatch.slug) {
+            let movieName = tItem.title || tItem.name || ophimMatch.name;
+            let originName = tItem.original_title || tItem.original_name || ophimMatch.origin_name;
+            let releaseYear = "";
+            if (tItem.release_date) releaseYear = tItem.release_date.split("-")[0];
+            else if (tItem.first_air_date) releaseYear = tItem.first_air_date.split("-")[0];
+
+            return { 
+              ...ophimMatch, 
+              slug: ophimMatch.slug, 
+              name: movieName, 
+              origin_name: originName, 
+              poster_path: tItem.poster_path, 
+              year: releaseYear, 
+              tmdb: { ...tItem, poster_path: tItem.poster_path } 
+            };
+          } 
+          return null; 
+        });
+        
+        const resolvedMatches = await Promise.all(matchPromises);
+        newItems = resolvedMatches.filter(Boolean);
+      } else {
+        results.forEach((res) => {
+          if (res.status === "fulfilled") { 
+            let items = res.value?.items || res.value?.data?.items;
+            if (Array.isArray(items)) { 
+              newItems = [...newItems, ...items]; 
+            } 
+          }
+        });
+      }
+      
+      try { localStorage.setItem(cacheKey, JSON.stringify({ timestamp: Date.now(), data: newItems })); } catch (e) {}
+      
+      setMovies((prev) => { 
+        let combined = isNewView ? newItems : [...prev, ...newItems];
+        let mapObj = new Map();
+        for (let i = 0; i < combined.length; i++) {
+          mapObj.set(combined[i].slug, combined[i]);
+        }
+        return Array.from(mapObj.values()); 
+      });
+      
+      setHasMore(newItems.length > 0);
+      
+    } catch { 
+      if (isNewView) setMovies([]); 
+      setHasMore(false); 
+    } finally { 
+      setLoading(false); 
+      setLoadingMore(false); 
+    }
+  };
+
+  useEffect(() => {
+    // ĐOẠN CODE SỬA NHẸ: Thêm "terms", "dmca", "privacy" vào danh sách không tự động fetch phim
+    const skipTypes = ["home", "detail", "watch", "watch-party-lobby", "watch-room", "history", "favorites", "admin-comments", "terms", "dmca", "privacy"];
+    if (!skipTypes.includes(view.type)) {
+      setPage(1); 
+      fetchData(1, true);
+    }
+  }, [view.type, view.mode, view.slug, view.keyword]);
+
+  const loadNextPage = () => { 
+    if (!loadingMore && hasMore) { 
+      setPage((prev) => { 
+        const next = prev + 1; 
+        fetchData(next, false); 
+        return next; 
+      }); 
+    }
+  };
+
+  return (
+    <>
+      {showSplash && <SplashScreen isFading={fadeSplash} />}
+
+      <div className={`bg-[#050505] min-h-screen flex flex-col text-white font-sans antialiased selection:bg-[#E50914] selection:text-white pb-16 md:pb-10 overflow-x-hidden ${showSplash ? "opacity-0 h-screen overflow-hidden" : ""}`}>
+        <Header navigate={navigate} categories={cats} countries={countries} user={user} onLogin={handleLogin} onLogout={handleLogout} onUpdateName={handleUpdateName} />
+
+        {/* ============================================== */}
+        {/* WRAPPER CHỨA HIỆU ỨNG TỪ TỪ, NHẸ NHÀNG DỊU MẮT */}
+        {/* ============================================== */}
+        <div 
+          className={`flex-grow transition-opacity duration-500 ease-in-out relative ${isTransitioning ? "opacity-0" : "opacity-100"}`}
+        >
+          {view.type === "home" ? (
+            <div className="flex flex-col">
+              <Hero navigate={navigate} onReady={handleComponentReady} />
+              <div className="max-w-[1400px] mx-auto w-full px-4 md:px-12 relative z-20 pb-20 pt-8 md:pt-12">
+                
+                <ContinueWatching navigate={navigate} progressData={progressData} hiddenSlugs={hiddenContinueWatching} onRemove={hideContinueWatching} isLoggedIn={!!user} />
+                
+                {[
+                  { title: "Phim Mới Cập Nhật", slug: "phim-moi-cap-nhat", type: "danh-sach" },
+                  { title: "Phim Hàn", slug: "phim-han", type: "the-loai" },
+                  { title: "Anime", slug: "anime", type: "the-loai" },
+                  { title: "Phim bộ", slug: "phim-bo", type: "danh-sach" },
+                  { title: "Phim lẻ", slug: "phim-le", type: "danh-sach" },
+                  { title: "Hành động", slug: "hanh-dong", type: "the-loai" },
+                  { title: "Tình cảm", slug: "tinh-cam", type: "the-loai" },
+                  { title: "Kinh dị", slug: "kinh-di", type: "the-loai" },
+                  { title: "Viễn tưởng", slug: "vien-tuong", type: "the-loai" }
+                ].map((section, index) => (
+                  <MovieSection 
+                    key={`${section.slug}-${index}`} 
+                    title={section.title} 
+                    slug={section.slug} 
+                    type={section.type} 
+                    navigate={navigate} 
+                    progressData={progressData} 
+                    onReady={handleComponentReady} 
+                  />
+                ))}
+              </div>
+            </div>
+          ) : view.type === "detail" ? (
+            view.slug?.startsWith("tmdb-") ? <TmdbMatcher slug={view.slug} setView={setView} /> : <MovieDetail slug={view.slug} movieData={view.movieData} navigate={navigate} user={user} onLogin={handleLogin} favorites={favorites} setFavorites={setFavorites} syncToFirebase={syncToFirebase} />
+          ) : view.type === "watch" ? (<Watch slug={view.slug} movieData={view.movieData} navigate={navigate} user={user} onLogin={handleLogin} onProgressSaved={handleProgressSaved} progressData={progressData} autoFullscreen={view.autoFullscreen} />
+            
+          ) : view.type === "watch-party-lobby" ? (
+            <WatchPartyLobby navigate={navigate} user={user} onLogin={handleLogin} />
+          ) : view.type === "watch-room" ? (
+            <WatchPartyRoom roomId={view.roomId} slug={view.slug} navigate={navigate} user={user} />
+          ) : view.type === "history" ? (
+            <MovieGrid title="Phim Đã Xem" movies={historyMovies} loading={historyLoading} navigate={navigate} hasMore={false} onRemove={removeProgressPermanently} progressData={progressData} />
+          ) : view.type === "favorites" ? (
+            <MovieGrid title="Phim Yêu Thích" movies={Object.keys(favorites).map((slug) => { const fav = favorites[slug]; const finalPosterUrl = getMoviePoster(fav, {}, getImg); return { slug, name: fav.name, origin_name: fav.origin_name || fav.original_name || "", thumb_url: finalPosterUrl, poster_url: finalPosterUrl, year: fav.year }; }).reverse()} loading={false} navigate={navigate} hasMore={false} onRemove={removeFavorite} />
+          ) : view.type === "admin-comments" ? (
+            <AdminComments user={user} navigate={navigate} /> // ĐOẠN CODE THÊM MỚI
+          ) : view.type === "terms" ? (
+            // TRANG ĐIỀU KHOẢN SỬ DỤNG
+            <div className="max-w-4xl mx-auto p-6 md:p-12 relative z-10 bg-transparent rounded-2xl mt-8 mb-16 border border-white/10 shadow-lg">
+              <h1 className="text-3xl md:text-4xl font-black text-white mb-6 uppercase tracking-wide border-b border-white/10 pb-4">Điều Khoản Sử Dụng - Polite Phim</h1>
+              <p className="text-gray-300 leading-relaxed mb-6">Chào mừng bạn đến với Polite Phim - Phim hay của mọi tầng xem phim trực tuyến miễn phí mới nhất. Để đảm bảo trải nghiệm tốt nhất và cho tất cả người dùng, Polite Phim xây dựng và duy trì các điều khoản sử dụng dưới đây. Bằng việc truy cập và sử dụng dịch vụ của Polite Phim, bạn đồng ý tuân thủ các điều khoản này. Vui lòng đọc kỹ để hiểu rõ quyền và nghĩa vụ của bạn.</p>
+              
+              <h2 className="text-xl font-bold text-white mb-3 mt-8">1. Chấp Nhận Điều Khoản Sử Dụng</h2>
+              <p className="text-gray-400 mb-6 leading-relaxed">Khi sử dụng dịch vụ của Polite Phim, bạn chấp nhận rằng bạn đã đọc, hiểu và đồng ý với các điều khoản sử dụng này. Nếu bạn không đồng ý với bất kỳ điều khoản nào, vui lòng không tiếp tục truy cập hoặc sử dụng Polite Phim.</p>
+              
+              <h2 className="text-xl font-bold text-white mb-3 mt-8">2. Đăng Ký Tài Khoản</h2>
+              <p className="text-gray-400 mb-2 leading-relaxed">Khi đăng ký tài khoản tại Polite Phim, bạn cam kết:</p>
+              <ul className="list-disc pl-5 text-gray-400 mb-6 space-y-2">
+                <li>Cung cấp thông tương chính xác, đầy đủ và luôn cập nhật.</li>
+                <li>Bảo mật thông tin đăng nhập của mình. Polite Phim không chịu trách nhiệm cho bất kỳ mất mát hoặc thiệt hại nào liên quan đến việc tiết lộ thông tin tài khoản.</li>
+                <li>Không sử dụng tài khoản của mình để thực hiện các hành vi vi phạm pháp luật hoặc gây hại cho Polite Phim và người dùng khác.</li>
+              </ul>
+
+              <h2 className="text-xl font-bold text-white mb-3 mt-8">3. Hành Vi Bị Cấm</h2>
+              <p className="text-gray-400 mb-2 leading-relaxed">Khi sử dụng Polite Phim, bạn đồng ý không:</p>
+              <ul className="list-disc pl-5 text-gray-400 mb-6 space-y-2">
+                <li>Đăng tải, chia sẻ hoặc phát tán bất kỳ nội dung nào vi phạm quyền sở hữu trí tuệ, pháp luật hoặc quyền riêng tư của người khác.</li>
+                <li>Thực hiện các hành vi gây hại cho hệ thống, cố gắng truy cập trái phép vào máy chủ hoặc tài khoản của người dùng khác.</li>
+                <li>Sử dụng Polite Phim với mục đích thương mại mà không có sự đồng ý bằng văn bản của chúng tôi.</li>
+              </ul>
+
+              <h2 className="text-xl font-bold text-white mb-3 mt-8">4. Bảo Mật Thông Tin</h2>
+              <p className="text-gray-400 mb-6 leading-relaxed">Polite Phim cam kết bảo vệ thông tin cá nhân của bạn. Vui lòng tham khảo Chính Sách Riêng Tư của chúng tôi để hiểu rõ cách chúng tôi thu thập, sử dụng và bảo mật thông tin cá nhân của bạn.</p>
+
+              <h2 className="text-xl font-bold text-white mb-3 mt-8">5. Quyền Thay Đổi Dịch Vụ</h2>
+              <p className="text-gray-400 mb-2 leading-relaxed">Polite Phim có quyền:</p>
+              <ul className="list-disc pl-5 text-gray-400 mb-6 space-y-2">
+                <li>Thay đổi, cập nhật hoặc ngừng cung cấp bất kỳ nội dung hoặc dịch vụ nào trên nền tảng mà không cần thông báo trước.</li>
+                <li>Xóa bỏ hoặc tạm ngừng tài khoản của bạn nếu phát hiện hành vi vi phạm các điều khoản sử dụng hoặc các quy định pháp luật cần thiết để liên quan.</li>
+              </ul>
+
+              <h2 className="text-xl font-bold text-white mb-3 mt-8">6. Miễn Trừ Trách Nhiệm</h2>
+              <p className="text-gray-400 mb-2 leading-relaxed">Polite Phim cam kết nỗ lực cung cấp dịch vụ với chất lượng tốt nhất, nhưng chúng tôi không chịu trách nhiệm về:</p>
+              <ul className="list-disc pl-5 text-gray-400 mb-6 space-y-2">
+                <li>Bất kỳ gián đoạn nào trong quá trình truy cập hoặc sự cố kỹ thuật.</li>
+                <li>Nội dung do bên thứ ba cung cấp hoặc bất kỳ lỗi hay mất mát nào do sử dụng nội dung trên Polite Phim.</li>
+                <li>Các thiệt hại gián tiếp, ngẫu nhiên hoặc hậu quả phát sinh từ việc sử dụng hoặc không thể sử dụng dịch vụ của chúng tôi.</li>
+              </ul>
+
+              <h2 className="text-xl font-bold text-white mb-3 mt-8">7. Thay Đổi Điều Khoản Sử Dụng</h2>
+              <p className="text-gray-400 mb-6 leading-relaxed">Chúng tôi có thể cập nhật điều khoản sử dụng theo thời gian để phù hợp với các thay đổi trong hoạt động và dịch vụ. Khi điều khoản thay đổi, chúng tôi sẽ đăng tải bản cập nhật lên trang web và gửi thông báo đến người dùng khi cần thiết. Việc tiếp tục sử dụng dịch vụ sau khi điều khoản được cập nhật đồng nghĩa với việc bạn đồng ý với các điều khoản mới.</p>
+            </div>
+          ) : view.type === "dmca" ? (
+            // TRANG DMCA
+            <div className="max-w-4xl mx-auto p-6 md:p-12 relative z-10 bg-transparent rounded-2xl mt-8 mb-16 border border-white/10 shadow-lg">
+              <h1 className="text-3xl md:text-4xl font-black text-white mb-6 uppercase tracking-wide border-b border-white/10 pb-4">CHÍNH SÁCH DMCA – Bảo vệ quyền sở hữu trí tuệ & tuân thủ quy định bản quyền</h1>
+              <p className="text-gray-300 leading-relaxed mb-6">Chào mừng bạn đến với trang DMCA của website Polite Phim!<br/>Chúng tôi luôn nỗ lực bảo vệ sở hữu trí tuệ và tuân thủ nghiêm ngặt các quy định về bản quyền. Tại đây, bạn sẽ tìm thấy đầy đủ thông tin cần thiết về việc báo cáo vi phạm bản quyền cũng như các thủ tục liên quan đến DMCA (Digital Millennium Copyright Act).</p>
+              
+              <h2 className="text-2xl font-bold text-white mb-4 mt-8">Chính Sách Bảo Vệ Bản Quyền</h2>
+              <p className="text-gray-400 mb-6 leading-relaxed">Polite Phim cam kết tuân thủ quy định bản quyền trong các dịch vụ mà chúng tôi cung cấp. Chúng tôi chỉ chia sẻ những nội dung được cấp phép hợp pháp hoặc thuộc tài nguyên công cộng. Nếu bạn là chủ sở hữu bản quyền và nhận thấy tác phẩm của mình bị sử dụng trái phép trên website, vui lòng liên hệ với chúng tôi để được hỗ trợ gỡ bỏ.</p>
+              
+              <h2 className="text-2xl font-bold text-white mb-4 mt-8">Cách Thức Báo Cáo Vi Phạm DMCA</h2>
+              <p className="text-gray-400 mb-2 leading-relaxed">Để gửi yêu cầu bản quyền vi phạm, bạn có thể thực hiện bằng các bước sau:</p>
+              <ul className="list-disc pl-5 text-gray-400 mb-6 space-y-2">
+                <li><strong className="text-gray-300">Liên hệ qua Email:</strong> Gửi email với tiêu đề “DMCA Takedown Request” đến địa chỉ: admin@30phimccm.com</li>
+                <li><strong className="text-gray-300">Cung cấp thông tin chi tiết:</strong> Bao gồm tên phim, URL chứa nội dung vi phạm và giấy tờ chứng minh quyền sở hữu bản quyền.</li>
+                <li><strong className="text-gray-300">Thông tin liên hệ:</strong> Họ tên, địa chỉ email, số điện thoại để chúng tôi xác minh và phản hồi.</li>
+              </ul>
+
+              <h2 className="text-2xl font-bold text-white mb-4 mt-8">Quy Trình Xử Lý</h2>
+              <p className="text-gray-400 mb-6 leading-relaxed">Ngay sau khi nhận được yêu cầu DMCA hợp lệ, chúng tôi sẽ kiểm tra, xác nhận và tiến hành gỡ bỏ nội dung vi phạm trong thời gian sớm nhất.</p>
+
+              <h2 className="text-2xl font-bold text-white mb-4 mt-8">Tuyên Bố Từ Chối Trách Nhiệm</h2>
+              <p className="text-gray-400 mb-6 leading-relaxed">Mặc dù Polite Phim luôn cố gắng đảm bảo tất cả nội dung chia sẻ đều hợp pháp, chúng tôi không thể kiểm soát toàn bộ tài nguyên do người dùng tải lên. Tuy nhiên, chúng tôi cam kết xử lý nhanh chóng mọi thông báo vi phạm để bảo vệ lợi ích cộng đồng.</p>
+
+              <h2 className="text-2xl font-bold text-white mb-4 mt-8">Liên Hệ Với Chúng Tôi</h2>
+              <p className="text-gray-400 mb-6 leading-relaxed">Nếu bạn có câu hỏi về DMCA hoặc các vấn đề liên quan đến bản quyền, hãy gửi email về: admin@30phimccm.com. Đội ngũ Polite Phim luôn sẵn sàng hỗ trợ bạn.</p>
+
+              <h2 className="text-2xl font-bold text-white mb-4 mt-8">Cam Kết Của Chúng Tôi</h2>
+              <p className="text-gray-400 mb-6 leading-relaxed">Việc tuân thủ DMCA không chỉ bảo vệ quyền lợi của tác giả mà còn góp phần xây dựng cộng đồng phim sạch lành mạnh.<br/>Và trên con đường ấy, Polite Phim luôn coi việc tôn trọng bản quyền như một sự trân trọng cách chúng tôi vận hành và đồng hành cùng bạn.<br/><br/>Cảm ơn bạn đã tin tưởng và đồng hành cùng Polite Phim!</p>
+            </div>
+          ) : view.type === "privacy" ? (
+            // TRANG CHÍNH SÁCH RIÊNG TƯ
+            <div className="max-w-4xl mx-auto p-6 md:p-12 relative z-10 bg-transparent rounded-2xl mt-8 mb-16 border border-white/10 shadow-lg">
+              <h1 className="text-3xl md:text-4xl font-black text-white mb-6 uppercase tracking-wide border-b border-white/10 pb-4">CHÍNH SÁCH RIÊNG TƯ – Polite Phim</h1>
+              
+              <h2 className="text-2xl font-bold text-white mb-4 mt-8">Mục Đích Sử Dụng Thông Tin</h2>
+              <p className="text-gray-400 mb-2 leading-relaxed">Thông tin được thu thập được sử dụng để:</p>
+              <ul className="list-disc pl-5 text-gray-400 mb-6 space-y-2">
+                <li><strong className="text-gray-300">Cung Cấp Dịch Vụ:</strong> Sử dụng thông tin để cung cấp và duy trì các dịch vụ của Polite Phim, xử lý các yêu cầu và nâng cao trải nghiệm người dùng.</li>
+                <li><strong className="text-gray-300">Giao Tiếp với Người Dùng:</strong> Gửi các thông báo, bản tin, cập nhật liên quan đến dịch vụ của chúng tôi. Người dùng có thể từ chối nhận các thông báo này bất kỳ lúc nào.</li>
+                <li><strong className="text-gray-300">Phân Tích và Cải Thiện:</strong> Sử dụng thông tin phi cá nhân để hiểu rõ hơn về hành vi của người dùng và nâng cao chất lượng trang web, sản phẩm, và dịch vụ.</li>
+                <li><strong className="text-gray-300">Bảo Mật:</strong> Áp dụng các biện pháp để bảo vệ trang web và người dùng khỏi các hành vi gian lận, đảm bảo an toàn thông tin và tuân thủ các yêu cầu pháp lý.</li>
+              </ul>
+
+              <h2 className="text-2xl font-bold text-white mb-4 mt-8">Chia Sẻ Thông Tin</h2>
+              <p className="text-gray-400 mb-2 leading-relaxed">Polite Phim cam kết không bán, trao đổi hoặc chia sẻ thông tin cá nhân của bạn với bất kỳ bên thứ ba nào, ngoại trừ trong các trường hợp sau:</p>
+              <ul className="list-disc pl-5 text-gray-400 mb-6 space-y-2">
+                <li><strong className="text-gray-300">Với Sự Đồng Ý Của Bạn:</strong> Chúng tôi chỉ chia sẻ thông tin cá nhân khi có sự đồng ý rõ ràng của bạn.</li>
+                <li><strong className="text-gray-300">Đối Tác và Nhà Cung Cấp Dịch Vụ:</strong> Chia sẻ thông tin với các đối tác và nhà cung cấp dịch vụ tin cậy để hỗ trợ trong việc cung cấp dịch vụ, xử lý thanh toán, và phân tích dữ liệu.</li>
+                <li><strong className="text-gray-300">Tuân Thủ Pháp Luật:</strong> Polite Phim có thể tiết lộ thông tin cá nhân nếu được yêu cầu theo quy định pháp luật hoặc để bảo vệ quyền lợi, tài sản và an toàn của công ty và người dùng.</li>
+              </ul>
+
+              <h2 className="text-2xl font-bold text-white mb-4 mt-8">Bảo Mật Thông Tin Cá Nhân</h2>
+              <p className="text-gray-400 mb-6 leading-relaxed">Chúng tôi áp dụng các biện pháp kỹ thuật và tổ chức để bảo vệ thông tin cá nhân của bạn khỏi việc mất mát, lạm dụng, truy cập trái phép, tiết lộ và thay đổi. Tuy nhiên, mặc dù chúng tôi luôn nỗ lực tối đa, không có phương pháp truyền tải hay lưu trữ nào là tuyệt đối an toàn. Polite Phim cam kết liên tục cải tiến các biện pháp bảo mật để bảo vệ thông tin của bạn.</p>
+
+              <h2 className="text-2xl font-bold text-white mb-4 mt-8">Quyền Riêng Tư của Người Dùng</h2>
+              <p className="text-gray-400 mb-2 leading-relaxed">Người dùng có quyền:</p>
+              <ul className="list-disc pl-5 text-gray-400 mb-6 space-y-2">
+                <li>Truy cập, chỉnh sửa và xóa thông tin cá nhân của mình mà chúng tôi lưu giữ. Để thực hiện các quyền này, vui lòng liên hệ với chúng tôi qua email: lienhe@politephim.com</li>
+                <li>Từ chối nhận thông báo từ Polite Phim bất kỳ lúc nào thông qua tùy chọn trong email hoặc liên hệ trực tiếp.</li>
+              </ul>
+
+              <h2 className="text-2xl font-bold text-white mb-4 mt-8">Cookies và Công Nghệ Tương Tự</h2>
+              <p className="text-gray-400 mb-2 leading-relaxed">Polite Phim sử dụng cookies và các công nghệ tương tự để thu thập thông tin phi cá nhân về cách bạn sử dụng trang web. Cookies giúp chúng tôi:</p>
+              <ul className="list-disc pl-5 text-gray-400 mb-4 space-y-2">
+                <li>Cải thiện trải nghiệm người dùng bằng cách ghi nhớ sở thích của bạn.</li>
+                <li>Phân tích lưu lượng truy cập và hành vi của người dùng để cải thiện dịch vụ.</li>
+                <li>Cung cấp quảng cáo phù hợp dựa trên hoạt động của bạn.</li>
+              </ul>
+              <p className="text-gray-400 mb-6 leading-relaxed">Bạn có thể điều chỉnh cài đặt cookies thông qua trình duyệt của mình hoặc tắt cookies nếu muốn.</p>
+
+              <h2 className="text-2xl font-bold text-white mb-4 mt-8">Thay Đổi Chính Sách Riêng Tư</h2>
+              <p className="text-gray-400 mb-6 leading-relaxed">Polite Phim có thể cập nhật Chính Sách Riêng Tư này để phù hợp với các quy định và chính sách nội bộ mới. Mọi thay đổi sẽ được thông báo trên trang web và có hiệu lực ngay khi được đăng tải. Việc tiếp tục sử dụng trang web sau khi có thay đổi đồng nghĩa với việc bạn chấp nhận các điều khoản mới.</p>
+            </div>
+          ) : (
+            <MovieGrid title={view.type === "search" ? `Tìm kiếm: ${view.keyword}` : view.title} movies={movies} loading={loading} navigate={navigate} onLoadMore={loadNextPage} hasMore={hasMore} loadingMore={loadingMore} />
+          )}
+        </div>
+        {/* ============================================== */}
+        
+        {/* ============================================== */}
+        {/* ĐOẠN FOOTER ĐƯỢC CHỈNH SỬA THEO YÊU CẦU MỚI */}
+        {/* ============================================== */}
+        <footer className="w-full bg-[#050505] border-t border-white/5 pt-12 pb-24 md:pb-16 px-6 relative z-20 flex flex-col items-center text-center justify-center">
+          <div className="max-w-[1400px] mx-auto flex flex-col items-center justify-center gap-8">
+            
+            {/* Box Huy hiệu ĐÃ BỊ XÓA */}
+
+            {/* Logo ở trung tâm */}
+            <div className="flex flex-col items-center justify-center gap-4">
+              <div 
+                className="flex items-center gap-3 cursor-pointer"
+                onClick={() => navigate({ type: "home" })}
+              >
+                {/* Dùng ảnh Logo bạn đã tải lên thay vì biểu tượng svg */}
+                <img src="/logo.png" alt="Polite Logo" className="h-10 md:h-12 w-auto object-contain" />
+                
+                <div className="flex flex-col justify-center -space-y-1 text-left">
+                  <span className="text-3xl font-black text-[#E50914] tracking-widest uppercase" style={{fontFamily: '"Arial Black", Impact, sans-serif'}}>POLITE</span>
+                  <span className="text-[10px] text-white/70 italic font-medium tracking-wide"></span>
+                </div>
+              </div>
+            </div>
+
+            {/* Hàng Menu Link */}
+            <div className="flex flex-wrap items-center justify-center gap-6 md:gap-8 text-sm text-gray-300 font-medium">
+              <span onClick={() => navigate({ type: "privacy" })} className="cursor-pointer hover:text-white transition-colors">Chính sách bảo mật</span>
+              <span onClick={() => navigate({ type: "terms" })} className="cursor-pointer hover:text-white transition-colors">Điều khoản sử dụng</span>
+              <span onClick={() => navigate({ type: "dmca" })} className="cursor-pointer hover:text-white transition-colors">DMCA</span>
+            </div>
+
+            {/* Box Text SEO được căn giữa */}
+            <p className="text-sm text-gray-400 leading-relaxed max-w-4xl text-center">
+              POLITE – Trang xem phim online chất lượng cao miễn phí Vietsub, thuyết minh, lồng tiếng full HD. Kho phim mới khổng lồ, phim chiếu rạp, phim bộ, phim lẻ từ nhiều quốc gia như Việt Nam, Hàn Quốc, Trung Quốc, Thái Lan, Nhật Bản, Âu Mỹ... đa dạng thể loại. Khám phá nền tảng phim trực tuyến hay nhất 2026 chất lượng 4K!
+            </p>
+
+            {/* Copyright */}
+            <p className="text-sm text-gray-500">
+             Copyright © 2026 POLITE
+            </p>
+
+          </div>
+        </footer>
+        {/* ============================================== */}
+
+        <BottomNav navigate={navigate} setView={setView} categories={cats} countries={countries} currentView={view.type} />
+      </div>
+
+      {/* ============================================== */}
+      {/* POPUP CHÀO MỪNG LẦN ĐẦU TIÊN (Chỉ hiện khi chưa đăng nhập) */}
+      {/* ============================================== */}
+      {showWelcomePopup && !user && (
+        <div className="fixed inset-0 z-[99999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-300">
+          <div className="bg-[#111] border border-white/10 rounded-2xl p-6 md:p-8 max-w-md w-full shadow-2xl relative overflow-hidden">
+            
+            {/* Hiệu ứng mờ đỏ góc trên cùng */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-[#E50914] rounded-full mix-blend-screen filter blur-[70px] opacity-30 pointer-events-none"></div>
+
+            <div className="flex flex-col items-center mb-6 text-center">
+              <div className="w-16 h-16 bg-[#E50914]/10 rounded-full flex items-center justify-center mb-4 border border-[#E50914]/20">
+                <Icon.Clapperboard size={32} className="text-[#E50914]" />
+              </div>
+              <h3 className="text-2xl md:text-3xl font-black text-white uppercase tracking-wider mb-2">
+                Chào Mừng Bạn Đến <span className="text-[#E50914]">POLITE</span>
+              </h3>
+              <p className="text-gray-400 text-sm md:text-base">
+                Đăng nhập ngay hôm nay để mở khóa trải nghiệm điện ảnh trọn vẹn nhất.
+              </p>
+            </div>
+
+            <div className="space-y-4 mb-8">
+              <div className="flex items-start gap-4 p-3 bg-white/5 rounded-xl border border-white/5">
+                <Icon.History className="text-[#E50914] shrink-0 mt-0.5" size={20} />
+                <div>
+                  <h4 className="text-white font-bold text-sm">Lưu Tiến Trình & Đồng Bộ</h4>
+                  <p className="text-xs text-gray-400 mt-1">Dữ liệu cá nhân hóa của bạn luôn được đồng bộ thời gian thực. Bất kể bạn dùng thiết bị hay trình duyệt nào, phim bạn xem vẫn luôn ở đúng khung hình.</p>
+                </div>
+              </div>
+              
+              <div className="flex items-start gap-4 p-3 bg-white/5 rounded-xl border border-white/5">
+                <Icon.Heart className="text-[#E50914] shrink-0 mt-0.5" size={20} />
+                <div>
+                  <h4 className="text-white font-bold text-sm">Bộ Sưu Tập Yêu Thích</h4>
+                  <p className="text-xs text-gray-400 mt-1">Tạo riêng cho mình danh sách những bộ phim tâm đắc nhất.</p>
+                </div>
+              </div>
+              
+              <div className="flex items-start gap-4 p-3 bg-white/5 rounded-xl border border-white/5">
+                <Icon.Users className="text-[#E50914] shrink-0 mt-0.5" size={20} />
+                <div>
+                  <h4 className="text-white font-bold text-sm">Phòng Xem Chung</h4>
+                  <p className="text-xs text-gray-400 mt-1">Tạo phòng xem phim và chat trực tiếp cùng bạn bè.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Checkbox Không hiện lại */}
+            <div 
+              className="flex items-center justify-center gap-2.5 mb-6 cursor-pointer group"
+              onClick={() => setDontShowWelcomeAgain(!dontShowWelcomeAgain)}
+            >
+              <div className={`w-[18px] h-[18px] rounded-md flex items-center justify-center border transition-all duration-200 ${
+                dontShowWelcomeAgain 
+                  ? 'bg-[#E50914] border-[#E50914]' 
+                  : 'border-white/30 bg-white/5 group-hover:border-white/60'
+              }`}>
+                {dontShowWelcomeAgain && <Icon.Check size={14} strokeWidth={4} className="text-white" />}
+              </div>
+              <span className="text-sm text-gray-400 select-none group-hover:text-gray-200 transition-colors">
+                Không hiện lại thông báo này
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={() => {
+                  handleCloseWelcomePopup();
+                  handleLogin();
+                }} 
+                className="w-full py-3.5 rounded-xl font-bold text-sm bg-[#E50914] hover:bg-red-700 text-white transition-colors uppercase tracking-widest shadow-[0_4px_15px_rgba(229,9,20,0.4)] flex justify-center items-center gap-2"
+              >
+                <Icon.LogIn size={18} />
+                Đăng Nhập Ngay
+              </button>
+              <button 
+                onClick={handleCloseWelcomePopup} 
+                className="w-full py-3 rounded-xl font-bold text-sm text-gray-400 hover:text-white bg-transparent hover:bg-white/5 transition-colors uppercase tracking-wider"
+              >
+                Bỏ Qua
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+      {/* ============================================== */}
+    </>
+  );
 }

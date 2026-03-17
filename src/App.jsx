@@ -31,32 +31,40 @@ import WatchPartyRoom from "./pages/WatchParty/WatchPartyRoom";
 // ĐOẠN CODE THÊM MỚI: Import trang Admin
 import AdminComments from "./pages/Admin/AdminComments";
 
-// ==========================================
+/// ==========================================
 // COMPONENT SPLASH SCREEN
 // ==========================================
 const SplashScreen = ({ isFading }) => (
-  <div className={`fixed inset-0 z-[9999] bg-[#050505] flex flex-col items-center justify-center transition-all duration-700 ease-out ${isFading ? "opacity-0 scale-110 pointer-events-none" : "opacity-100 scale-100"}`}>
-    <div className="flex flex-col items-center">
-      <h1 className="text-5xl md:text-7xl font-black text-[#E50914] tracking-[0.3em] uppercase ml-[0.3em] drop-shadow-[0_0_25px_rgba(229,9,20,0.6)] animate-[pulseGlow_2s_ease-in-out_infinite]">
-        POLITE
-      </h1>
-      <div className="w-48 md:w-64 h-[3px] bg-white/10 mt-8 rounded-full overflow-hidden shadow-[0_0_10px_rgba(229,9,20,0.3)]">
-        <div className="w-full h-full bg-[#E50914] origin-left animate-[loadingBar_2s_cubic-bezier(0.4,0,0.2,1)_infinite_alternate]"></div>
-      </div>
-    </div>
-    <style>{`
-      @keyframes loadingBar {
-        0% { transform: scaleX(0); transform-origin: left; }
-        49% { transform: scaleX(1); transform-origin: left; }
-        50% { transform: scaleX(1); transform-origin: right; }
-        100% { transform: scaleX(0); transform-origin: right; }
-      }
-      @keyframes pulseGlow {
-        0%, 100% { filter: drop-shadow(0 0 15px rgba(229,9,20,0.4)); transform: scale(1); }
-        50% { filter: drop-shadow(0 0 35px rgba(229,9,20,0.8)); transform: scale(1.02); }
-      }
-    `}</style>
-  </div>
+  <div className={`fixed inset-0 z-[9999] bg-[#050505] flex flex-col items-center justify-center transition-all duration-700 ease-out ${isFading ? "opacity-0 scale-110 pointer-events-none" : "opacity-100 scale-100"}`}>
+    <div className="flex flex-col items-center">
+      <h1 className="text-5xl md:text-7xl font-black text-[#E50914] tracking-[0.3em] uppercase ml-[0.3em] animate-[pulseGlow_2s_ease-in-out_infinite]">
+        POLITE
+      </h1>
+      
+      <div className="w-48 md:w-64 h-[3px] bg-white/10 mt-8 rounded-full overflow-hidden shadow-[0_0_10px_rgba(229,9,20,0.3)] relative">
+        <div className="absolute top-0 bottom-0 bg-[#E50914] animate-[loadingBar_2s_ease-in-out_infinite]"></div>
+      </div>
+    </div>
+    
+    <style>{`
+      @keyframes loadingBar {
+        0% { left: -100%; right: 100%; }
+        50% { left: 0; right: 0; }
+        100% { left: 100%; right: -100%; }
+      }
+      
+      @keyframes pulseGlow {
+        0%, 100% { 
+          text-shadow: 0 0 15px rgba(229,9,20,0.4); 
+          transform: scale(1); 
+        }
+        50% { 
+          text-shadow: 0 0 35px rgba(229,9,20,0.8); 
+          transform: scale(1.02); 
+        }
+      }
+    `}</style>
+  </div>
 );
 // ==========================================
 

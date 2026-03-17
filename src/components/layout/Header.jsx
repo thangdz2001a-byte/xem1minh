@@ -433,7 +433,7 @@ export default function Header({ navigate, categories, countries, user, onLogin,
       )}
 
       {/* ĐÃ THÊM pt-[env(safe-area-inset-top)] VÀO MỘT DIV BỌC TRONG HEADER ĐỂ TRÁNH GÂY LỖI PADDING CŨ CỦA SẾP */}
-      <header className={`fixed top-0 w-full z-[100] transition-all duration-300 transform-gpu ${scrolled ? "bg-[#050505]/95 backdrop-blur-md border-b border-white/5 py-2 md:py-3 shadow-2xl" : "bg-transparent py-4 md:py-5"}`}>
+      <header className={`fixed top-0 w-full z-[100] transition-all duration-300 transform-gpu ${scrolled ? "bg-[#050505]/95 backdrop-blur-md py-2 md:py-3" : "bg-transparent py-4 md:py-5"}`}>
         <div className="pt-[env(safe-area-inset-top)]">
           <div className="max-w-[1440px] mx-auto px-4 md:px-12 flex justify-between items-center gap-4">
             

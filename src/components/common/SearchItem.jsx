@@ -17,10 +17,7 @@ export default function SearchItem({ m, navigate, onClose }) {
   const movieName = safeText(m.name, "");
 
   const rawOphimPoster = m.poster_url || "";
-  const rawOphimThumb = m.thumb_url || m.thumb || "";
-
   const ophimPoster = rawOphimPoster ? getImg(rawOphimPoster) : "";
-  const ophimThumb = rawOphimThumb ? getImg(rawOphimThumb) : "";
 
   const isValidSrc = (src) => {
     if (!src) return false;
@@ -33,7 +30,6 @@ export default function SearchItem({ m, navigate, onClose }) {
 
   const hasValidTmdbPoster = isValidSrc(posterSrc);
   const hasValidOphimPoster = isValidSrc(ophimPoster);
-  const hasValidOphimThumb = isValidSrc(ophimThumb);
 
   useEffect(() => {
     if (hasValidTmdbPoster) {
@@ -42,42 +38,23 @@ export default function SearchItem({ m, navigate, onClose }) {
     } else if (hasValidOphimPoster) {
       setImgSrc(ophimPoster);
       setImgStep("ophimPoster");
-    } else if (hasValidOphimThumb) {
-      setImgSrc(ophimThumb);
-      setImgStep("ophimThumb");
     } else {
       setImgSrc("");
       setImgStep("done");
     }
-  }, [posterSrc, ophimPoster, ophimThumb, hasValidTmdbPoster, hasValidOphimPoster, hasValidOphimThumb]);
+  }, [posterSrc, ophimPoster, hasValidTmdbPoster, hasValidOphimPoster]);
 
   const handleImageError = () => {
-    if (imgStep === "tmdb") {
-      if (hasValidOphimPoster) {
-        setImgSrc(ophimPoster);
-        setImgStep("ophimPoster");
-        return;
-      }
-      if (hasValidOphimThumb) {
-        setImgSrc(ophimThumb);
-        setImgStep("ophimThumb");
-        return;
-      }
+    if (imgStep === "tmdb" && hasValidOphimPoster) {
+      setImgSrc(ophimPoster);
+      setImgStep("ophimPoster");
+      return;
     }
-
-    if (imgStep === "ophimPoster") {
-      if (hasValidOphimThumb) {
-        setImgSrc(ophimThumb);
-        setImgStep("ophimThumb");
-        return;
-      }
-    }
-
     setImgSrc("");
     setImgStep("done");
   };
 
-  // SỬA LẠI Ở ĐÂY: Dùng trực tiếp isLoading để gọi hiệu ứng vòng đỏ giống bản cũ
+  // Dùng trực tiếp isLoading để gọi hiệu ứng vòng đỏ
   const isFetching = isLoading;
 
   let imageContent = null;

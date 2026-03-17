@@ -1,1 +1,11 @@
 @import "tailwindcss";
+
+/* Tắt con trỏ nhấp nháy (lỗi F7) trên toàn bộ website */
+* {
+  caret-color: transparent;
+}
+
+/* Bật lại con trỏ nhấp nháy CHỈ cho các ô nhập liệu (thanh tìm kiếm) */
+input, textarea, [contenteditable="true"] {
+  caret-color: #E50914; /* Đổi luôn thành màu đỏ chuẩn logo POLITE cho ngầu 🔴 */
+}

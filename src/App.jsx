@@ -31,13 +31,14 @@ import WatchPartyRoom from "./pages/WatchParty/WatchPartyRoom";
 // ĐOẠN CODE THÊM MỚI: Import trang Admin
 import AdminComments from "./pages/Admin/AdminComments";
 
-/// ==========================================
+// ==========================================
 // COMPONENT SPLASH SCREEN
 // ==========================================
 const SplashScreen = ({ isFading }) => (
   <div className={`fixed inset-0 z-[9999] bg-[#050505] flex flex-col items-center justify-center transition-all duration-700 ease-out ${isFading ? "opacity-0 scale-110 pointer-events-none" : "opacity-100 scale-100"}`}>
     <div className="flex flex-col items-center">
-      <h1 className="text-5xl md:text-7xl font-black text-[#E50914] tracking-[0.3em] uppercase ml-[0.3em] animate-[pulseGlow_2s_ease-in-out_infinite]">
+      {/* Đã thêm select-none pointer-events-none vào dòng dưới */}
+      <h1 className="select-none pointer-events-none text-5xl md:text-7xl font-black text-[#E50914] tracking-[0.3em] uppercase ml-[0.3em] animate-[pulseGlow_2s_ease-in-out_infinite]">
         POLITE
       </h1>
       
@@ -67,7 +68,6 @@ const SplashScreen = ({ isFading }) => (
   </div>
 );
 // ==========================================
-
 const getViewUrl = (view) => {
   switch (view.type) {
     case "home": return "/";

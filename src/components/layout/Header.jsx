@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react"; // ĐÃ SỬA: Thêm useRef
+import React, { useState, useEffect, useRef } from "react";
 import * as Icon from "lucide-react";
 import { supabase } from "../../utils/supabaseClient"; 
 import { YEARS } from "../../utils/helpers";
@@ -206,11 +206,8 @@ export default function Header({ navigate, categories, countries, user, onLogin,
   const [customAvatarId, setCustomAvatarId] = useState(null); 
   const [tempAvatarId, setTempAvatarId] = useState(null); 
 
-  const [isAdmin, setIsAdmin] = useState(false); // ĐÃ THÊM: State lưu quyền Admin
+  const [isAdmin, setIsAdmin] = useState(false); 
 
-  // ==========================================
-  // ĐOẠN CODE THÊM MỚI: Xử lý click ra ngoài để đóng Profile Menu
-  // ==========================================
   const profileRef = useRef(null);
 
   useEffect(() => {
@@ -222,37 +219,34 @@ export default function Header({ navigate, categories, countries, user, onLogin,
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-  // ==========================================
 
-  // FIX LỖI 406 CHÍ MẠNG: Dùng .limit(1) thay vì single()
   useEffect(() => {
     const fetchAvatarFromSupabase = async () => {
-      // BỘ LỌC CHẶN: CHỈ GỌI KHI CÓ USER ID
       if (user && user.uid) {
         try {
           const { data, error } = await supabase
             .from('profiles')
-            .select('avatar, role') // ĐÃ SỬA: Lấy thêm role để kiểm tra quyền
+            .select('avatar, role') 
             .eq('user_id', user.uid)
-            .limit(1); // Cứu tinh chống lỗi 406
+            .limit(1); 
             
-          if (data && data.length > 0) { // ĐÃ SỬA: Bọc lại logic để xử lý cả avatar và role
+          if (data && data.length > 0) { 
             if (data[0].avatar) {
               setCustomAvatarId(data[0].avatar);
             } else {
               setCustomAvatarId(null);
             }
-            setIsAdmin(data[0].role === 'admin'); // ĐÃ THÊM: Cập nhật state quyền
+            setIsAdmin(data[0].role === 'admin'); 
           } else {
             setCustomAvatarId(null);
-            setIsAdmin(false); // ĐÃ THÊM
+            setIsAdmin(false); 
           }
         } catch (error) {
           console.error("Lỗi tải avatar:", error);
         }
       } else {
         setCustomAvatarId(null);
-        setIsAdmin(false); // ĐÃ THÊM
+        setIsAdmin(false); 
       }
     };
     fetchAvatarFromSupabase();
@@ -270,7 +264,6 @@ export default function Header({ navigate, categories, countries, user, onLogin,
     setShowNameModal(true);
   };
 
-  // ĐÃ SỬA: Thêm lưu dữ liệu vào Supabase
   const handleSubmitName = async (e) => {
     e.preventDefault();
     const newName = editName.trim();
@@ -337,7 +330,7 @@ export default function Header({ navigate, categories, countries, user, onLogin,
               type="text"
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
-              placeholder="Nhập tên mới..." /* ĐÃ SỬA: Thêm placeholder */
+              placeholder="Nhập tên mới..." 
               autoFocus
               maxLength={25}
               className="w-full bg-[#222] border border-white/10 rounded-xl p-4 text-white outline-none focus:border-[#E50914] transition-colors mb-6 font-bold"
@@ -432,8 +425,8 @@ export default function Header({ navigate, categories, countries, user, onLogin,
         </div>
       )}
 
-      {/* ĐÃ THÊM pt-[env(safe-area-inset-top)] VÀO MỘT DIV BỌC TRONG HEADER ĐỂ TRÁNH GÂY LỖI PADDING CŨ CỦA SẾP */}
-      <header className={`fixed top-0 w-full z-[100] transition-all duration-300 transform-gpu ${scrolled ? "bg-[#050505]/95 backdrop-blur-md py-2 md:py-3" : "bg-transparent py-4 md:py-5"}`}>
+      {/* ĐÃ SỬA: Xóa transform-gpu và thêm border-b, shadow để loại bỏ vệt trắng khi cuộn */}
+      <header className={`fixed top-0 w-full z-[100] transition-all duration-300 ${scrolled ? "bg-[#050505]/95 backdrop-blur-md py-2 md:py-3 border-b border-transparent shadow-[0_4px_30px_rgba(0,0,0,0.5)]" : "bg-transparent py-4 md:py-5"}`}>
         <div className="pt-[env(safe-area-inset-top)]">
           <div className="max-w-[1440px] mx-auto px-4 md:px-12 flex justify-between items-center gap-4">
             
@@ -464,7 +457,6 @@ export default function Header({ navigate, categories, countries, user, onLogin,
               </div>
               <button onClick={() => setIsSearchOpen(true)} className="lg:hidden p-1.5"><Icon.Search size={20} className="text-white" /></button>
 
-              {/* ĐÃ SỬA: Thêm ref={profileRef} vào div chứa Avatar và Dropdown */}
               <div className="relative" ref={profileRef}>
                 {user ? (
                   <div 
@@ -514,7 +506,6 @@ export default function Header({ navigate, categories, countries, user, onLogin,
                       <Icon.Heart size={16} /> Phim yêu thích
                     </button>
 
-                    {/* ĐOẠN MỚI THÊM: Nút duyệt bình luận chỉ dành cho Admin */}
                     {isAdmin && (
                       <button onClick={() => { setShowProfile(false); navigate({ type: "admin-comments" }); }} className="w-full text-left px-4 py-3 text-sm text-yellow-500 hover:text-yellow-400 hover:bg-white/5 flex items-center gap-3 transition-colors border-t border-white/5">
                         <Icon.ShieldCheck size={16} /> Duyệt bình luận

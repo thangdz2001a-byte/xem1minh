@@ -226,6 +226,11 @@ const MovieCard = memo(function MovieCard({
       <div className="relative rounded-xl transition-all duration-300 [transform-style:preserve-3d] group-hover/card:[transform:translateZ(24px)_rotateX(3deg)_rotateY(-3deg)]">
         <div className="relative overflow-hidden rounded-xl aspect-[2/3] bg-[#0a0a0a] shadow-xl border border-white/5 transition-all duration-300 group-hover/card:shadow-[0_20px_45px_rgba(0,0,0,0.55)]">
           
+          {/* Tag HD được đưa lên góc trái của poster và thu bé lại cho mobile */}
+          <div className="absolute top-1.5 left-1.5 z-40 bg-[#E50914] text-white px-1.5 py-[2px] rounded-[3px] text-[8px] md:text-[10px] font-bold uppercase tracking-wider shadow-md">
+            {safeText(m.quality, "HD")}
+          </div>
+
           {imageContent}
 
           {/* HIỂN THỊ TIẾN TRÌNH XEM */}
@@ -250,22 +255,19 @@ const MovieCard = memo(function MovieCard({
       </div>
 
       {/* THÔNG TIN PHIM */}
-      <div className="mt-2 md:mt-3 flex flex-col flex-1 px-1">
+      <div className="mt-2 md:mt-3 flex flex-col items-center text-center flex-1 px-1">
         <h3 className="text-[13px] md:text-[15px] font-bold text-gray-200 line-clamp-2 uppercase group-hover/card:text-[#E50914] transition-colors leading-tight">
           {movieName}
         </h3>
 
         {originName && originName.toLowerCase() !== m.name?.toLowerCase() && (
-          <p className="text-[11px] md:text-[12px] text-gray-400 mt-1 truncate">
+          <p className="text-[11px] md:text-[12px] text-gray-400 mt-1 truncate w-full">
             {originName}
           </p>
         )}
 
-        <div className="flex items-center gap-2 mt-1.5 text-[10px] md:text-[11px] text-gray-500 font-medium">
+        <div className="flex items-center justify-center gap-2 mt-1.5 text-[10px] md:text-[11px] text-gray-500 font-medium w-full">
           <span>{safeText(m.year, "2025")}</span>
-          <span className="bg-[#E50914] text-white px-1.5 py-[2px] rounded-[3px] font-bold uppercase tracking-wider">
-            {safeText(m.quality, "HD")}
-          </span>
         </div>
       </div>
     </div>
